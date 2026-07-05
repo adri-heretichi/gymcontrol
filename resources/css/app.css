@@ -1,0 +1,120 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer components {
+    /* Estandarización de Labels */
+    .form-label {
+        @apply block text-xs font-bold uppercase tracking-widest text-slate-400 dark:text-slate-300 mb-1.5;
+    }
+
+    /* Estandarización de Inputs */
+    .form-input {
+        @apply w-full px-4 py-2.5 border-2 border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 rounded-xl text-sm text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 shadow-inner transition duration-150;
+    }
+
+    /* Botón Primario (Indigo) */
+    .btn-primary {
+        @apply inline-flex items-center justify-center px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white text-xs font-black uppercase tracking-widest rounded-xl shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/30 transition duration-150;
+    }
+
+    /* Botón Secundario (Slate) */
+    .btn-secondary {
+        @apply inline-flex items-center justify-center px-5 py-2.5 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-black uppercase tracking-widest rounded-xl transition duration-150;
+    }
+
+    /* Botones de acción compactos de tablas */
+    .btn-action-view {
+        @apply inline-flex items-center px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/50 dark:text-indigo-400 text-2xs font-extrabold uppercase tracking-wider rounded-lg transition duration-150;
+    }
+
+    .btn-action-edit {
+        @apply inline-flex items-center px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:hover:bg-amber-900/50 dark:text-amber-400 text-2xs font-extrabold uppercase tracking-wider rounded-lg transition duration-150;
+    }
+
+    .btn-action-danger {
+        @apply inline-flex items-center px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:hover:bg-rose-900/50 dark:text-rose-400 text-2xs font-extrabold uppercase tracking-wider rounded-lg transition duration-150;
+    }
+
+    .btn-action-success {
+        @apply inline-flex items-center px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/50 dark:text-emerald-400 text-2xs font-extrabold uppercase tracking-wider rounded-lg transition duration-150;
+    }
+
+    /* Envoltura de Tabla */
+    .table-container {
+        @apply overflow-x-auto rounded-3xl border border-slate-100 dark:border-slate-800 shadow-lg bg-white dark:bg-slate-800;
+    }
+
+    /* Tabla */
+    .custom-table {
+        @apply min-w-full divide-y divide-slate-100 dark:divide-slate-800 text-sm text-left;
+    }
+
+    .custom-table-head {
+        @apply bg-slate-50/75 dark:bg-slate-900/50 text-slate-400 dark:text-slate-300 font-extrabold uppercase text-[10px] tracking-widest border-b border-slate-100 dark:border-slate-800;
+    }
+
+    .custom-table-th {
+        @apply px-6 py-4;
+    }
+
+    .custom-table-row {
+        @apply hover:bg-slate-50/50 dark:hover:bg-slate-900/25 transition duration-150 border-b border-slate-100 dark:border-slate-800 last:border-b-0;
+    }
+
+    .custom-table-td {
+        @apply px-6 py-4 whitespace-nowrap text-slate-700 dark:text-slate-200 font-semibold;
+    }
+
+    /* Badges de Estado Semánticos */
+    .badge-success {
+        @apply inline-flex items-center px-2.5 py-1 rounded-full text-2xs font-black uppercase tracking-wider bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-100/60 dark:border-emerald-900/50;
+    }
+
+    .badge-danger {
+        @apply inline-flex items-center px-2.5 py-1 rounded-full text-2xs font-black uppercase tracking-wider bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400 border border-rose-100/60 dark:border-rose-900/50;
+    }
+
+    .badge-warning {
+        @apply inline-flex items-center px-2.5 py-1 rounded-full text-2xs font-black uppercase tracking-wider bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400 border border-amber-100/60 dark:border-amber-900/50;
+    }
+
+    .badge-info {
+        @apply inline-flex items-center px-2.5 py-1 rounded-full text-2xs font-black uppercase tracking-wider bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-400 border border-indigo-100/60 dark:border-indigo-900/50;
+    }
+
+    /* Contenedor de Tarjeta Principal */
+    .main-card {
+        @apply bg-white dark:bg-slate-800 shadow-xl rounded-3xl border border-slate-100 dark:border-slate-800 p-6 sm:p-8;
+    }
+
+    /* Filtros generales */
+    .filters-container {
+        @apply bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-800 mb-8;
+    }
+
+    /* Modales */
+    .modal-backdrop {
+        @apply fixed inset-0 bg-slate-900/75 dark:bg-black/80 z-50 transition-opacity backdrop-blur-[2px];
+    }
+
+    .modal-wrapper {
+        @apply fixed inset-0 z-50 overflow-y-auto flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0;
+    }
+
+    .modal-panel {
+        @apply inline-block align-middle bg-white dark:bg-slate-900 rounded-3xl text-left overflow-hidden shadow-2xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full border border-slate-100 dark:border-slate-800 max-h-[90vh] flex flex-col;
+    }
+
+    .modal-header {
+        @apply px-6 py-4 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center;
+    }
+
+    .modal-body {
+        @apply p-6 space-y-4 overflow-y-auto flex-1;
+    }
+
+    .modal-footer {
+        @apply px-6 py-4 border-t border-slate-100 dark:border-slate-700 flex justify-end gap-3 bg-slate-50/50 dark:bg-slate-950/40;
+    }
+}

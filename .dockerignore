@@ -1,0 +1,11 @@
+.git
+.env
+node_modules
+vendor
+storage/app/private
+storage/logs
+bootstrap/cache
+*.log
+.DS_Store
+tests
+.phpunit.result.cache
