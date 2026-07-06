@@ -53,7 +53,7 @@ class ControlAcceso extends Component
             return;
         }
 
-        // 2. Determinar si ya está en sala (asistencia abierta hoy)
+        // 2. Determinar si ya está en sala (asistencia abierta)
         $asistenciaAbierta = Asistencia::where('socio_id', $socio->id)
             ->whereNull('hora_salida')
             ->first();
@@ -69,10 +69,36 @@ class ControlAcceso extends Component
                 'tiempo_permanencia' => $tiempo_permanencia,
             ]);
 
+            // Verificar si superó el límite de horas diarias
+            $membresia = $socio->membresia;
+            $limiteHoras = null;
+
+            if ($membresia && in_array($membresia->horas_mensuales, [2, 40])) {
+                $limiteHoras = 2; // Límite diario de 2 horas
+            }
+
+            if ($limiteHoras) {
+                // Calcular total de minutos usados hoy
+                $minutosHoy = Asistencia::where('socio_id', $socio->id)
+                    ->whereDate('fecha', Carbon::today())
+                    ->whereNotNull('hora_salida')
+                    ->sum('tiempo_permanencia');
+
+                if ($minutosHoy > ($limiteHoras * 60)) {
+                    $this->mensajeAcceso = "Salida registrada. ¡Atención! Superaste el límite de {$limiteHoras} horas diarias. Debés abonar un cargo adicional.";
+                    $this->estadoAcceso = 'salida';
+                    $this->socioInfo = $socio;
+                    $this->motivosDenegacion = ['⚠️ Tiempo diario superado — debe abonar cargo adicional'];
+                    $this->identificador = '';
+                    return;
+                }
+            }
+
             $this->mensajeAcceso = "Salida registrada con éxito. ¡Hasta luego!";
             $this->estadoAcceso = 'salida';
             $this->socioInfo = $socio;
             $this->motivosDenegacion = [];
+
         } else {
             // --- CASO DE INGRESO ---
             $motivos = [];
@@ -86,14 +112,27 @@ class ControlAcceso extends Component
             if (!$socio->membresia_id) {
                 $motivos[] = 'El socio no tiene ninguna membresía contratada.';
             } elseif (!$socio->fecha_vencimiento) {
-                $motivos[] = 'El socio no tiene una fecha de vencimiento registrada.';
-            } elseif ($socio->fecha_vencimiento->isPast() && !$socio->fecha_vencimiento->isToday()) {
+                $motivos[] = 'El socio no tiene una fecha de vencimiento registrada. Debe abonar la cuota.';
+            } elseif ($socio->fecha_vencimiento->lt(Carbon::today())) {
                 $motivos[] = 'La membresía ha EXPIRADO el ' . $socio->fecha_vencimiento->format('d/m/Y') . '.';
             }
 
             // Validación C: Certificado Médico / Apto Físico vigente
             if (!$socio->aptoFisicoVigente()) {
                 $motivos[] = 'Falta Certificado Médico (Apto Físico) vigente.';
+            }
+
+            // Validación D: Límite de horas diarias
+            $membresia = $socio->membresia;
+            if ($membresia && in_array($membresia->horas_mensuales, [2, 40])) {
+                $minutosHoy = Asistencia::where('socio_id', $socio->id)
+                    ->whereDate('fecha', Carbon::today())
+                    ->whereNotNull('hora_salida')
+                    ->sum('tiempo_permanencia');
+
+                if ($minutosHoy >= 120) { // 2 horas = 120 minutos
+                    $motivos[] = 'Tiempo diario agotado (2 hs). Debés abonar para continuar.';
+                }
             }
 
             if (count($motivos) > 0) {
@@ -148,11 +187,36 @@ class ControlAcceso extends Component
 
     public function render()
     {
-        // Socios en sala (asistencias abiertas hoy)
+        // Socios en sala con cálculo de minutos acumulados hoy
         $sociosEnSala = Asistencia::whereNull('hora_salida')
             ->with(['socio.membresia'])
             ->orderBy('hora_ingreso', 'desc')
-            ->get();
+            ->get()
+            ->map(function ($asistencia) {
+                $socio = $asistencia->socio;
+                $membresia = $socio->membresia;
+                $asistencia->minutos_hoy = 0;
+                $asistencia->tiene_limite = false;
+
+                if ($membresia && in_array($membresia->horas_mensuales, [2, 40])) {
+                    $asistencia->tiene_limite = true;
+
+                    // Minutos de asistencias cerradas hoy
+                    $minutosCerrados = Asistencia::where('socio_id', $socio->id)
+                        ->whereDate('fecha', Carbon::today())
+                        ->whereNotNull('hora_salida')
+                        ->sum('tiempo_permanencia');
+
+                    // Minutos de la asistencia abierta actual
+                    $minutosAbiertos = Carbon::parse(
+                        $asistencia->fecha->format('Y-m-d') . ' ' . $asistencia->hora_ingreso
+                    )->diffInMinutes(Carbon::now());
+
+                    $asistencia->minutos_hoy = $minutosCerrados + $minutosAbiertos;
+                }
+
+                return $asistencia;
+            });
 
         return view('livewire.control-acceso', [
             'sociosEnSala' => $sociosEnSala

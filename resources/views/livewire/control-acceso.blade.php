@@ -94,9 +94,20 @@
                                 <div class="text-center sm:text-left flex-1">
                                     <span class="text-xs font-extrabold uppercase tracking-widest text-indigo-100">SALIDA REGISTRADA</span>
                                     <h3 class="text-3xl font-black mt-1 leading-tight">{{ $socioInfo?->nombre }} {{ $socioInfo?->apellido }}</h3>
-                                    <p class="text-sm text-indigo-100/90 mt-1 font-semibold">Esperamos verte pronto. DNI: {{ $socioInfo?->dni }}</p>
+                                    <p class="text-sm text-indigo-100/90 mt-1 font-semibold">{{ $mensajeAcceso }}</p>
                                 </div>
                             </div>
+
+                            {{-- Aviso de tiempo agotado en el panel de salida --}}
+                            @if(count($motivosDenegacion) > 0)
+                                <div class="mt-6 p-4 bg-orange-500/20 rounded-2xl border border-orange-400/30">
+                                    <ul class="list-disc pl-5 space-y-1 text-sm font-bold text-orange-100">
+                                        @foreach($motivosDenegacion as $motivo)
+                                            <li>{{ $motivo }}</li>
+                                        @endforeach
+                                    </ul>
+                                </div>
+                            @endif
                         </div>
 
                     @elseif($estadoAcceso === 'error')
@@ -183,6 +194,24 @@
                                         {{ \Carbon\Carbon::parse($asistencia->fecha->format('Y-m-d') . ' ' . $asistencia->hora_ingreso)->diffInMinutes(\Carbon\Carbon::now()) }} min
                                     </span>
                                 </div>
+
+                                {{-- Badge de aviso si tiene límite de horas diarias --}}
+                                @if($asistencia->tiene_limite)
+                                    @if($asistencia->minutos_hoy >= 120)
+                                        <div class="mt-2 px-2 py-1 bg-red-100 dark:bg-red-950 border border-red-300 dark:border-red-800 rounded-lg">
+                                            <span class="text-[10px] font-black text-red-600 dark:text-red-400">
+                                                ⏰ TIEMPO AGOTADO — Debe abonar para continuar
+                                            </span>
+                                        </div>
+                                    @elseif($asistencia->minutos_hoy >= 96)
+                                        <div class="mt-2 px-2 py-1 bg-orange-100 dark:bg-orange-950 border border-orange-300 dark:border-orange-800 rounded-lg">
+                                            <span class="text-[10px] font-black text-orange-600 dark:text-orange-400">
+                                                ⚠️ {{ 120 - $asistencia->minutos_hoy }} min restantes
+                                            </span>
+                                        </div>
+                                    @endif
+                                @endif
+
                             </div>
                             
                             <button 
