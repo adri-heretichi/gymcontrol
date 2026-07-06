@@ -67,9 +67,15 @@ class CrearPago extends Component
 
         // Si la membresía está vigente sumar al vencimiento actual
         // Si está vencida o es nula, sumar desde hoy
-        $nuevaFecha = ($vencimientoActual && $vencimientoActual->gt($hoy))
-            ? $vencimientoActual->copy()->addMonth()
-            : $hoy->copy()->addMonth();
+        $membresia = $socio->membresia;
+
+        if ($membresia && str_contains(strtolower($membresia->nombre), 'diario')) {
+           $nuevaFecha = $hoy->copy();
+        } else {
+           $nuevaFecha = ($vencimientoActual && $vencimientoActual->gt($hoy))
+             ? $vencimientoActual->copy()->addMonth()
+             : $hoy->copy()->addMonth();
+        }
 
         // Crear el pago
         Pago::create([
@@ -78,12 +84,14 @@ class CrearPago extends Component
             'importe' => $this->importe,
             'metodo_pago' => $this->metodo_pago,
         ]);
-
+     
         // Actualizar vencimiento y estado del socio
         $socio->update([
             'fecha_vencimiento' => $nuevaFecha->toDateString(),
             'estado' => 'activo',
         ]);
+        // Notificar a la ficha del socio que se actualizó
+        $this->dispatch('pagoRegistrado');
 
         session()->flash('message', "Pago registrado con éxito para {$socio->nombre} {$socio->apellido}. Vencimiento extendido al " . $nuevaFecha->format('d/m/Y') . ".");
 

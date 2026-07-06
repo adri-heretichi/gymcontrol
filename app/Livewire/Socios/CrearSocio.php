@@ -16,7 +16,7 @@ class CrearSocio extends Component
     public $sexo = 'M'; // Por defecto Masculino
     public $correo = '';
     public $celular = '';
-    public $membresia_id = '';
+    public $membresia_id = null; // Debe ser seleccionada por el operador
     public $fecha_alta = '';
     public $fecha_vencimiento = ''; // Obligatoriamente seleccionada de forma manual por el operador
     public $estado = 'activo'; // Activo por defecto al registrarse
@@ -53,7 +53,7 @@ class CrearSocio extends Component
             'celular' => 'nullable|string|max:50',
             'membresia_id' => 'required|exists:membresias,id',
             'fecha_alta' => 'required|date',
-            'fecha_vencimiento' => 'required|date|after_or_equal:fecha_alta',
+            'fecha_vencimiento' => 'nullable|date',
             'foto' => 'nullable', // Regla preparada para futuras integraciones de uploads
         ];
     }
@@ -114,7 +114,7 @@ class CrearSocio extends Component
             'token' => $token,
             'qr' => null, // QR temporalmente nulo
             'fecha_alta' => $this->fecha_alta,
-            'fecha_vencimiento' => $this->fecha_vencimiento,
+            'fecha_vencimiento' => null,
             'estado' => $this->estado,
         ]);
 
