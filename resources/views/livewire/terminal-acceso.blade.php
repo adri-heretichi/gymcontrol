@@ -14,26 +14,29 @@
      "
      wire:poll.1s="checkExternalScan"
 >
-    <!-- Banner permanente del clima en la parte superior -->
+
+    {{-- Banner del clima en la parte superior fijo --}}
     @if ($climaCargado)
-        <div style="
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            background: rgba(255,255,255,0.08);
-            border-bottom: 1px solid rgba(255,255,255,0.15);
-            text-align: center;
-            padding: 10px;
-            font-size: 15px;
-            font-weight: 600;
-            color: #ffffff;
-            z-index: 9999;
-            letter-spacing: 0.5px;
-        ">
-            {{ $iconoClima }} Formosa: {{ $temperatura }}°C &nbsp;|&nbsp;
-            Humedad: {{ $humedad }}% &nbsp;|&nbsp;
-            Viento: {{ $viento }} km/h
+        <div class="fixed top-0 left-0 right-0 z-50 flex items-center justify-center gap-6 px-6 py-3"
+             style="background: linear-gradient(135deg, rgba(99,102,241,0.25) 0%, rgba(139,92,246,0.25) 100%);
+                    border-bottom: 1px solid rgba(255,255,255,0.1);
+                    backdrop-filter: blur(10px);">
+            <span class="text-2xl">{{ $iconoClima }}</span>
+            <div class="flex items-center gap-4 text-sm font-bold text-white">
+                <span class="flex items-center gap-1">
+                    🌡️ <span class="text-indigo-300">{{ $temperatura }}°C</span>
+                </span>
+                <span class="text-slate-600">|</span>
+                <span class="flex items-center gap-1">
+                    💧 <span class="text-indigo-300">{{ $humedad }}%</span>
+                </span>
+                <span class="text-slate-600">|</span>
+                <span class="flex items-center gap-1">
+                    💨 <span class="text-indigo-300">{{ $viento }} km/h</span>
+                </span>
+                <span class="text-slate-600">|</span>
+                <span class="text-slate-300 font-semibold">{{ $descripcionClima }} · Formosa</span>
+            </div>
         </div>
     @endif
 
@@ -42,7 +45,7 @@
     <div class="absolute -left-24 -bottom-24 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl pointer-events-none"></div>
 
     <!-- Encabezado de la Terminal -->
-    <div class="flex justify-between items-center z-10">
+    <div class="flex justify-between items-center z-10 {{ $climaCargado ? 'mt-14' : '' }}">
         <div class="flex items-center gap-3">
             <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
                 <svg class="w-6 h-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -140,7 +143,6 @@
                             x-ref="tokenInput"
                             wire:model="token" 
                             wire:keydown.enter.prevent="procesar"
-                            x-on:input.debounce.800ms="$wire.procesar()"
                             placeholder="Digitá tu token aquí..." 
                             autocomplete="off"
                             class="w-full text-center py-5 border-2 border-slate-800 bg-slate-950/80 rounded-2xl text-3xl font-black tracking-widest text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 shadow-inner"
