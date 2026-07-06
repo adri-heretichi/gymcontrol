@@ -15,30 +15,52 @@
      wire:poll.1s="checkExternalScan"
 >
 
-    {{-- Banner del clima en la parte superior fijo --}}
-    @if ($climaCargado)
-        <div class="fixed top-0 left-0 right-0 z-50 flex items-center justify-center gap-6 px-6 py-3"
-             style="background: linear-gradient(135deg, rgba(99,102,241,0.25) 0%, rgba(139,92,246,0.25) 100%);
-                    border-bottom: 1px solid rgba(255,255,255,0.1);
-                    backdrop-filter: blur(10px);">
-            <span class="text-2xl">{{ $iconoClima }}</span>
-            <div class="flex items-center gap-4 text-sm font-bold text-white">
-                <span class="flex items-center gap-1">
-                    🌡️ <span class="text-indigo-300">{{ $temperatura }}°C</span>
-                </span>
-                <span class="text-slate-600">|</span>
-                <span class="flex items-center gap-1">
-                    💧 <span class="text-indigo-300">{{ $humedad }}%</span>
-                </span>
-                <span class="text-slate-600">|</span>
-                <span class="flex items-center gap-1">
-                    💨 <span class="text-indigo-300">{{ $viento }} km/h</span>
-                </span>
-                <span class="text-slate-600">|</span>
-                <span class="text-slate-300 font-semibold">{{ $descripcionClima }} · Formosa</span>
-            </div>
-        </div>
-    @endif
+{{-- Banner del clima cargado desde el navegador vía JavaScript --}}
+<div id="clima-banner" class="fixed top-0 left-0 right-0 z-50 hidden items-center justify-center gap-6 px-6 py-3"
+     style="background: linear-gradient(135deg, rgba(99,102,241,0.25) 0%, rgba(139,92,246,0.25) 100%);
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            backdrop-filter: blur(10px);">
+    <span id="clima-icono" class="text-2xl"></span>
+    <div class="flex items-center gap-4 text-sm font-bold text-white">
+        <span>🌡️ <span id="clima-temp" class="text-indigo-300"></span>°C</span>
+        <span class="text-slate-600">|</span>
+        <span>💧 <span id="clima-humedad" class="text-indigo-300"></span>%</span>
+        <span class="text-slate-600">|</span>
+        <span>💨 <span id="clima-viento" class="text-indigo-300"></span> km/h</span>
+        <span class="text-slate-600">|</span>
+        <span id="clima-desc" class="text-slate-300 font-semibold"></span>
+        <span class="text-slate-300 font-semibold">· Formosa</span>
+    </div>
+</div>
+
+<script>
+function mapearClima(code) {
+    if (code === 0) return { icono: '☀️', desc: 'Despejado' };
+    if ([1,2,3].includes(code)) return { icono: '🌤️', desc: 'Parcialmente nublado' };
+    if ([45,48].includes(code)) return { icono: '🌫️', desc: 'Neblina' };
+    if ([51,53,55,61,63,65].includes(code)) return { icono: '🌧️', desc: 'Lluvia' };
+    if ([71,73,75].includes(code)) return { icono: '🌨️', desc: 'Nieve' };
+    if ([80,81,82].includes(code)) return { icono: '🌦️', desc: 'Lluvias dispersas' };
+    if ([95,96,99].includes(code)) return { icono: '⛈️', desc: 'Tormenta' };
+    return { icono: '🌡️', desc: 'Variable' };
+}
+
+fetch('https://api.open-meteo.com/v1/forecast?latitude=-26.18&longitude=-58.18&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m&timezone=America%2FArgentina%2FSalta')
+    .then(r => r.json())
+    .then(data => {
+        const c = data.current;
+        const clima = mapearClima(c.weather_code);
+        document.getElementById('clima-icono').textContent = clima.icono;
+        document.getElementById('clima-temp').textContent = c.temperature_2m;
+        document.getElementById('clima-humedad').textContent = c.relative_humidity_2m;
+        document.getElementById('clima-viento').textContent = c.wind_speed_10m;
+        document.getElementById('clima-desc').textContent = clima.desc;
+        const banner = document.getElementById('clima-banner');
+        banner.classList.remove('hidden');
+        banner.classList.add('flex');
+    })
+    .catch(() => {});
+</script>
 
     <!-- Efectos luminosos de fondo -->
     <div class="absolute -right-24 -top-24 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none"></div>
