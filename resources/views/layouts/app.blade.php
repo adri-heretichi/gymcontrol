@@ -18,6 +18,24 @@
         <div class="min-h-screen bg-gray-100 flex flex-col">
             <livewire:layout.navigation />
 
+            <!-- Banner del clima fijo debajo de la navegación -->
+            <div id="clima-banner-app"
+                 class="hidden items-center justify-center gap-4 px-6 py-2 text-sm font-semibold"
+                 style="background: linear-gradient(135deg, rgba(26,42,94,0.08) 0%, rgba(99,102,241,0.08) 100%);
+                        border-bottom: 1px solid rgba(99,102,241,0.15);">
+                <span id="clima-icono-app" class="text-lg"></span>
+                <span class="text-slate-600 dark:text-slate-300">
+                    🌡️ <span id="clima-temp-app" class="font-bold text-indigo-600"></span>°C
+                    &nbsp;|&nbsp;
+                    💧 <span id="clima-humedad-app" class="font-bold text-indigo-600"></span>%
+                    &nbsp;|&nbsp;
+                    💨 <span id="clima-viento-app" class="font-bold text-indigo-600"></span> km/h
+                    &nbsp;|&nbsp;
+                    <span id="clima-desc-app" class="text-slate-500"></span>
+                    · Formosa
+                </span>
+            </div>
+
             <!-- Page Heading -->
             @if (isset($header))
                 <header class="bg-white shadow">
@@ -128,5 +146,40 @@
                 </div>
             </footer>
         </div>
+
+        <script>
+        function mapearClimaApp(code) {
+            if (code === 0) return { icono: '☀️', desc: 'Despejado' };
+            if ([1,2,3].includes(code)) return { icono: '🌤️', desc: 'Parcialmente nublado' };
+            if ([45,48].includes(code)) return { icono: '🌫️', desc: 'Neblina' };
+            if ([51,53,55,61,63,65].includes(code)) return { icono: '🌧️', desc: 'Lluvia' };
+            if ([71,73,75].includes(code)) return { icono: '🌨️', desc: 'Nieve' };
+            if ([80,81,82].includes(code)) return { icono: '🌦️', desc: 'Lluvias dispersas' };
+            if ([95,96,99].includes(code)) return { icono: '⛈️', desc: 'Tormenta' };
+            return { icono: '🌡️', desc: 'Variable' };
+        }
+
+        function cargarClimaApp() {
+            fetch('https://api.open-meteo.com/v1/forecast?latitude=-26.18&longitude=-58.18&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m&timezone=America%2FArgentina%2FSalta')
+                .then(r => r.json())
+                .then(data => {
+                    const c = data.current;
+                    const clima = mapearClimaApp(c.weather_code);
+                    document.getElementById('clima-icono-app').textContent = clima.icono;
+                    document.getElementById('clima-temp-app').textContent = c.temperature_2m;
+                    document.getElementById('clima-humedad-app').textContent = c.relative_humidity_2m;
+                    document.getElementById('clima-viento-app').textContent = c.wind_speed_10m;
+                    document.getElementById('clima-desc-app').textContent = clima.desc;
+                    const banner = document.getElementById('clima-banner-app');
+                    banner.classList.remove('hidden');
+                    banner.classList.add('flex');
+                })
+                .catch(() => {});
+        }
+
+        cargarClimaApp();
+        setInterval(cargarClimaApp, 600000);
+        </script>
+
     </body>
 </html>
