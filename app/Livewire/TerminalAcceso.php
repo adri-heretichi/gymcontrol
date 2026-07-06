@@ -44,7 +44,7 @@ class TerminalAcceso extends Component
     public function cargarClima()
     {
         try {
-            $response = \Illuminate\Support\Facades\Http::timeout(5)->get('https://api.open-meteo.com/v1/forecast?latitude=-26.18&longitude=-58.18&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m&timezone=America%2FArgentina%2FSalta');
+            $response = \Illuminate\Support\Facades\Http::timeout(15)->get('https://api.open-meteo.com/v1/forecast?latitude=-26.18&longitude=-58.18&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m&timezone=America%2FArgentina%2FSalta');
 
             if ($response->successful()) {
                 $data = $response->json();
