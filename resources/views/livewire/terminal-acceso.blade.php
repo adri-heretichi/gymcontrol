@@ -15,59 +15,31 @@
      wire:poll.1s="checkExternalScan"
 >
 
-{{-- Banner del clima cargado desde el navegador vía JavaScript --}}
-<div id="clima-banner" class="fixed top-0 left-0 right-0 z-50 hidden items-center justify-center gap-6 px-6 py-3"
-     style="background: linear-gradient(135deg, rgba(99,102,241,0.25) 0%, rgba(139,92,246,0.25) 100%);
-            border-bottom: 1px solid rgba(255,255,255,0.1);
-            backdrop-filter: blur(10px);">
-    <span id="clima-icono" class="text-2xl"></span>
-    <div class="flex items-center gap-4 text-sm font-bold text-white">
-        <span>🌡️ <span id="clima-temp" class="text-indigo-300"></span>°C</span>
-        <span class="text-slate-600">|</span>
-        <span>💧 <span id="clima-humedad" class="text-indigo-300"></span>%</span>
-        <span class="text-slate-600">|</span>
-        <span>💨 <span id="clima-viento" class="text-indigo-300"></span> km/h</span>
-        <span class="text-slate-600">|</span>
-        <span id="clima-desc" class="text-slate-300 font-semibold"></span>
-        <span class="text-slate-300 font-semibold">· Formosa</span>
+    {{-- Banner del clima cargado desde el navegador vía JavaScript --}}
+    {{-- Se mantiene visible entre polls de Livewire usando @script --}}
+    <div id="clima-banner" class="fixed top-0 left-0 right-0 z-50 hidden items-center justify-center gap-6 px-6 py-3"
+         style="background: linear-gradient(135deg, rgba(99,102,241,0.25) 0%, rgba(139,92,246,0.25) 100%);
+                border-bottom: 1px solid rgba(255,255,255,0.1);
+                backdrop-filter: blur(10px);">
+        <span id="clima-icono" class="text-2xl"></span>
+        <div class="flex items-center gap-4 text-sm font-bold text-white">
+            <span>🌡️ <span id="clima-temp" class="text-indigo-300"></span>°C</span>
+            <span class="text-slate-600">|</span>
+            <span>💧 <span id="clima-humedad" class="text-indigo-300"></span>%</span>
+            <span class="text-slate-600">|</span>
+            <span>💨 <span id="clima-viento" class="text-indigo-300"></span> km/h</span>
+            <span class="text-slate-600">|</span>
+            <span id="clima-desc" class="text-slate-300 font-semibold"></span>
+            <span class="text-slate-300 font-semibold">· Formosa</span>
+        </div>
     </div>
-</div>
-
-<script>
-function mapearClima(code) {
-    if (code === 0) return { icono: '☀️', desc: 'Despejado' };
-    if ([1,2,3].includes(code)) return { icono: '🌤️', desc: 'Parcialmente nublado' };
-    if ([45,48].includes(code)) return { icono: '🌫️', desc: 'Neblina' };
-    if ([51,53,55,61,63,65].includes(code)) return { icono: '🌧️', desc: 'Lluvia' };
-    if ([71,73,75].includes(code)) return { icono: '🌨️', desc: 'Nieve' };
-    if ([80,81,82].includes(code)) return { icono: '🌦️', desc: 'Lluvias dispersas' };
-    if ([95,96,99].includes(code)) return { icono: '⛈️', desc: 'Tormenta' };
-    return { icono: '🌡️', desc: 'Variable' };
-}
-
-fetch('https://api.open-meteo.com/v1/forecast?latitude=-26.18&longitude=-58.18&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m&timezone=America%2FArgentina%2FSalta')
-    .then(r => r.json())
-    .then(data => {
-        const c = data.current;
-        const clima = mapearClima(c.weather_code);
-        document.getElementById('clima-icono').textContent = clima.icono;
-        document.getElementById('clima-temp').textContent = c.temperature_2m;
-        document.getElementById('clima-humedad').textContent = c.relative_humidity_2m;
-        document.getElementById('clima-viento').textContent = c.wind_speed_10m;
-        document.getElementById('clima-desc').textContent = clima.desc;
-        const banner = document.getElementById('clima-banner');
-        banner.classList.remove('hidden');
-        banner.classList.add('flex');
-    })
-    .catch(() => {});
-</script>
 
     <!-- Efectos luminosos de fondo -->
     <div class="absolute -right-24 -top-24 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none"></div>
     <div class="absolute -left-24 -bottom-24 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl pointer-events-none"></div>
 
     <!-- Encabezado de la Terminal -->
-    <div class="flex justify-between items-center z-10 {{ $climaCargado ? 'mt-14' : '' }}">
+    <div class="flex justify-between items-center z-10 mt-14">
         <div class="flex items-center gap-3">
             <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
                 <svg class="w-6 h-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -155,7 +127,6 @@ fetch('https://api.open-meteo.com/v1/forecast?latitude=-26.18&longitude=-58.18&c
 
                 <!-- Input para Token/USB Reader -->
                 <div class="bg-slate-900/60 p-8 rounded-3xl border border-slate-800 shadow-2xl relative">
-                    <!-- Efecto de línea de escáner activa -->
                     <div class="absolute inset-x-0 top-0 h-1 bg-indigo-500/50 shadow-[0_0_15px_#6366f1] animate-[pulse_2s_infinite]"></div>
 
                     <form wire:submit.prevent="procesar" class="space-y-4">
@@ -187,4 +158,63 @@ fetch('https://api.open-meteo.com/v1/forecast?latitude=-26.18&longitude=-58.18&c
     <div class="text-center z-10 text-[9px] font-extrabold tracking-widest text-slate-600 uppercase border-t border-slate-900 pt-6">
         &copy; {{ date('Y') }} GymControl 24hs. Todos los derechos reservados.
     </div>
+
 </div>
+
+@script
+<script>
+// Función para mapear el código del clima a ícono y descripción
+function mapearClima(code) {
+    if (code === 0) return { icono: '☀️', desc: 'Despejado' };
+    if ([1,2,3].includes(code)) return { icono: '🌤️', desc: 'Parcialmente nublado' };
+    if ([45,48].includes(code)) return { icono: '🌫️', desc: 'Neblina' };
+    if ([51,53,55,61,63,65].includes(code)) return { icono: '🌧️', desc: 'Lluvia' };
+    if ([71,73,75].includes(code)) return { icono: '🌨️', desc: 'Nieve' };
+    if ([80,81,82].includes(code)) return { icono: '🌦️', desc: 'Lluvias dispersas' };
+    if ([95,96,99].includes(code)) return { icono: '⛈️', desc: 'Tormenta' };
+    return { icono: '🌡️', desc: 'Variable' };
+}
+
+// Función principal que carga el clima desde el navegador
+function cargarClima() {
+    fetch('https://api.open-meteo.com/v1/forecast?latitude=-26.18&longitude=-58.18&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m&timezone=America%2FArgentina%2FSalta')
+        .then(r => r.json())
+        .then(data => {
+            const c = data.current;
+            const clima = mapearClima(c.weather_code);
+            document.getElementById('clima-icono').textContent = clima.icono;
+            document.getElementById('clima-temp').textContent = c.temperature_2m;
+            document.getElementById('clima-humedad').textContent = c.relative_humidity_2m;
+            document.getElementById('clima-viento').textContent = c.wind_speed_10m;
+            document.getElementById('clima-desc').textContent = clima.desc;
+            const banner = document.getElementById('clima-banner');
+            banner.classList.remove('hidden');
+            banner.classList.add('flex');
+        })
+        .catch(() => {});
+}
+
+// Función para mantener el banner visible después de cada poll de Livewire
+function mantenerBanner() {
+    const banner = document.getElementById('clima-banner');
+    const temp = document.getElementById('clima-temp');
+    if (banner && temp && temp.textContent) {
+        banner.classList.remove('hidden');
+        banner.classList.add('flex');
+    }
+}
+
+// Cargar clima al iniciar
+cargarClima();
+
+// Recargar clima cada 10 minutos
+setInterval(cargarClima, 600000);
+
+// Mantener el banner visible después de cada actualización de Livewire
+Livewire.hook('commit', ({ succeed }) => {
+    succeed(() => {
+        mantenerBanner();
+    });
+});
+</script>
+@endscript
