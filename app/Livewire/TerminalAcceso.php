@@ -63,9 +63,11 @@ class TerminalAcceso extends Component
                 }
             } else {
                 $this->climaCargado = false;
+                \Illuminate\Support\Facades\Log::warning('Clima: respuesta no exitosa. Status: ' . $response->status());
             }
         } catch (\Exception $e) {
             $this->climaCargado = false;
+             \Illuminate\Support\Facades\Log::error('Error clima terminal: ' . $e->getMessage());
         }
     }
 
