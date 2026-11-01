@@ -1,0 +1,36 @@
+/*
+ * GymControl · Gimnasio Fénix
+ * Estilos de los componentes de interfaz (rama feature/componentes-interfaz).
+ *
+ * IMPORTANTE: este archivo todavía NO se carga en la aplicación.
+ * Vite solo compila los archivos listados en vite.config.js (app.css y app.js).
+ * Los componentes funcionan con clases de Tailwind; este archivo queda listo
+ * para que la responsable principal lo incorpore durante la integración.
+ */
+
+:root {
+    /* Paleta Fénix */
+    --fenix-naranja: #f97316;        /* igual a orange-500 de Tailwind */
+    --fenix-naranja-oscuro: #c2410c; /* orange-700: para textos naranjas sobre blanco */
+    --fenix-negro: #0a0a0a;
+    --fenix-blanco: #ffffff;
+    --fenix-dorado: #d4a72c;         /* detalle de identidad, no para textos largos */
+
+    /* Colores de estado (los mismos que usan los componentes) */
+    --gym-autorizado: #059669;       /* emerald-600 */
+    --gym-denegado: #dc2626;         /* red-600 */
+    --gym-pendiente: #d97706;        /* amber-600 */
+    --gym-inactivo: #64748b;         /* slate-500 */
+}
+
+/* Fondo de marca para la terminal: negro con un brillo naranja arriba */
+.gym-fondo-fenix {
+    background-color: var(--fenix-negro);
+    background-image: radial-gradient(circle at top, rgba(249, 115, 22, 0.25), transparent 60%);
+    color: var(--fenix-blanco);
+}
+
+/* Línea dorada decorativa debajo de un título */
+.gym-linea-dorada {
+    border-bottom: 2px solid var(--fenix-dorado);
+}
