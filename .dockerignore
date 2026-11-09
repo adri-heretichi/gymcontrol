@@ -1,10 +1,16 @@
 .git
 .env
+.env.*
+!.env.example
 node_modules
 vendor
 storage/app/private
 storage/logs
 bootstrap/cache
+public/build
+*.sql
+*.sqlite
+*.db
 *.log
 .DS_Store
 tests
