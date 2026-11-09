@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Socios;
 
+use App\Events\GymRealtimeUpdate;
 use App\Models\Membresia;
 use App\Models\Socio;
 use Carbon\Carbon;
@@ -32,7 +33,7 @@ class CrearSocio extends Component
      */
     public function mount()
     {
-        if (!auth()->check() || auth()->user()->rol !== 'admin') {
+        if (!auth()->check() || (!auth()->user()->esDuena() && !auth()->user()->esRecepcionista())) {
             abort(403, 'No tienes los permisos necesarios para acceder a esta sección.');
         }
         $this->fecha_alta = Carbon::today()->format('Y-m-d');
@@ -101,7 +102,7 @@ class CrearSocio extends Component
         $celularNormalizado = $this->celular ? trim($this->celular) : null;
 
         // 3. Registramos el socio en la base de datos
-        // Guardamos la foto como null y el QR como null de acuerdo a tus directivas
+        // Sin emitir inmediatamente QR ni PIN, con decisión médica en pendiente
         $socioCreado = Socio::create([
             'membresia_id' => $this->membresia_id,
             'nombre' => $nombreNormalizado,
@@ -110,27 +111,37 @@ class CrearSocio extends Component
             'sexo' => $this->sexo,
             'correo' => $correoNormalizado,
             'celular' => $celularNormalizado,
-            'foto' => null, // Preparado
+            'foto' => null,
             'token' => $token,
-            'qr' => null, // QR temporalmente nulo
+            'qr' => null,
+            'pin' => null,
+            'qr_token' => null,
+            'estado_credencial' => 'sin_emitir',
+            'decision_medica' => 'pendiente',
             'fecha_alta' => $this->fecha_alta,
             'fecha_vencimiento' => null,
             'estado' => $this->estado,
         ]);
 
-        // Generar y guardar el QR del socio en formato SVG en disco privado (Problema 2)
-        $qrDir = storage_path('app/private/qrs');
-        if (!file_exists($qrDir)) {
-            mkdir($qrDir, 0755, true);
-        }
-        $qrPath = $qrDir . '/qr_' . $socioCreado->id . '.svg';
-        
-        \SimpleSoftwareIO\QrCode\Facades\QrCode::format('svg')
-            ->size(200)
-            ->generate(config('app.url') . '/terminal/scan/' . $socioCreado->token, $qrPath);
+        // Registrar evento de auditoría
+        \App\Models\Auditoria::registrar(
+            tipoEvento: 'administrativo',
+            accion: 'alta_socio',
+            entidad: $socioCreado,
+            datosAntes: null,
+            datosDespues: [
+                'id' => $socioCreado->id,
+                'nombre' => $socioCreado->nombre,
+                'apellido' => $socioCreado->apellido,
+                'dni' => $socioCreado->dni,
+                'estado' => $socioCreado->estado,
+            ]
+        );
 
-        // Redireccionamos directamente a la ficha del socio recién creado con mensaje flash (Problema 4)
-        session()->flash('message', 'Socio registrado correctamente. Token de acceso: ' . $token);
+        event(GymRealtimeUpdate::operationalChange('member-created'));
+
+        // Redireccionamos a la ficha del socio recién creado con mensaje flash
+        session()->flash('message', 'Socio registrado correctamente.');
         return redirect()->route('socios.show', $socioCreado->id);
     }
 

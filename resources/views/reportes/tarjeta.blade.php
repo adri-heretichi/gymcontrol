@@ -93,7 +93,11 @@ body {
   </div>
   <div style="text-align:center; padding: 2mm;">
     <div class="qr-contenedor" style="display:inline-block;">
-      <img class="qr" src="{{ $svgData }}">
+      @if($svgData)
+        <img class="qr" src="{{ $svgData }}">
+      @else
+        <p>Credencial no emitida</p>
+      @endif
     </div>
   </div>
   <div class="footer">

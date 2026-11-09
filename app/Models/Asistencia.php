@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Asistencia extends Model
 {
@@ -19,18 +20,31 @@ class Asistencia extends Model
         'fecha',
         'hora_ingreso',
         'hora_salida',
+        'fecha_salida',
         'tiempo_permanencia',
+        'metodo_acceso',
+        'dispositivo_origen',
+        'operador_ingreso_id',
+        'metodo_salida',
+        'operador_salida_id',
     ];
 
     // Indica cómo deben transformarse ciertos campos al acceder a ellos
     protected $casts = [
         'fecha' => 'date',
+        'fecha_salida' => 'date',
     ];
 
-    // Relación de Muchos a Uno: Una asistencia pertenece a un socio
+    // Relación de Muchos a Uno: Una asistencia física pertenece a un socio
     public function socio(): BelongsTo
     {
         return $this->belongsTo(Socio::class, 'socio_id');
+    }
+
+    // Relación de Uno a Muchos: Clases tomadas durante esta permanencia física
+    public function asistenciasClases(): HasMany
+    {
+        return $this->hasMany(AsistenciaClase::class, 'asistencia_id');
     }
 
     // Accessor para formatear el tiempo de permanencia de forma amigable

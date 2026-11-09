@@ -6,6 +6,9 @@ use App\Models\User;
 use App\Models\Socio;
 use App\Models\Membresia;
 use App\Models\Pago;
+use App\Models\Disciplina;
+use App\Models\Grupo;
+use App\Models\Inscripcion;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -20,12 +23,15 @@ class PagoBusinessRulesTest extends TestCase
     private Socio $socioVigente;
     private Socio $socioExpirado;
     private Socio $socioNuevo;
+    private User $duena;
+    private array $inscripciones = [];
 
     protected function setUp(): void
     {
         parent::setUp();
 
         $this->admin = User::factory()->create(['rol' => 'admin']);
+        $this->duena = $this->admin;
         $this->recepcionista = User::factory()->create(['rol' => 'recepcionista']);
 
         $membresia = Membresia::create([
@@ -78,30 +84,29 @@ class PagoBusinessRulesTest extends TestCase
             'fecha_vencimiento' => null,
             'estado' => 'activo',
         ]);
+
+        foreach ([$this->socioVigente, $this->socioExpirado, $this->socioNuevo] as $index => $socio) {
+            $this->inscripciones[$socio->id] = $this->crearInscripcionAprobada($socio, $index + 1);
+        }
     }
 
     /**
-     * Verifica la extensión para membresías vigentes (Caso A: Vencimiento actual + 1 mes).
+     * Un pago registra cobertura para la inscripción sin modificar el vencimiento global del socio.
      */
-    public function test_extension_membresia_vigente(): void
+    public function test_pago_de_membresia_vigente_no_modifica_vencimiento_global(): void
     {
         $this->actingAs($this->recepcionista);
 
         $vencimientoOriginal = $this->socioVigente->fecha_vencimiento->copy();
 
-        Livewire::test(\App\Livewire\Pagos\CrearPago::class, ['socio' => $this->socioVigente])
-            ->set('fecha_pago', Carbon::today()->format('Y-m-d'))
-            ->set('importe', 7500)
-            ->set('metodo_pago', 'efectivo')
-            ->call('guardar')
-            ->assertHasNoErrors();
+        $this->registrarPagoDesdeFormulario($this->socioVigente, 7500, 'efectivo');
 
-        // El socio debe haber extendido su vencimiento sumando 1 mes a su fecha_vencimiento previa
         $this->socioVigente->refresh();
-        $this->assertEquals(
-            $vencimientoOriginal->addMonth()->format('Y-m-d'),
-            $this->socioVigente->fecha_vencimiento->format('Y-m-d')
-        );
+        $this->assertEquals($vencimientoOriginal->format('Y-m-d'), $this->socioVigente->fecha_vencimiento->format('Y-m-d'));
+        $this->assertDatabaseHas('pago_detalles', [
+            'inscripcion_id' => $this->inscripciones[$this->socioVigente->id]->id,
+            'subtotal' => 7500,
+        ]);
 
         $this->assertDatabaseHas('pagos', [
             'socio_id' => $this->socioVigente->id,
@@ -111,54 +116,43 @@ class PagoBusinessRulesTest extends TestCase
     }
 
     /**
-     * Verifica la extensión para membresías expiradas (Caso B: Fecha de Pago + 1 mes).
+     * La cobertura económica queda asociada a la inscripción incluso si venció la membresía global antigua.
      */
-    public function test_extension_membresia_expirada(): void
+    public function test_pago_no_extiende_membresia_global_expirada(): void
     {
         $this->actingAs($this->recepcionista);
 
-        $fechaPago = Carbon::today()->format('Y-m-d');
-
-        Livewire::test(\App\Livewire\Pagos\CrearPago::class, ['socio' => $this->socioExpirado])
-            ->set('fecha_pago', $fechaPago)
-            ->set('importe', 7500)
-            ->set('metodo_pago', 'transferencia')
-            ->call('guardar')
-            ->assertHasNoErrors();
+        $vencimientoOriginal = $this->socioExpirado->fecha_vencimiento->format('Y-m-d');
+        $this->registrarPagoDesdeFormulario($this->socioExpirado, 7500, 'transferencia');
 
         $this->socioExpirado->refresh();
-        $this->assertEquals(
-            Carbon::parse($fechaPago)->addMonth()->format('Y-m-d'),
-            $this->socioExpirado->fecha_vencimiento->format('Y-m-d')
-        );
+        $this->assertEquals($vencimientoOriginal, $this->socioExpirado->fecha_vencimiento->format('Y-m-d'));
+        $this->assertDatabaseHas('pago_detalles', [
+            'inscripcion_id' => $this->inscripciones[$this->socioExpirado->id]->id,
+            'estado_cobertura' => 'vigente',
+        ]);
     }
 
     /**
-     * Verifica la extensión para primer pago / sin vencimiento (Caso B: Fecha de Pago + 1 mes).
+     * El primer pago tampoco crea ni extiende un vencimiento global de membresía.
      */
-    public function test_extension_primer_pago(): void
+    public function test_primer_pago_crea_cobertura_sin_vencimiento_global(): void
     {
         $this->actingAs($this->recepcionista);
 
-        $fechaPago = Carbon::today()->format('Y-m-d');
-
-        Livewire::test(\App\Livewire\Pagos\CrearPago::class, ['socio' => $this->socioNuevo])
-            ->set('fecha_pago', $fechaPago)
-            ->set('importe', 7000) // Se le hace descuento
-            ->set('metodo_pago', 'tarjeta')
-            ->call('guardar')
-            ->assertHasNoErrors();
+        $this->registrarPagoDesdeFormulario($this->socioNuevo, 7000, 'debito');
 
         $this->socioNuevo->refresh();
-        $this->assertEquals(
-            Carbon::parse($fechaPago)->addMonth()->format('Y-m-d'),
-            $this->socioNuevo->fecha_vencimiento->format('Y-m-d')
-        );
+        $this->assertNull($this->socioNuevo->fecha_vencimiento);
+        $this->assertDatabaseHas('pago_detalles', [
+            'inscripcion_id' => $this->inscripciones[$this->socioNuevo->id]->id,
+            'subtotal' => 7000,
+        ]);
 
         $this->assertDatabaseHas('pagos', [
             'socio_id' => $this->socioNuevo->id,
             'importe' => 7000,
-            'metodo_pago' => 'tarjeta',
+            'metodo_pago' => 'debito',
         ]);
     }
 
@@ -171,13 +165,53 @@ class PagoBusinessRulesTest extends TestCase
 
         Livewire::test(\App\Livewire\Pagos\CrearPago::class)
             ->set('socio_id', '')
-            ->set('importe', -100)
+            ->set('detalles.0.concepto', 'Cuota inválida')
+            ->set('detalles.0.fecha_inicio', Carbon::today()->format('Y-m-d'))
+            ->set('detalles.0.fecha_fin', Carbon::today()->addMonth()->format('Y-m-d'))
+            ->set('detalles.0.subtotal', -100)
             ->set('metodo_pago', 'bitcoins')
             ->call('guardar')
             ->assertHasErrors([
                 'socio_id' => 'required',
-                'importe' => 'min',
+                'detalles.0.subtotal' => 'min',
                 'metodo_pago' => 'in',
             ]);
+    }
+
+    private function crearInscripcionAprobada(Socio $socio, int $numero): Inscripcion
+    {
+        $disciplina = Disciplina::create([
+            'nombre' => "Disciplina prueba {$numero}",
+            'estado' => 'activa',
+        ]);
+        $grupo = Grupo::create([
+            'disciplina_id' => $disciplina->id,
+            'nombre' => "Grupo prueba {$numero}",
+            'cupo_maximo' => 10,
+            'estado' => 'activo',
+        ]);
+
+        return Inscripcion::create([
+            'socio_id' => $socio->id,
+            'grupo_id' => $grupo->id,
+            'fecha_inscripcion' => Carbon::today()->toDateString(),
+            'estado' => Inscripcion::ESTADO_APROBADA,
+            'aprobado_por' => $this->duena->id,
+            'aprobado_at' => now(),
+        ]);
+    }
+
+    private function registrarPagoDesdeFormulario(Socio $socio, float $importe, string $medioPago): void
+    {
+        Livewire::test(\App\Livewire\Pagos\CrearPago::class, ['socio' => $socio])
+            ->set('fecha_pago', Carbon::today()->format('Y-m-d'))
+            ->set('metodo_pago', $medioPago)
+            ->set('detalles.0.inscripcion_id', $this->inscripciones[$socio->id]->id)
+            ->set('detalles.0.concepto', 'Cuota mensual de prueba')
+            ->set('detalles.0.fecha_inicio', Carbon::today()->startOfMonth()->format('Y-m-d'))
+            ->set('detalles.0.fecha_fin', Carbon::today()->endOfMonth()->format('Y-m-d'))
+            ->set('detalles.0.subtotal', $importe)
+            ->call('guardar')
+            ->assertHasNoErrors();
     }
 }

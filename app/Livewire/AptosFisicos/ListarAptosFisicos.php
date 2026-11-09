@@ -25,6 +25,11 @@ class ListarAptosFisicos extends Component
         'filtroEstado' => ['except' => ''],
     ];
 
+    public function mount(): void
+    {
+        $this->authorize('viewAny', AptoFisico::class);
+    }
+
     public function updatingBuscar()
     {
         $this->resetPage();
@@ -33,32 +38,6 @@ class ListarAptosFisicos extends Component
     public function updatingFiltroEstado()
     {
         $this->resetPage();
-    }
-
-    /**
-     * Eliminación de apto físico médica (Solo administradores).
-     */
-    public function eliminar($id)
-    {
-        if (!auth()->check()) {
-            abort(403, 'Sesión no activa.');
-        }
-
-        if (auth()->user()->rol !== 'admin') {
-            session()->flash('error', 'No tienes los permisos necesarios para eliminar certificados.');
-            return;
-        }
-
-        $apto = AptoFisico::findOrFail($id);
-        
-        // Eliminamos el archivo físico si existe
-        if ($apto->archivo && \Storage::disk('local')->exists($apto->archivo)) {
-            \Storage::disk('local')->delete($apto->archivo);
-        }
-
-        $apto->delete();
-
-        session()->flash('message', 'Certificado eliminado correctamente.');
     }
 
     public function render()

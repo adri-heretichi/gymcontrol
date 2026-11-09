@@ -3,23 +3,23 @@
 namespace App\Livewire;
 
 use App\Models\Asistencia;
-use App\Models\Socio;
+use App\Services\ControlAccesoService;
 use Carbon\Carbon;
-use Illuminate\Support\Facades\Cache;
 use Livewire\Component;
 
 class TerminalAcceso extends Component
 {
-    public $token = '';
+    public $pin = '';
 
     // Estados para la respuesta visual
     public $mensajeAcceso = null;
     public $estadoAcceso = null; // 'exito' (verde), 'salida' (azul), 'error' (rojo)
     public $socioInfo = null;
     public $motivoRechazo = '';
-
-    // Guardamos la marca de tiempo del último escaneo móvil procesado
-    public $lastProcessedScanTime = 0;
+    public $actividadAcceso = null;
+    public $horarioAcceso = null;
+    public array $opcionesActividad = [];
+    public $grupoSeleccionado = null;
 
     // Propiedades para la consulta del clima
     public $temperatura;
@@ -34,7 +34,6 @@ class TerminalAcceso extends Component
      */
     public function mount()
     {
-        $this->lastProcessedScanTime = now()->timestamp;
         $this->cargarClima();
     }
 
@@ -108,129 +107,62 @@ class TerminalAcceso extends Component
      */
     public function resetState()
     {
-        $this->token = '';
+        $this->pin = '';
         $this->mensajeAcceso = null;
         $this->estadoAcceso = null;
         $this->socioInfo = null;
         $this->motivoRechazo = '';
+        $this->actividadAcceso = null;
+        $this->horarioAcceso = null;
+        $this->opcionesActividad = [];
+        $this->grupoSeleccionado = null;
     }
 
     /**
-     * Procesa la entrada manual o escáner USB del token.
+     * Procesa el PIN ingresado o leído por el escáner USB.
      */
     public function procesar()
     {
-        $term = trim($this->token);
+        $term = trim($this->pin);
+        $this->pin = '';
+        $this->resetErrorBag('pin');
+
         if (empty($term)) {
             return;
         }
 
-        $this->realizarMarcado($term);
-        $this->token = '';
-    }
-
-    /**
-     * Revisa de forma periódica (polling) si hay un escaneo remoto de celular en Cache.
-     */
-    public function checkExternalScan()
-    {
-        $lastScan = Cache::get('last_terminal_scan');
-        
-        if ($lastScan && $lastScan['time'] > $this->lastProcessedScanTime) {
-            $this->lastProcessedScanTime = $lastScan['time'];
-            $this->estadoAcceso = $lastScan['estado'];
-            $this->mensajeAcceso = $lastScan['mensaje'];
-            $this->motivoRechazo = $lastScan['motivo'];
-            $this->socioInfo = $lastScan['socio_id'] ? Socio::find($lastScan['socio_id']) : null;
-        }
-    }
-
-    /**
-     * Lógica central de marcado (Ingreso / Salida) y validación de reglas de negocio.
-     */
-    protected function realizarMarcado($tokenValue)
-    {
-        $socio = Socio::where('token', $tokenValue)->first();
-
-        // 1. Validar existencia del socio
-        if (!$socio) {
-            $this->estadoAcceso = 'error';
-            $this->mensajeAcceso = 'Acceso Denegado';
-            $this->motivoRechazo = 'Token o Socio no encontrado.';
-            $this->socioInfo = null;
+        if (!preg_match('/^\d{6}$/', $term)) {
+            $this->addError('pin', 'Ingresá un PIN válido de seis números.');
             return;
         }
 
-        // 2. Comprobar si ya tiene una asistencia abierta para hoy
-        $asistenciaAbierta = Asistencia::where('socio_id', $socio->id)
-            ->whereNull('hora_salida')
-            ->first();
+        $this->realizarMarcado($term);
+    }
 
-        if ($asistenciaAbierta) {
-            // --- CASO DE SALIDA ---
-            $fechaIngreso = Carbon::parse($asistenciaAbierta->fecha->format('Y-m-d') . ' ' . $asistenciaAbierta->hora_ingreso);
-            $fechaSalida = Carbon::now();
-            $tiempo_permanencia = max(0, (int) $fechaIngreso->diffInMinutes($fechaSalida));
+    /**
+     * El terminal sólo registra ingresos; la salida es una acción explícita.
+     */
+    protected function realizarMarcado(string $pin)
+    {
+        $resultado = app(ControlAccesoService::class)->registrarIngreso(
+            identificador: $pin,
+            metodo: ControlAccesoService::METODO_PIN,
+            grupoId: $this->grupoSeleccionado ? (int) $this->grupoSeleccionado : null
+        );
 
-            $asistenciaAbierta->update([
-                'hora_salida' => $fechaSalida->format('H:i:s'),
-                'tiempo_permanencia' => $tiempo_permanencia,
-            ]);
+        $this->estadoAcceso = $resultado['autorizado'] ? 'exito' : 'error';
+        $this->socioInfo = $resultado['socio'];
+        $this->mensajeAcceso = $resultado['mensaje'];
+        $this->motivoRechazo = $resultado['autorizado'] ? '' : $resultado['mensaje'];
+        $this->actividadAcceso = $resultado['actividad'];
+        $this->horarioAcceso = $resultado['horario'];
+        $this->opcionesActividad = $resultado['codigo'] === 'actividad_ambigua'
+            ? ($resultado['actividad']['opciones'] ?? [])
+            : [];
+        $this->grupoSeleccionado = null;
 
-            $this->estadoAcceso = 'salida';
-            $this->socioInfo = $socio;
-            $this->mensajeAcceso = "Salida registrada. Tiempo en sala: {$tiempo_permanencia} min.";
-            $this->motivoRechazo = '';
-
-            // Emitir evento para refrescar otros componentes
+        if ($resultado['autorizado']) {
             $this->dispatch('asistenciaRegistrada');
-        } else {
-            // --- CASO DE INGRESO ---
-            $motivos = [];
-
-            // Validación A: Socio activo
-            if ($socio->estado !== 'activo') {
-                $motivos[] = 'El socio se encuentra INACTIVO.';
-            }
-
-            // Validación B: Membresía vigente
-            if (!$socio->fecha_vencimiento || $socio->fecha_vencimiento->isPast() && !$socio->fecha_vencimiento->isToday()) {
-                $vencimiento = $socio->fecha_vencimiento ? $socio->fecha_vencimiento->format('d/m/Y') : 'no registrada';
-                $motivos[] = "Membresía vencida (Expiró el {$vencimiento}).";
-            }
-
-            // Validación C: Certificado médico / Apto físico vigente
-            $tieneAptoVigente = $socio->aptosFisicos()
-                ->where('estado', 'vigente')
-                ->whereDate('fecha_vencimiento', '>=', Carbon::today())
-                ->exists();
-
-            if (!$tieneAptoVigente) {
-                $motivos[] = 'Falta Certificado Médico (Apto Físico) vigente.';
-            }
-
-            if (count($motivos) > 0) {
-                // Ingreso denegado por incumplimiento
-                $this->estadoAcceso = 'error';
-                $this->mensajeAcceso = 'Acceso Denegado';
-                $this->motivoRechazo = implode(' | ', $motivos);
-                $this->socioInfo = $socio;
-            } else {
-                // Ingreso autorizado
-                Asistencia::create([
-                    'socio_id' => $socio->id,
-                    'fecha' => Carbon::today(),
-                    'hora_ingreso' => Carbon::now()->format('H:i:s'),
-                ]);
-
-                $this->estadoAcceso = 'exito';
-                $this->socioInfo = $socio;
-                $this->mensajeAcceso = "Bienvenido, {$socio->nombre} {$socio->apellido}";
-                $this->motivoRechazo = '';
-
-                // Emitir evento para refrescar otros componentes
-                $this->dispatch('asistenciaRegistrada');
-            }
         }
     }
 

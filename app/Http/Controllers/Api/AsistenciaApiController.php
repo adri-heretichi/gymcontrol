@@ -4,9 +4,9 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Asistencia;
-use App\Models\Socio;
-use Carbon\Carbon;
+use App\Services\ControlAccesoService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Gate;
 
 class AsistenciaApiController extends Controller
 {
@@ -15,10 +15,30 @@ class AsistenciaApiController extends Controller
      */
     public function index(Request $request)
     {
-        $query = Asistencia::with('socio.membresia');
+        $validated = $request->validate([
+            'buscar' => ['sometimes', 'string', 'max:100'],
+            'fecha_desde' => ['sometimes', 'date_format:Y-m-d'],
+            'fecha_hasta' => ['sometimes', 'date_format:Y-m-d'],
+            'estado' => ['sometimes', 'in:en_sala,finalizados'],
+        ]);
+        if (isset($validated['fecha_desde'], $validated['fecha_hasta'])
+            && $validated['fecha_desde'] > $validated['fecha_hasta']) {
+            return response()->json([
+                'success' => false,
+                'message' => 'La fecha desde no puede ser posterior a la fecha hasta.',
+            ], 422);
+        }
 
-        if ($request->filled('buscar')) {
-            $buscar = $request->input('buscar');
+        $query = Asistencia::query()
+            ->select([
+                'id', 'socio_id', 'fecha', 'hora_ingreso', 'hora_salida',
+                'fecha_salida', 'tiempo_permanencia', 'metodo_acceso',
+                'metodo_salida', 'dispositivo_origen',
+            ])
+            ->with('socio:id,nombre,apellido,dni');
+
+        if (isset($validated['buscar'])) {
+            $buscar = $validated['buscar'];
             $query->whereHas('socio', function ($q) use ($buscar) {
                 $q->where('nombre', 'like', "%{$buscar}%")
                   ->orWhere('apellido', 'like', "%{$buscar}%")
@@ -26,31 +46,29 @@ class AsistenciaApiController extends Controller
             });
         }
 
-        if ($request->filled('fecha_desde')) {
-            $query->where('fecha', '>=', $request->input('fecha_desde'));
+        if (isset($validated['fecha_desde'])) {
+            $query->where('fecha', '>=', $validated['fecha_desde']);
         }
 
-        if ($request->filled('fecha_hasta')) {
-            $query->where('fecha', '<=', $request->input('fecha_hasta'));
+        if (isset($validated['fecha_hasta'])) {
+            $query->where('fecha', '<=', $validated['fecha_hasta']);
         }
 
-        if ($request->filled('estado')) {
-            $estado = $request->input('estado');
+        if (isset($validated['estado'])) {
+            $estado = $validated['estado'];
             if ($estado === 'en_sala') {
                 $query->whereNull('hora_salida');
-            } elseif ($estado === 'finalizados') {
+            } else {
                 $query->whereNotNull('hora_salida');
             }
         }
 
         $asistencias = $query->orderBy('fecha', 'desc')
                             ->orderBy('hora_ingreso', 'desc')
-                            ->paginate(15);
+                            ->paginate(15)
+                            ->through(fn (Asistencia $asistencia) => $this->presentar($asistencia));
 
-        return response()->json([
-            'success' => true,
-            'data' => $asistencias
-        ], 200);
+        return response()->json(['success' => true, 'data' => $asistencias]);
     }
 
     /**
@@ -58,7 +76,14 @@ class AsistenciaApiController extends Controller
      */
     public function show($id)
     {
-        $asistencia = Asistencia::with('socio.membresia')->find($id);
+        $asistencia = Asistencia::query()
+            ->select([
+                'id', 'socio_id', 'fecha', 'hora_ingreso', 'hora_salida',
+                'fecha_salida', 'tiempo_permanencia', 'metodo_acceso',
+                'metodo_salida', 'dispositivo_origen',
+            ])
+            ->with('socio:id,nombre,apellido,dni')
+            ->find($id);
 
         if (!$asistencia) {
             return response()->json([
@@ -67,75 +92,15 @@ class AsistenciaApiController extends Controller
             ], 404);
         }
 
-        return response()->json([
-            'success' => true,
-            'data' => $asistencia
-        ], 200);
-    }
-
-    /**
-     * Registra manualmente una marca de asistencia.
-     */
-    public function store(Request $request)
-    {
-        $validated = $request->validate([
-            'socio_id' => 'required|exists:socios,id',
-            'fecha' => 'required|date|before_or_equal:today',
-            'hora_ingreso' => 'required',
-            'hora_salida' => 'nullable',
-        ]);
-
-        $socio = Socio::findOrFail($validated['socio_id']);
-
-        if ($socio->estado !== 'activo') {
-            return response()->json([
-                'success' => false,
-                'message' => 'No se puede registrar asistencia para un socio inactivo'
-            ], 400);
-        }
-
-        $tiempo_permanencia = null;
-
-        if ($request->filled('hora_salida')) {
-            $ingreso = Carbon::parse($validated['fecha'] . ' ' . $validated['hora_ingreso']);
-            $salida = Carbon::parse($validated['fecha'] . ' ' . $validated['hora_salida']);
-
-            if ($salida->lte($ingreso)) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'La hora de salida debe ser posterior a la de ingreso.'
-                ], 422);
-            }
-
-            $tiempo_permanencia = (int) $ingreso->diffInMinutes($salida);
-        }
-
-        $asistencia = Asistencia::create([
-            'socio_id' => $validated['socio_id'],
-            'fecha' => $validated['fecha'],
-            'hora_ingreso' => Carbon::parse($validated['hora_ingreso'])->format('H:i:s'),
-            'hora_salida' => $request->filled('hora_salida') ? Carbon::parse($validated['hora_salida'])->format('H:i:s') : null,
-            'tiempo_permanencia' => $tiempo_permanencia,
-        ]);
-
-        return response()->json([
-            'success' => true,
-            'data' => $asistencia
-        ], 201);
+        return response()->json(['success' => true, 'data' => $this->presentar($asistencia)]);
     }
 
     /**
      * Edita un registro de asistencia existente (Solo Admin).
      */
-    public function update(Request $request, $id)
+    public function update(Request $request, $id, ControlAccesoService $controlAcceso)
     {
-        // Defensa de rol adicional
-        if ($request->user()->rol !== 'admin') {
-            return response()->json([
-                'success' => false,
-                'message' => 'Acceso denegado. Rol Administrador requerido.'
-            ], 403);
-        }
+        Gate::authorize('gestionar-asistencias');
 
         $asistencia = Asistencia::find($id);
 
@@ -148,40 +113,56 @@ class AsistenciaApiController extends Controller
 
         $validated = $request->validate([
             'fecha' => 'sometimes|required|date|before_or_equal:today',
-            'hora_ingreso' => 'sometimes|required',
-            'hora_salida' => 'nullable',
+            'hora_ingreso' => 'sometimes|required|date_format:H:i:s',
+            'fecha_salida' => 'nullable|date|before_or_equal:today',
+            'hora_salida' => 'nullable|date_format:H:i:s',
         ]);
 
-        $fecha = $request->input('fecha', $asistencia->fecha->format('Y-m-d'));
-        $horaIngreso = $request->input('hora_ingreso', $asistencia->hora_ingreso);
-        $horaSalida = $request->input('hora_salida', $asistencia->hora_salida);
-
-        $tiempo_permanencia = null;
-
-        if ($horaSalida) {
-            $ingreso = Carbon::parse($fecha . ' ' . $horaIngreso);
-            $salida = Carbon::parse($fecha . ' ' . $horaSalida);
-
-            if ($salida->lte($ingreso)) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'La hora de salida debe ser posterior a la de ingreso.'
-                ], 422);
-            }
-
-            $tiempo_permanencia = (int) $ingreso->diffInMinutes($salida);
+        $fecha = $validated['fecha'] ?? $asistencia->fecha->toDateString();
+        $horaIngreso = $validated['hora_ingreso'] ?? $asistencia->hora_ingreso;
+        $horaSalida = array_key_exists('hora_salida', $validated)
+            ? $validated['hora_salida']
+            : $asistencia->hora_salida;
+        $fechaSalida = array_key_exists('fecha_salida', $validated)
+            ? $validated['fecha_salida']
+            : ($horaSalida ? ($asistencia->fecha_salida?->toDateString() ?? $fecha) : null);
+        if (($fechaSalida === null) !== ($horaSalida === null)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'La fecha y la hora de salida deben indicarse juntas.'
+            ], 422);
         }
 
-        $asistencia->update([
-            'fecha' => $fecha,
-            'hora_ingreso' => Carbon::parse($horaIngreso)->format('H:i:s'),
-            'hora_salida' => $horaSalida ? Carbon::parse($horaSalida)->format('H:i:s') : null,
-            'tiempo_permanencia' => $tiempo_permanencia,
-        ]);
+        $asistencia = $controlAcceso->corregirPermanencia(
+            $asistencia,
+            $fecha,
+            $horaIngreso,
+            $fechaSalida,
+            $horaSalida,
+            $request->user()
+        );
 
-        return response()->json([
-            'success' => true,
-            'data' => $asistencia
-        ], 200);
+        return response()->json(['success' => true, 'data' => $this->presentar($asistencia)]);
+    }
+
+    private function presentar(Asistencia $asistencia): array
+    {
+        return [
+            'id' => $asistencia->id,
+            'socio' => $asistencia->socio ? [
+                'id' => $asistencia->socio->id,
+                'nombre' => $asistencia->socio->nombre,
+                'apellido' => $asistencia->socio->apellido,
+                'dni' => $asistencia->socio->dni,
+            ] : null,
+            'fecha' => $asistencia->fecha?->toDateString(),
+            'hora_ingreso' => $asistencia->hora_ingreso,
+            'fecha_salida' => $asistencia->fecha_salida?->toDateString(),
+            'hora_salida' => $asistencia->hora_salida,
+            'tiempo_permanencia' => $asistencia->tiempo_permanencia,
+            'metodo_acceso' => $asistencia->metodo_acceso,
+            'metodo_salida' => $asistencia->metodo_salida,
+            'dispositivo_origen' => $asistencia->dispositivo_origen,
+        ];
     }
 }

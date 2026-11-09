@@ -1,127 +1,191 @@
-<div class="py-12 bg-slate-50 dark:bg-slate-900 min-h-screen">
-    <div class="max-w-3xl mx-auto sm:px-6 lg:px-8">
-        
-        <div class="bg-white dark:bg-slate-800 shadow-xl rounded-3xl border border-slate-100 dark:border-slate-800 overflow-hidden">
-            
-            <!-- Encabezado del Formulario -->
-            <div class="bg-gradient-to-r from-indigo-900 to-indigo-950 px-8 py-6 text-white rounded-t-3xl border-b border-indigo-950">
-                <h2 class="text-2xl font-black tracking-tight">Registrar Pago</h2>
-                <p class="text-xs text-indigo-200 mt-1 uppercase tracking-wider font-extrabold">Ingreso de cobranza y renovación de membresía</p>
+<div>
+    {{-- ── Título ──────────────────────────────────────────────────────────────── --}}
+    <x-slot name="header">
+        <div class="flex items-center justify-between">
+            <h2 class="text-xl font-semibold leading-tight text-gray-800">
+                Registrar Pago
+            </h2>
+            <a href="{{ route('pagos.index') }}" class="text-sm text-blue-600 hover:underline">
+                ← Volver a pagos
+            </a>
+        </div>
+    </x-slot>
+
+    <div class="py-6 mx-auto max-w-4xl sm:px-6 lg:px-8 space-y-6">
+
+        {{-- Mensajes de error general --}}
+        @if($errorGeneral)
+            <div class="rounded bg-red-100 border border-red-400 text-red-700 px-4 py-3">
+                {{ $errorGeneral }}
+            </div>
+        @endif
+
+        <div class="bg-white shadow rounded-lg p-6 space-y-6">
+
+            {{-- ── 1. Socio ──────────────────────────────────────────────────────── --}}
+            <div>
+                <h3 class="text-base font-semibold text-gray-700 mb-3">1. Socio</h3>
+
+                @if($deshabilitarSocio && $socioPreseleccionado)
+                    <p class="text-gray-800 font-medium">
+                        {{ $socioPreseleccionado->apellido }}, {{ $socioPreseleccionado->nombre }}
+                        <span class="text-gray-500 text-sm ml-2">DNI: {{ $socioPreseleccionado->dni }}</span>
+                    </p>
+                @else
+                    <select wire:model.live="socio_id"
+                            class="w-full border-gray-300 rounded shadow-sm focus:ring focus:ring-blue-200">
+                        <option value="">— Seleccioná un socio —</option>
+                        @foreach($socios as $s)
+                            <option value="{{ $s->id }}">{{ $s->apellido }}, {{ $s->nombre }} (DNI {{ $s->dni }})</option>
+                        @endforeach
+                    </select>
+                    @error('socio_id') <p class="text-red-600 text-sm mt-1">{{ $message }}</p> @enderror
+                @endif
             </div>
 
-            <!-- Formulario principal -->
-            <form wire:submit.prevent="guardar" class="p-8 space-y-6">
-                @csrf
-
-                <!-- Campo Socio -->
+            {{-- ── 2. Datos del comprobante ────────────────────────────────────── --}}
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
-                    <label class="form-label">Socio</label>
-                    @if ($deshabilitarSocio)
-                        <div class="flex items-center justify-between p-4 bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-900/60 rounded-xl">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Fecha de pago</label>
+                    <input type="date" wire:model="fecha_pago"
+                           class="w-full border-gray-300 rounded shadow-sm focus:ring focus:ring-blue-200">
+                    @error('fecha_pago') <p class="text-red-600 text-sm mt-1">{{ $message }}</p> @enderror
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Medio de pago</label>
+                    <select wire:model="metodo_pago"
+                            class="w-full border-gray-300 rounded shadow-sm focus:ring focus:ring-blue-200">
+                        @foreach($mediosPago as $valor => $etiqueta)
+                            <option value="{{ $valor }}">{{ $etiqueta }}</option>
+                        @endforeach
+                    </select>
+                    @error('metodo_pago') <p class="text-red-600 text-sm mt-1">{{ $message }}</p> @enderror
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Referencia (opcional)</label>
+                    <input type="text" wire:model="referencia" maxlength="100"
+                           placeholder="Nro. recibo, nota, etc."
+                           class="w-full border-gray-300 rounded shadow-sm focus:ring focus:ring-blue-200">
+                </div>
+            </div>
+
+            {{-- ── 3. Conceptos / Detalles ─────────────────────────────────────── --}}
+            <div>
+                <h3 class="text-base font-semibold text-gray-700 mb-3">2. Conceptos a pagar</h3>
+
+                @if($socio_id && empty($inscripcionesDisponibles))
+                    <div class="rounded bg-yellow-50 border border-yellow-300 text-yellow-700 px-4 py-3 text-sm">
+                        El socio no tiene inscripciones activas o pendientes. Registrá una inscripción primero.
+                    </div>
+                @endif
+
+                @foreach($detalles as $i => $detalle)
+                    <div class="border border-gray-200 rounded p-4 mb-3 bg-gray-50 space-y-3">
+                        <div class="flex items-center justify-between">
+                            <span class="text-sm font-medium text-gray-600">Ítem #{{ $i + 1 }}</span>
+                            @if(count($detalles) > 1)
+                                <button type="button" wire:click="quitarDetalle({{ $i }})"
+                                        class="text-red-500 text-xs hover:text-red-700">✕ Quitar</button>
+                            @endif
+                        </div>
+
+                        {{-- Inscripción --}}
+                        @if($socio_id && count($inscripcionesDisponibles))
                             <div>
-                                <span class="block text-base font-extrabold text-slate-900 dark:text-white">
-                                    {{ $socioPreseleccionado->apellido }}, {{ $socioPreseleccionado->nombre }}
-                                </span>
-                                <span class="text-xs text-slate-500 dark:text-slate-300 font-semibold">DNI: {{ $socioPreseleccionado->dni }}</span>
+                                <label class="block text-xs font-medium text-gray-600 mb-1">Inscripción</label>
+                                <select wire:model.live="detalles.{{ $i }}.inscripcion_id"
+                                        wire:change="actualizarFechasDetalle({{ $i }})"
+                                        class="w-full border-gray-300 rounded shadow-sm text-sm">
+                                    <option value="">— Sin inscripción / Concepto libre —</option>
+                                    @foreach($inscripcionesDisponibles as $insc)
+                                        <option value="{{ $insc['id'] }}">
+                                            {{ $insc['label'] }}
+                                            ({{ $insc['estado_inscripcion'] }})
+                                            @if($insc['cobertura_vigente'])
+                                                ✓ Vigente hasta {{ \Carbon\Carbon::parse($insc['fecha_fin'])->format('d/m/Y') }}
+                                            @else
+                                                ⚠ Sin cobertura
+                                            @endif
+                                        </option>
+                                    @endforeach
+                                </select>
+                                @error("detalles.{$i}.inscripcion_id") <p class="text-red-600 text-xs mt-1">{{ $message }}</p> @enderror
                             </div>
-                            <span class="badge-info">
-                                {{ $socioPreseleccionado->membresia?->nombre ?? 'Sin membresía' }}
-                            </span>
-                        </div>
-                        <input type="hidden" wire:model="socio_id" />
-                    @else
-                        <div class="relative">
-                            <select 
-                                id="socio_id"
-                                wire:model.live="socio_id" 
-                                class="form-input"
-                            >
-                                <option value="">Seleccione un socio activo...</option>
-                                @foreach($socios as $socio)
-                                    <option value="{{ $socio->id }}">
-                                        {{ $socio->apellido }}, {{ $socio->nombre }} (DNI: {{ $socio->dni }}) - {{ $socio->membresia?->nombre ?? 'Sin Membresía' }}
-                                    </option>
-                                @endforeach
-                            </select>
-                        </div>
-                        @error('socio_id')
-                            <p class="text-rose-500 text-xs font-semibold mt-1">{{ $message }}</p>
-                        @enderror
-                    @endif
-                </div>
+                        @endif
 
-                <!-- Fila: Fecha e Importe -->
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <!-- Fecha de Pago -->
-                    <div>
-                        <label for="fecha_pago" class="form-label">Fecha de Pago</label>
-                        <input 
-                            type="date" 
-                            id="fecha_pago"
-                            wire:model="fecha_pago" 
-                            class="form-input"
-                        />
-                        @error('fecha_pago')
-                            <p class="text-rose-500 text-xs font-semibold mt-1">{{ $message }}</p>
-                        @enderror
-                    </div>
+                        {{-- Concepto --}}
+                        <div>
+                            <label class="block text-xs font-medium text-gray-600 mb-1">Concepto</label>
+                            <input type="text" wire:model="detalles.{{ $i }}.concepto" maxlength="150"
+                                   placeholder="Ej: Cuota noviembre – Kickboxing Muay Thai"
+                                   class="w-full border-gray-300 rounded shadow-sm text-sm">
+                            @error("detalles.{$i}.concepto") <p class="text-red-600 text-xs mt-1">{{ $message }}</p> @enderror
+                        </div>
 
-                    <!-- Importe -->
-                    <div>
-                        <label for="importe" class="form-label">Importe ($)</label>
-                        <div class="relative rounded-xl shadow-sm">
-                            <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                                <span class="text-slate-400 dark:text-slate-500 font-extrabold text-sm">$</span>
+                        {{-- Período --}}
+                        <div class="grid grid-cols-3 gap-3">
+                            <div>
+                                <label class="block text-xs font-medium text-gray-600 mb-1">Inicio de cobertura</label>
+                                <input type="date" wire:model="detalles.{{ $i }}.fecha_inicio"
+                                       class="w-full border-gray-300 rounded shadow-sm text-sm">
+                                @error("detalles.{$i}.fecha_inicio") <p class="text-red-600 text-xs mt-1">{{ $message }}</p> @enderror
                             </div>
-                            <input 
-                                type="number" 
-                                step="0.01" 
-                                id="importe"
-                                placeholder="0,00"
-                                wire:model="importe" 
-                                class="form-input !pl-8 !font-bold"
-                            />
+                            <div>
+                                <label class="block text-xs font-medium text-gray-600 mb-1">Fin de cobertura</label>
+                                <input type="date" wire:model="detalles.{{ $i }}.fecha_fin"
+                                       class="w-full border-gray-300 rounded shadow-sm text-sm">
+                                @error("detalles.{$i}.fecha_fin") <p class="text-red-600 text-xs mt-1">{{ $message }}</p> @enderror
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-gray-600 mb-1">Importe ($)</label>
+                                <input type="number" wire:model.live="detalles.{{ $i }}.subtotal"
+                                       min="0" step="0.01" placeholder="0.00"
+                                       class="w-full border-gray-300 rounded shadow-sm text-sm">
+                                @error("detalles.{$i}.subtotal") <p class="text-red-600 text-xs mt-1">{{ $message }}</p> @enderror
+                            </div>
                         </div>
-                        <p class="text-[10px] text-slate-400 dark:text-slate-500 mt-1.5 font-semibold">Sugerido automáticamente del plan del socio. Puede modificarse.</p>
-                        @error('importe')
-                            <p class="text-rose-500 text-xs font-semibold mt-1">{{ $message }}</p>
-                        @enderror
                     </div>
-                </div>
+                @endforeach
 
-                <!-- Método de Pago -->
-                <div>
-                    <label for="metodo_pago" class="form-label">Método de Pago</label>
-                    <div class="grid grid-cols-3 gap-4">
-                        <label class="flex flex-col items-center justify-center p-4 border-2 rounded-xl cursor-pointer hover:bg-indigo-50 dark:hover:bg-indigo-950/20 hover:border-indigo-300 transition duration-150 @if($metodo_pago === 'efectivo') border-indigo-500 bg-indigo-50/50 dark:bg-indigo-950/30 ring-2 ring-indigo-500/20 @else border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 @endif">
-                            <input type="radio" wire:model.live="metodo_pago" value="efectivo" class="sr-only" />
-                            <span class="text-sm font-extrabold text-slate-800 dark:text-slate-200">Efectivo</span>
-                        </label>
-                        <label class="flex flex-col items-center justify-center p-4 border-2 rounded-xl cursor-pointer hover:bg-indigo-50 dark:hover:bg-indigo-950/20 hover:border-indigo-300 transition duration-150 @if($metodo_pago === 'tarjeta') border-indigo-500 bg-indigo-50/50 dark:bg-indigo-950/30 ring-2 ring-indigo-500/20 @else border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 @endif">
-                            <input type="radio" wire:model.live="metodo_pago" value="tarjeta" class="sr-only" />
-                            <span class="text-sm font-extrabold text-slate-800 dark:text-slate-200">Tarjeta</span>
-                        </label>
-                        <label class="flex flex-col items-center justify-center p-4 border-2 rounded-xl cursor-pointer hover:bg-indigo-50 dark:hover:bg-indigo-950/20 hover:border-indigo-300 transition duration-150 @if($metodo_pago === 'transferencia') border-indigo-500 bg-indigo-50/50 dark:bg-indigo-950/30 ring-2 ring-indigo-500/20 @else border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 @endif">
-                            <input type="radio" wire:model.live="metodo_pago" value="transferencia" class="sr-only" />
-                            <span class="text-sm font-extrabold text-slate-800 dark:text-slate-200">Transf.</span>
-                        </label>
-                    </div>
-                    @error('metodo_pago')
-                        <p class="text-rose-500 text-xs font-semibold mt-1">{{ $message }}</p>
-                    @enderror
-                </div>
+                <button type="button" wire:click="agregarDetalle"
+                        class="text-sm text-blue-600 hover:underline mt-1">
+                    + Agregar otro concepto
+                </button>
+            </div>
 
-                <!-- Acciones -->
-                <div class="flex items-center justify-end space-x-4 pt-6 border-t border-slate-100 dark:border-slate-800">
-                    <a href="{{ route('pagos.index') }}" class="btn-secondary">
-                        Cancelar
-                    </a>
-                    <button type="submit" class="btn-primary">
-                        Registrar Cobro
-                    </button>
-                </div>
+            {{-- ── Total ──────────────────────────────────────────────────────────── --}}
+            <div class="flex justify-end items-center border-t pt-4">
+                <span class="text-gray-700 font-semibold mr-4">Total del comprobante:</span>
+                <span class="text-xl font-bold text-green-700">
+                    ${{ number_format($importeTotal, 2, ',', '.') }}
+                </span>
+            </div>
 
-            </form>
+            {{-- Aviso si total es 0 --}}
+            @if($importeTotal <= 0 && count($detalles) > 0)
+                <p class="text-yellow-600 text-sm">⚠ Ingresá al menos un importe mayor a cero.</p>
+            @endif
+
+            {{-- ── Acciones ─────────────────────────────────────────────────────── --}}
+            <div class="flex gap-3 pt-2">
+                <button type="button" wire:click="guardar"
+                        wire:loading.attr="disabled"
+                        class="px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50">
+                    <span wire:loading.remove wire:target="guardar">Registrar pago</span>
+                    <span wire:loading wire:target="guardar">Guardando…</span>
+                </button>
+                <a href="{{ route('pagos.index') }}"
+                   class="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300">
+                    Cancelar
+                </a>
+            </div>
+
         </div>
+
+        {{-- Aviso de política --}}
+        <p class="text-xs text-gray-400 text-center">
+            El registro de un pago no aprueba inscripciones ni emite credenciales.
+            La dueña debe autorizar el acceso por separado.
+        </p>
     </div>
 </div>

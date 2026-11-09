@@ -4,8 +4,6 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>GymControl - Acceso</title>
-    <!-- Redirección después de 5 segundos -->
-    <meta http-equiv="refresh" content="5;url={{ route('terminal.scan', ['token' => $token, 'ready' => 1]) }}">
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
 <body class="min-h-screen flex flex-col justify-between p-6 {{ $estado === 'exito' ? 'bg-emerald-600' : ($estado === 'salida' ? 'bg-indigo-600' : 'bg-rose-600') }} text-white font-sans">

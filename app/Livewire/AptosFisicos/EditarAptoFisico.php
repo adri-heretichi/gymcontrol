@@ -3,10 +3,11 @@
 namespace App\Livewire\AptosFisicos;
 
 use App\Models\AptoFisico;
-use Carbon\Carbon;
+use App\Models\Auditoria;
 use Livewire\Component;
 use Livewire\WithFileUploads;
-use Illuminate\Support\Facades\Storage;
+use App\Services\CertificadoMedicoService;
+use Illuminate\Support\Facades\DB;
 
 class EditarAptoFisico extends Component
 {
@@ -24,9 +25,7 @@ class EditarAptoFisico extends Component
      */
     public function mount(AptoFisico $aptoFisico)
     {
-        if (!auth()->check() || auth()->user()->rol !== 'admin') {
-            abort(403, 'No tienes los permisos necesarios para acceder a esta sección.');
-        }
+        $this->authorize('update', $aptoFisico);
 
         $this->aptoFisico = $aptoFisico;
         $this->fecha_emision = $aptoFisico->fecha_emision ? $aptoFisico->fecha_emision->format('Y-m-d') : '';
@@ -68,7 +67,21 @@ class EditarAptoFisico extends Component
      */
     public function actualizar()
     {
+        $this->authorize('update', $this->aptoFisico);
         $this->validate();
+
+        if ($this->archivo_cargado) {
+            app(CertificadoMedicoService::class)->registrarCertificado(
+                socio: $this->aptoFisico->socio,
+                fechaEmision: $this->fecha_emision,
+                fechaVencimiento: $this->fecha_vencimiento,
+                operador: auth()->user(),
+                archivo: $this->archivo_cargado
+            );
+
+            session()->flash('message', 'El nuevo certificado se registró y el documento histórico se conservó.');
+            return redirect()->route('socios.show', $this->aptoFisico->socio_id);
+        }
 
         $datos = [
             'fecha_emision' => $this->fecha_emision,
@@ -76,19 +89,28 @@ class EditarAptoFisico extends Component
             'estado' => $this->estado,
         ];
 
-        // Reemplazo opcional del archivo privado
-        if ($this->archivo_cargado) {
-            // 1. Borramos el archivo viejo si existe
-            if ($this->aptoFisico->archivo && Storage::disk('local')->exists($this->aptoFisico->archivo)) {
-                Storage::disk('local')->delete($this->aptoFisico->archivo);
-            }
+        $datosAntes = [
+            'fecha_emision' => $this->aptoFisico->fecha_emision?->toDateString(),
+            'fecha_vencimiento' => $this->aptoFisico->fecha_vencimiento?->toDateString(),
+            'estado' => $this->aptoFisico->estado,
+        ];
 
-            // 2. Guardamos el nuevo archivo en la misma ruta privada
-            $path = $this->archivo_cargado->store('secure/aptos_fisicos', 'local');
-            $datos['archivo'] = $path;
-        }
+        DB::transaction(function () use ($datos, $datosAntes) {
+            $this->aptoFisico->update($datos);
 
-        $this->aptoFisico->update($datos);
+            Auditoria::registrar(
+                tipoEvento: 'medico',
+                accion: 'certificado_medico_actualizado',
+                entidad: $this->aptoFisico,
+                datosAntes: $datosAntes,
+                datosDespues: [
+                    'fecha_emision' => $this->fecha_emision,
+                    'fecha_vencimiento' => $this->fecha_vencimiento,
+                    'estado' => $this->estado,
+                ],
+                userId: auth()->id()
+            );
+        });
 
         session()->flash('message', 'Certificado médico actualizado correctamente.');
         return redirect()->route('socios.show', $this->aptoFisico->socio_id);

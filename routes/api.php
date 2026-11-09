@@ -22,10 +22,10 @@ use App\Http\Controllers\Api\ControlAccesoApiController;
 Route::prefix('v1')->group(function () {
 
     // --- RUTAS PÚBLICAS ---
-    Route::post('auth/login', [AuthApiController::class, 'login'])->name('api.login');
+    Route::post('auth/login', [AuthApiController::class, 'login'])->middleware('throttle:5,1')->name('api.login');
 
     // --- RUTAS PROTEGIDAS POR SANCTUM ---
-    Route::middleware(['auth:sanctum'])->group(function () {
+    Route::middleware(['auth:sanctum', 'can:controlar-acceso'])->group(function () {
 
         // Perfil del operador autenticado
         Route::post('auth/logout', [AuthApiController::class, 'logout'])->name('api.logout');
@@ -56,15 +56,15 @@ Route::prefix('v1')->group(function () {
         // --- MÓDULO: APTOS FÍSICOS ---
         // Carga, listados y descargas (Admin y Recepcionista)
         Route::get('aptos-fisicos', [AptoFisicoApiController::class, 'index'])->name('api.aptos-fisicos.index');
-        Route::get('aptos-fisicos/{id}', [AptoFisicoApiController::class, 'show'])->name('api.aptos-fisicos.show');
-        Route::post('aptos-fisicos', [AptoFisicoApiController::class, 'store'])->name('api.aptos-fisicos.store');
-        Route::get('aptos-fisicos/{id}/descargar', [AptoFisicoApiController::class, 'descargar'])->name('api.aptos-fisicos.download');
+        Route::get('aptos-fisicos/{aptoFisico}', [AptoFisicoApiController::class, 'show'])->name('api.aptos-fisicos.show');
+        Route::post('aptos-fisicos', [AptoFisicoApiController::class, 'store'])->middleware('throttle:8,1')->name('api.aptos-fisicos.store');
+        Route::get('aptos-fisicos/{aptoFisico}/descargar', [AptoFisicoApiController::class, 'descargar'])->name('api.aptos-fisicos.download');
 
         // --- MÓDULO: PAGOS ---
         // Consulta y Cobros (Admin y Recepcionista)
         Route::get('pagos', [PagoApiController::class, 'index'])->name('api.pagos.index');
         Route::get('pagos/{id}', [PagoApiController::class, 'show'])->name('api.pagos.show');
-        Route::post('pagos', [PagoApiController::class, 'store'])->name('api.pagos.store');
+        Route::post('pagos', [PagoApiController::class, 'store'])->middleware('throttle:10,1')->name('api.pagos.store');
         // Reporte de Recaudación (Solo Admin)
         Route::get('pagos-recaudacion', [PagoApiController::class, 'recaudacion'])->middleware('rol:admin')->name('api.pagos.recaudacion');
 
@@ -72,12 +72,12 @@ Route::prefix('v1')->group(function () {
         // Historial y marca manual (Admin y Recepcionista)
         Route::get('asistencias', [AsistenciaApiController::class, 'index'])->name('api.asistencias.index');
         Route::get('asistencias/{id}', [AsistenciaApiController::class, 'show'])->name('api.asistencias.show');
-        Route::post('asistencias', [AsistenciaApiController::class, 'store'])->name('api.asistencias.store');
+        Route::post('asistencias', [ControlAccesoApiController::class, 'scan'])->middleware('throttle:8,1')->name('api.asistencias.store');
         // Edición de asistencia (Solo Admin)
         Route::match(['put', 'patch'], 'asistencias/{id}', [AsistenciaApiController::class, 'update'])->middleware('rol:admin')->name('api.asistencias.update');
 
         // Control de Acceso: Escáner QR / DNI
-        Route::post('control-acceso/scan', [ControlAccesoApiController::class, 'scan'])->name('api.control-acceso.scan');
+        Route::post('control-acceso/scan', [ControlAccesoApiController::class, 'scan'])->middleware('throttle:8,1')->name('api.control-acceso.scan');
     });
 
 });

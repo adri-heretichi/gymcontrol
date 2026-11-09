@@ -1,150 +1,241 @@
-<div class="py-12 bg-slate-50 dark:bg-slate-900 min-h-screen">
-    <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
-        
-        <!-- Mensajes Flash de Retroalimentación -->
-        @if (session()->has('message'))
-            <div class="mb-6 p-4 bg-emerald-50 dark:bg-emerald-950/30 border-l-4 border-emerald-500 text-emerald-700 dark:text-emerald-300 rounded-r-xl font-bold text-sm shadow-md animate-pulse">
+<div>
+    <x-slot name="header">
+        <div class="flex items-center justify-between">
+            <h2 class="text-xl font-semibold leading-tight text-gray-800">Pagos y Coberturas</h2>
+            @can('create', \App\Models\Pago::class)
+                <a href="{{ route('pagos.create-general') }}"
+                   class="px-4 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700">
+                    + Nuevo pago
+                </a>
+            @endcan
+        </div>
+    </x-slot>
+
+    <div class="py-6 mx-auto max-w-7xl sm:px-6 lg:px-8 space-y-5">
+
+        {{-- Flash --}}
+        @if(session('message'))
+            <div class="rounded bg-green-100 border border-green-400 text-green-700 px-4 py-3">
                 {{ session('message') }}
             </div>
         @endif
-        @if (session()->has('error'))
-            <div class="mb-6 p-4 bg-rose-50 dark:bg-rose-950/30 border-l-4 border-rose-500 text-rose-700 dark:text-rose-300 rounded-r-xl font-bold text-sm shadow-md">
-                {{ session('error') }}
+
+        {{-- ── Recaudación (solo dueña) ────────────────────────────────────────── --}}
+        @if($esDuena && $sumaTotal !== null)
+            <div class="bg-white shadow rounded-lg px-6 py-4 flex items-center justify-between">
+                <span class="text-gray-600 font-medium">Recaudación (filtro actual, pagos activos):</span>
+                <span class="text-2xl font-bold text-green-700">
+                    ${{ number_format($sumaTotal, 2, ',', '.') }}
+                </span>
             </div>
         @endif
 
-        <!-- Card de KPI de Sumatoria Superior -->
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-            <div class="bg-indigo-900 text-white rounded-3xl p-6 shadow-xl relative overflow-hidden border border-indigo-950">
-                <div class="absolute -right-6 -bottom-6 w-24 h-24 bg-indigo-500/10 rounded-full blur-2xl"></div>
-                <span class="block text-2xs font-extrabold uppercase tracking-widest text-indigo-300">Recaudación Filtrada</span>
-                <span class="text-3xl font-black block mt-2">
-                    ${{ number_format($sumaTotal, 2, ',', '.') }}
-                </span>
-                <span class="text-xs text-indigo-200 mt-1 block">Suma del total de registros filtrados</span>
+        {{-- ── Filtros ─────────────────────────────────────────────────────────── --}}
+        <div class="bg-white shadow rounded-lg px-6 py-4">
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
+                <input type="text" wire:model.live="buscar" placeholder="Buscar socio (nombre, DNI)…"
+                       class="border-gray-300 rounded shadow-sm text-sm">
+
+                <select wire:model.live="filtroMetodo"
+                        class="border-gray-300 rounded shadow-sm text-sm">
+                    <option value="">Todos los medios</option>
+                    @foreach($mediosPago as $v => $label)
+                        <option value="{{ $v }}">{{ $label }}</option>
+                    @endforeach
+                    <option value="tarjeta">Tarjeta (histórico)</option>
+                    <option value="transferencia">Transferencia (histórico)</option>
+                </select>
+
+                @if($esDuena)
+                    <select wire:model.live="filtroEstado"
+                            class="border-gray-300 rounded shadow-sm text-sm">
+                        <option value="">Todos los estados</option>
+                        <option value="activo">Activos</option>
+                        <option value="anulado">Anulados</option>
+                    </select>
+
+                    <div class="flex gap-2">
+                        <input type="date" wire:model.live="filtroDesde"
+                               class="flex-1 border-gray-300 rounded shadow-sm text-xs">
+                        <input type="date" wire:model.live="filtroHasta"
+                               class="flex-1 border-gray-300 rounded shadow-sm text-xs">
+                    </div>
+                @endif
             </div>
         </div>
 
-        <div class="main-card">
-            <!-- Encabezado y Botón de Cobro -->
-            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between pb-6 border-b border-slate-200 dark:border-slate-800 gap-4 mb-6">
-                <div>
-                    <h2 class="text-3xl font-black text-slate-900 dark:text-white tracking-tight">Registro de Pagos</h2>
-                    <p class="text-sm text-slate-500 dark:text-slate-300 mt-1 font-semibold">Historial general de cobranza de cuotas del gimnasio</p>
-                </div>
-                <div class="flex-shrink-0 flex items-center gap-3">
-                    @if(auth()->check() && auth()->user()->rol === 'admin')
-                        <!-- Botón de Exportación PDF (Solo para Administradores) -->
-                        <a href="{{ route('reportes.pagos', ['buscar' => $buscar, 'metodo_pago' => $filtroMetodo]) }}" target="_blank" class="btn-secondary">
-                            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
-                            </svg>
-                            Exportar PDF
-                        </a>
+        {{-- ── Tabla de pagos ──────────────────────────────────────────────────── --}}
+        <div class="bg-white shadow rounded-lg overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200 text-sm">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-4 py-3 text-left font-semibold text-gray-600">#</th>
+                        <th class="px-4 py-3 text-left font-semibold text-gray-600">Socio</th>
+                        <th class="px-4 py-3 text-left font-semibold text-gray-600">Fecha</th>
+                        <th class="px-4 py-3 text-left font-semibold text-gray-600">Disciplinas / Cobertura</th>
+                        <th class="px-4 py-3 text-right font-semibold text-gray-600">Total</th>
+                        <th class="px-4 py-3 text-left font-semibold text-gray-600">Medio</th>
+                        <th class="px-4 py-3 text-left font-semibold text-gray-600">Operador</th>
+                        @if($esDuena)
+                            <th class="px-4 py-3 text-left font-semibold text-gray-600">Estado</th>
+                            <th class="px-4 py-3 text-left font-semibold text-gray-600">Acciones</th>
+                        @endif
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100">
+                    @forelse($pagos as $pago)
+                        <tr class="{{ $pago->estaAnulado() ? 'bg-red-50 opacity-70' : 'hover:bg-gray-50' }}">
+                            <td class="px-4 py-3 text-gray-500 font-mono">{{ $pago->id }}</td>
+
+                            {{-- Socio --}}
+                            <td class="px-4 py-3">
+                                <span class="font-medium text-gray-800">
+                                    {{ $pago->socio?->apellido }}, {{ $pago->socio?->nombre }}
+                                </span>
+                                <span class="block text-xs text-gray-500">DNI: {{ $pago->socio?->dni }}</span>
+                            </td>
+
+                            {{-- Fecha --}}
+                            <td class="px-4 py-3 text-gray-700 whitespace-nowrap">
+                                {{ $pago->fecha_pago->format('d/m/Y') }}
+                            </td>
+
+                            {{-- Disciplinas y cobertura --}}
+                            <td class="px-4 py-3">
+                                @if($pago->detalles->isNotEmpty())
+                                    @foreach($pago->detalles as $det)
+                                        <div class="text-xs mb-1">
+                                            <span class="font-medium">
+                                                {{ $det->inscripcion?->grupo?->disciplina?->nombre ?? $det->concepto }}
+                                            </span>
+                                            <span class="text-gray-500 ml-1">
+                                                {{ \Carbon\Carbon::parse($det->fecha_inicio_cobertura)->format('d/m/Y') }}
+                                                –
+                                                {{ \Carbon\Carbon::parse($det->fecha_fin_cobertura)->format('d/m/Y') }}
+                                            </span>
+                                            @php
+                                                $hoy = now()->toDateString();
+                                                $vigente = $pago->estaActivo()
+                                                    && $det->fecha_inicio_cobertura->toDateString() <= $hoy
+                                                    && $det->fecha_fin_cobertura->toDateString() >= $hoy;
+                                            @endphp
+                                            @if($vigente)
+                                                <span class="text-green-600 ml-1">✓</span>
+                                            @elseif($pago->estaAnulado())
+                                                <span class="text-red-500 ml-1">✕</span>
+                                            @else
+                                                <span class="text-gray-400 ml-1">vencida</span>
+                                            @endif
+                                        </div>
+                                    @endforeach
+                                @else
+                                    <span class="text-xs text-gray-400 italic">Sin detalles (pago histórico)</span>
+                                @endif
+                                @if($pago->referencia)
+                                    <span class="text-xs text-gray-400 block mt-1">Ref: {{ $pago->referencia }}</span>
+                                @endif
+                            </td>
+
+                            {{-- Total --}}
+                            <td class="px-4 py-3 text-right font-semibold text-gray-800 whitespace-nowrap">
+                                ${{ number_format($pago->importe, 2, ',', '.') }}
+                            </td>
+
+                            {{-- Medio --}}
+                            <td class="px-4 py-3 text-gray-600 whitespace-nowrap">
+                                {{ $pago->etiquetaMedioPago() }}
+                            </td>
+
+                            {{-- Operador --}}
+                            <td class="px-4 py-3 text-xs text-gray-500">
+                                {{ $pago->operador?->name ?? '(sistema)' }}
+                            </td>
+
+                            @if($esDuena)
+                                {{-- Estado --}}
+                                <td class="px-4 py-3">
+                                    @if($pago->estaAnulado())
+                                        <span class="px-2 py-1 bg-red-100 text-red-700 rounded text-xs font-medium">
+                                            Anulado
+                                        </span>
+                                        <span class="block text-xs text-gray-500 mt-1">
+                                            por {{ $pago->anuladoPor?->name }} —
+                                            {{ $pago->anulado_at?->format('d/m/Y') }}
+                                        </span>
+                                    @else
+                                        <span class="px-2 py-1 bg-green-100 text-green-700 rounded text-xs font-medium">
+                                            Activo
+                                        </span>
+                                    @endif
+                                </td>
+
+                                {{-- Acciones --}}
+                                <td class="px-4 py-3">
+                                    @if($pago->estaActivo())
+                                        <button wire:click="abrirModalAnular({{ $pago->id }})"
+                                                class="text-xs text-red-600 hover:underline">
+                                            Anular
+                                        </button>
+                                    @endif
+                                </td>
+                            @endif
+                        </tr>
+                    @empty
+                        <tr>
+                            <td colspan="{{ $esDuena ? 9 : 7 }}" class="px-4 py-8 text-center text-gray-400 italic">
+                                No se encontraron pagos.
+                            </td>
+                        </tr>
+                    @endforelse
+                </tbody>
+            </table>
+        </div>
+
+        {{-- Paginación --}}
+        <div class="mt-4">
+            {{ $pagos->links() }}
+        </div>
+
+        {{-- ── Modal Anulación (solo dueña) ────────────────────────────────────── --}}
+        @if($esDuena && $modalAnular)
+            <div class="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
+                <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-md mx-4">
+                    <h3 class="text-lg font-semibold text-gray-800 mb-4">Anular pago #{{ $pagoAnularId }}</h3>
+
+                    @if($errorAnulacion)
+                        <div class="rounded bg-red-100 border border-red-400 text-red-700 px-3 py-2 mb-3 text-sm">
+                            {{ $errorAnulacion }}
+                        </div>
                     @endif
 
-                    <a href="{{ route('pagos.create-general') }}" class="btn-primary">
-                        <svg class="w-4 h-4 mr-2 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
-                        </svg>
-                        Registrar Cobro
-                    </a>
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-1">
+                            Motivo de la anulación (obligatorio)
+                        </label>
+                        <textarea wire:model="motivoAnulacion" rows="3" maxlength="500"
+                                  placeholder="Descripción del error o corrección administrativa…"
+                                  class="w-full border-gray-300 rounded shadow-sm text-sm"></textarea>
+                        @error('motivoAnulacion') <p class="text-red-600 text-xs mt-1">{{ $message }}</p> @enderror
+                    </div>
+
+                    <p class="text-xs text-gray-500 mb-4">
+                        El pago no se eliminará. Quedará marcado como anulado y auditado.
+                        Las coberturas asociadas quedarán suspendidas.
+                    </p>
+
+                    <div class="flex gap-3 justify-end">
+                        <button wire:click="cerrarModalAnular"
+                                class="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 text-sm">
+                            Cancelar
+                        </button>
+                        <button wire:click="confirmarAnulacion"
+                                class="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 text-sm">
+                            Confirmar anulación
+                        </button>
+                    </div>
                 </div>
             </div>
+        @endif
 
-            <!-- Barra de Búsqueda y Filtros -->
-            <div class="filters-container !shadow-none !p-0 !border-0 mb-6 flex flex-col md:flex-row md:items-end justify-between gap-4">
-                <div class="max-w-md w-full flex flex-col gap-1">
-                    <label for="buscar" class="form-label">Buscar por Socio (Nombre / DNI)</label>
-                    <input 
-                        wire:model.live="buscar" 
-                        type="text" 
-                        id="buscar"
-                        placeholder="Buscar por DNI, Nombre o Apellido..." 
-                        class="form-input"
-                    />
-                </div>
-
-                <div class="max-w-xs w-full flex flex-col gap-1">
-                    <label for="filtroMetodo" class="form-label">Filtrar por Método</label>
-                    <select 
-                        wire:model.live="filtroMetodo" 
-                        id="filtroMetodo"
-                        class="form-input"
-                    >
-                        <option value="">Todos los métodos</option>
-                        <option value="efectivo">Efectivo</option>
-                        <option value="tarjeta">Tarjeta de Crédito / Débito</option>
-                        <option value="transferencia">Transferencia Bancaria</option>
-                    </select>
-                </div>
-            </div>
-
-            <!-- Tabla de Pagos -->
-            <div class="table-container">
-                <table class="custom-table">
-                    <thead>
-                        <tr class="custom-table-head">
-                            <th class="custom-table-th">Socio</th>
-                            <th class="custom-table-th">DNI</th>
-                            <th class="custom-table-th">Fecha de Pago</th>
-                            <th class="custom-table-th">Método de Pago</th>
-                            <th class="custom-table-th">Membresía</th>
-                            <th class="custom-table-th">Importe</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
-                        @forelse ($pagos as $pago)
-                            <tr class="custom-table-row">
-                                <!-- Socio -->
-                                <td class="custom-table-td">
-                                    <a href="{{ route('socios.show', $pago->socio?->id) }}" class="text-sm font-extrabold text-slate-950 dark:text-white hover:text-indigo-600 hover:underline">
-                                        {{ $pago->socio?->apellido }}, {{ $pago->socio?->nombre }}
-                                    </a>
-                                </td>
-                                <!-- DNI -->
-                                <td class="custom-table-td text-slate-700 dark:text-slate-300">
-                                    {{ $pago->socio?->dni }}
-                                </td>
-                                <!-- Fecha de Pago -->
-                                <td class="custom-table-td text-slate-700 dark:text-slate-200">
-                                    {{ $pago->fecha_pago->format('d/m/Y') }}
-                                </td>
-                                <!-- Método de Pago -->
-                                <td class="custom-table-td capitalize">
-                                    {{ $pago->metodo_pago }}
-                                </td>
-                                <!-- Membresía -->
-                                <td class="custom-table-td">
-                                    <span class="badge-info">
-                                        {{ $pago->socio?->membresia?->nombre ?? 'Sin membresía' }}
-                                    </span>
-                                </td>
-                                <!-- Importe -->
-                                <td class="custom-table-td text-emerald-600 dark:text-emerald-400 font-extrabold text-base">
-                                    ${{ number_format($pago->importe, 2, ',', '.') }}
-                                </td>
-                            </tr>
-                        @empty
-                            <tr>
-                                <td colspan="6" class="px-6 py-12 text-center text-slate-400 dark:text-slate-500 italic">
-                                    <div class="flex flex-col items-center justify-center">
-                                        <svg class="w-12 h-12 text-slate-300 dark:text-slate-700 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                                        </svg>
-                                        <p class="text-xs font-semibold">No se encontraron registros de pagos.</p>
-                                    </div>
-                                </td>
-                            </tr>
-                        @endforelse
-                    </tbody>
-                </table>
-            </div>
-
-            <!-- Paginación -->
-            <div class="mt-6">
-                {{ $pagos->links() }}
-            </div>
-        </div>
     </div>
 </div>

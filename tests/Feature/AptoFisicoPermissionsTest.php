@@ -61,23 +61,25 @@ class AptoFisicoPermissionsTest extends TestCase
             'fecha_vencimiento' => today()->addMonths(11),
             'estado' => 'vigente',
         ]);
+
+        Storage::disk('local')->put($this->aptoFisico->archivo, 'medical document');
     }
 
     /**
-     * Test de que el Recepcionista puede ver y subir certificados, pero no editarlos.
+     * Reception may register medical documents but cannot view or modify them.
      */
     public function test_recepcionista_permisos_apto_fisico(): void
     {
         $this->actingAs($this->recepcionista);
 
-        // Puede ver listado general
-        $this->get('/aptos-fisicos')->assertStatus(200);
+        // Medical records are private; reception cannot list or download them.
+        $this->get('/aptos-fisicos')->assertForbidden();
 
         // Puede acceder al formulario de carga para un socio
         $this->get('/socios/' . $this->socio->id . '/aptos-fisicos/crear')->assertStatus(200);
 
-        // NO puede acceder a la edición (retorna 403)
-        $this->get('/aptos-fisicos/' . $this->aptoFisico->id . '/editar')->assertStatus(403);
+        $this->get('/aptos-fisicos/' . $this->aptoFisico->id . '/editar')->assertForbidden();
+        $this->get('/aptos-fisicos/' . $this->aptoFisico->id . '/descargar')->assertForbidden();
     }
 
     /**
@@ -91,5 +93,6 @@ class AptoFisicoPermissionsTest extends TestCase
         $this->get('/aptos-fisicos')->assertStatus(200);
         $this->get('/socios/' . $this->socio->id . '/aptos-fisicos/crear')->assertStatus(200);
         $this->get('/aptos-fisicos/' . $this->aptoFisico->id . '/editar')->assertStatus(200);
+        $this->get('/aptos-fisicos/' . $this->aptoFisico->id . '/descargar')->assertStatus(200);
     }
 }

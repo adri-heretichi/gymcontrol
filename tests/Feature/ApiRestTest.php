@@ -7,6 +7,10 @@ use App\Models\Socio;
 use App\Models\Membresia;
 use App\Models\AptoFisico;
 use App\Models\Asistencia;
+use App\Models\Disciplina;
+use App\Models\Grupo;
+use App\Models\Inscripcion;
+use App\Models\PagoDetalle;
 use App\Models\Pago;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -196,7 +200,9 @@ class ApiRestTest extends TestCase
         
         $response->assertStatus(201);
         $aptoId = $response->json('data.id');
-        $filePath = $response->json('data.archivo');
+        $this->assertTrue($response->json('data.tiene_archivo'));
+        $this->assertArrayNotHasKey('archivo', $response->json('data'));
+        $filePath = AptoFisico::query()->findOrFail($aptoId)->archivo;
         
         Storage::disk('local')->assertExists($filePath);
 
@@ -204,78 +210,253 @@ class ApiRestTest extends TestCase
         $responseDownload = $this->withHeader('Authorization', 'Bearer ' . $token)
             ->getJson(route('api.aptos-fisicos.download', $aptoId));
         $responseDownload->assertStatus(200);
+
+        $responseDetail = $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->getJson(route('api.aptos-fisicos.show', $aptoId))
+            ->assertOk();
+        $responseDetail->assertJsonPath('data.tiene_archivo', true);
+        $this->assertArrayNotHasKey('archivo', $responseDetail->json('data'));
     }
 
-    /**
-     * Test de cobro y extensión automática de membresía.
-     */
-    public function test_pagos_store_extends_vencimiento()
+    public function test_reception_cannot_read_or_download_medical_documents_but_can_register_them()
+    {
+        Storage::fake('local');
+        $token = $this->recepcionista->createToken('test_token')->plainTextToken;
+        $apto = AptoFisico::create([
+            'socio_id' => $this->socio->id,
+            'archivo' => 'secure/aptos_fisicos/private.pdf',
+            'fecha_emision' => now()->subDay()->toDateString(),
+            'fecha_vencimiento' => now()->addYear()->toDateString(),
+            'estado' => 'vigente',
+        ]);
+        Storage::disk('local')->put($apto->archivo, 'private');
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->getJson(route('api.aptos-fisicos.index'))
+            ->assertForbidden();
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->getJson(route('api.aptos-fisicos.download', $apto->id))
+            ->assertForbidden();
+
+        $upload = $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson(route('api.aptos-fisicos.store'), [
+                'socio_id' => $this->socio->id,
+                'fecha_emision' => now()->toDateString(),
+                'fecha_vencimiento' => now()->addYear()->toDateString(),
+                'archivo' => UploadedFile::fake()->create('medical.pdf', 100, 'application/pdf'),
+            ])
+            ->assertCreated();
+
+        $upload->assertJsonPath('data.tiene_archivo', true);
+        $this->assertArrayNotHasKey('archivo', $upload->json('data'));
+    }
+
+    public function test_socio_api_never_exposes_legacy_or_active_credentials_or_medical_details()
     {
         $token = $this->admin->createToken('test_token')->plainTextToken;
+        $this->socio->update([
+            'pin' => '123456',
+            'qr_token' => str_repeat('a', 64),
+            'estado_credencial' => 'activo',
+            'decision_medica_obs' => 'Sensitive medical note',
+        ]);
 
-        // Vencimiento inicial
-        $vencimientoInicial = Carbon::parse($this->socio->fecha_vencimiento);
+        $response = $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->getJson(route('api.socios.show', $this->socio->id))
+            ->assertOk();
+
+        $response->assertJsonMissingPath('data.token');
+        $response->assertJsonMissingPath('data.pin');
+        $response->assertJsonMissingPath('data.qr_token');
+        $response->assertJsonMissingPath('data.qr');
+        $response->assertJsonMissingPath('data.aptos_fisicos');
+        $this->assertStringNotContainsString('Sensitive medical note', $response->getContent());
+        $this->assertStringNotContainsString(str_repeat('a', 64), $response->getContent());
+    }
+
+    public function test_attendance_api_returns_only_safe_member_fields()
+    {
+        $token = $this->admin->createToken('test_token')->plainTextToken;
+        $this->socio->update([
+            'token' => 'INTERNAL-ACCESS-TOKEN',
+            'pin' => '765432',
+            'qr_token' => str_repeat('c', 64),
+        ]);
+        $asistencia = Asistencia::create([
+            'socio_id' => $this->socio->id,
+            'fecha' => today()->toDateString(),
+            'hora_ingreso' => '10:00:00',
+            'metodo_acceso' => 'pin_recepcion',
+        ]);
+
+        $response = $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->getJson(route('api.asistencias.show', $asistencia->id))
+            ->assertOk();
+
+        $response->assertJsonMissingPath('data.socio.token');
+        $response->assertJsonMissingPath('data.socio.pin');
+        $response->assertJsonMissingPath('data.socio.qr_token');
+        $this->assertStringNotContainsString('INTERNAL-ACCESS-TOKEN', $response->getContent());
+        $this->assertStringNotContainsString(str_repeat('c', 64), $response->getContent());
+    }
+
+    public function test_reception_cannot_collect_revenue_through_the_api()
+    {
+        $token = $this->recepcionista->createToken('test_token')->plainTextToken;
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->getJson(route('api.pagos.recaudacion'))
+            ->assertForbidden();
+    }
+
+    public function test_pagos_api_uses_discipline_coverage_and_never_extends_legacy_member_expiry()
+    {
+        $token = $this->admin->createToken('test_token')->plainTextToken;
+        $disciplina = Disciplina::create(['nombre' => 'Funcional', 'estado' => 'activa']);
+        $grupo = Grupo::create([
+            'disciplina_id' => $disciplina->id,
+            'nombre' => 'Funcional tarde',
+            'profesor' => 'Entrenadora',
+            'cupo_maximo' => 15,
+            'estado' => 'activo',
+        ]);
+        $inscripcion = Inscripcion::create([
+            'socio_id' => $this->socio->id,
+            'grupo_id' => $grupo->id,
+            'fecha_inscripcion' => today()->toDateString(),
+            'estado' => Inscripcion::ESTADO_APROBADA,
+            'aprobado_por' => $this->admin->id,
+            'aprobado_at' => now(),
+        ]);
+        $vencimientoInicial = Carbon::parse($this->socio->fecha_vencimiento)->toDateString();
+
+        $detalle = [
+            'inscripcion_id' => $inscripcion->id,
+            'concepto' => 'Cuota Funcional',
+            'fecha_inicio' => today()->toDateString(),
+            'fecha_fin' => today()->addMonth()->toDateString(),
+            'subtotal' => 12000.00,
+        ];
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson(route('api.pagos.store'), [
+                'socio_id' => $this->socio->id,
+                'metodo_pago' => 'transferencia',
+                'detalles' => [$detalle, $detalle],
+            ])
+            ->assertUnprocessable();
+        $this->assertDatabaseCount('pagos', 0);
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
             ->postJson(route('api.pagos.store'), [
                 'socio_id' => $this->socio->id,
                 'fecha_pago' => now()->toDateString(),
-                'importe' => 12000.00,
-                'metodo_pago' => 'transferencia'
-            ]);
+                'metodo_pago' => 'transferencia',
+                'detalles' => [$detalle],
+            ])
+            ->assertCreated();
 
-        $response->assertStatus(201);
+        $this->assertSame(12000.0, (float) $response->json('data.importe'));
+        $this->assertTrue(PagoDetalle::query()
+            ->where('inscripcion_id', $inscripcion->id)
+            ->whereDate('fecha_inicio_cobertura', today()->toDateString())
+            ->exists());
 
         $this->socio->refresh();
-        $nuevoVencimiento = Carbon::parse($this->socio->fecha_vencimiento);
+        $this->assertSame($vencimientoInicial, $this->socio->fecha_vencimiento?->toDateString());
+        $this->assertSame('sin_emitir', $this->socio->estado_credencial);
+    }
 
-        // Debe ser exactamente 1 mes después del vencimiento inicial
-        $this->assertEquals($vencimientoInicial->addMonth()->toDateString(), $nuevoVencimiento->toDateString());
+    public function test_pagos_api_rejects_an_inscription_owned_by_another_member()
+    {
+        $token = $this->admin->createToken('test_token')->plainTextToken;
+        $otroSocio = Socio::create([
+            'membresia_id' => $this->membresia->id,
+            'nombre' => 'Otro',
+            'apellido' => 'Socio',
+            'dni' => '40987654',
+            'sexo' => 'M',
+            'token' => 'TOKEN-OTRO',
+            'fecha_alta' => today()->toDateString(),
+            'estado' => 'activo',
+        ]);
+        $disciplina = Disciplina::create(['nombre' => 'Kickboxing', 'estado' => 'activa']);
+        $grupo = Grupo::create([
+            'disciplina_id' => $disciplina->id,
+            'nombre' => 'Kickboxing noche',
+            'profesor' => 'Entrenadora',
+            'cupo_maximo' => 15,
+            'estado' => 'activo',
+        ]);
+        $inscripcion = Inscripcion::create([
+            'socio_id' => $otroSocio->id,
+            'grupo_id' => $grupo->id,
+            'fecha_inscripcion' => today()->toDateString(),
+            'estado' => Inscripcion::ESTADO_APROBADA,
+            'aprobado_por' => $this->admin->id,
+            'aprobado_at' => now(),
+        ]);
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson(route('api.pagos.store'), [
+                'socio_id' => $this->socio->id,
+                'metodo_pago' => 'efectivo',
+                'detalles' => [[
+                    'inscripcion_id' => $inscripcion->id,
+                    'concepto' => 'Cuota ajena',
+                    'fecha_inicio' => today()->toDateString(),
+                    'fecha_fin' => today()->addMonth()->toDateString(),
+                    'subtotal' => 1000,
+                ]],
+            ])
+            ->assertUnprocessable();
+
+        $this->assertDatabaseCount('pagos', 0);
+    }
+
+    public function test_revenue_api_excludes_voided_payments()
+    {
+        $token = $this->admin->createToken('test_token')->plainTextToken;
+        Pago::create([
+            'socio_id' => $this->socio->id,
+            'operador_id' => $this->admin->id,
+            'fecha_pago' => today()->toDateString(),
+            'importe' => 1000,
+            'metodo_pago' => 'efectivo',
+            'estado' => Pago::ESTADO_ACTIVO,
+        ]);
+        Pago::create([
+            'socio_id' => $this->socio->id,
+            'operador_id' => $this->admin->id,
+            'fecha_pago' => today()->toDateString(),
+            'importe' => 2500,
+            'metodo_pago' => 'efectivo',
+            'estado' => Pago::ESTADO_ANULADO,
+        ]);
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->getJson(route('api.pagos.recaudacion', [
+                'fecha_desde' => today()->toDateString(),
+                'fecha_hasta' => today()->toDateString(),
+            ]))
+            ->assertOk()
+            ->assertJsonPath('data.total_recaudado', 1000)
+            ->assertJsonPath('data.cantidad_pagos', 1);
     }
 
     /**
-     * Test de control de acceso scan: Entrada, Salida y Bloqueos de ingreso.
+     * La API de acceso ya no acepta DNI ni alterna entre entrada y salida.
      */
-    public function test_control_acceso_scan_flow()
+    public function test_control_acceso_api_rejects_legacy_dni_toggle()
     {
         $token = $this->recepcionista->createToken('test_token')->plainTextToken;
 
-        // 1. Ingreso Exitoso (Socio activo con apto físico vigente)
-        $responseIngreso = $this->withHeader('Authorization', 'Bearer ' . $token)
-            ->postJson(route('api.control-acceso.scan'), [
-                'identificador' => $this->socio->dni
-            ]);
-        
-        $responseIngreso->assertStatus(200);
-        $responseIngreso->assertJsonPath('data.tipo_marca', 'ingreso');
-        $this->assertDatabaseHas('asistencias', [
-            'socio_id' => $this->socio->id,
-            'hora_salida' => null
-        ]);
-
-        // 2. Salida Exitosa (Escaneo del mismo socio registra egreso y tiempo de permanencia)
-        $responseSalida = $this->withHeader('Authorization', 'Bearer ' . $token)
+        $response = $this->withHeader('Authorization', 'Bearer ' . $token)
             ->postJson(route('api.control-acceso.scan'), [
                 'identificador' => $this->socio->dni
             ]);
 
-        $responseSalida->assertStatus(200);
-        $responseSalida->assertJsonPath('data.tipo_marca', 'salida');
-        $this->assertDatabaseMissing('asistencias', [
-            'socio_id' => $this->socio->id,
-            'hora_salida' => null
-        ]);
-
-        // 3. Ingreso Denegado - Membresía expirada
-        $this->socio->update(['fecha_vencimiento' => now()->subDays(10)->toDateString()]);
-        
-        $responseDenegado = $this->withHeader('Authorization', 'Bearer ' . $token)
-            ->postJson(route('api.control-acceso.scan'), [
-                'identificador' => $this->socio->dni
-            ]);
-
-        $responseDenegado->assertStatus(400);
-        $responseDenegado->assertJsonPath('success', false);
-        $responseDenegado->assertJsonFragment(['La membresía ha EXPIRADO el ' . now()->subDays(10)->format('d/m/Y') . '.']);
+        $response->assertUnprocessable();
+        $response->assertJsonValidationErrors(['metodo', 'accion']);
+        $this->assertDatabaseMissing('asistencias', ['socio_id' => $this->socio->id]);
     }
 }

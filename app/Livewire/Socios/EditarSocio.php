@@ -2,9 +2,11 @@
 
 namespace App\Livewire\Socios;
 
+use App\Models\Auditoria;
 use App\Models\Membresia;
 use App\Models\Socio;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\DB;
 use Livewire\Component;
 
 class EditarSocio extends Component
@@ -121,8 +123,8 @@ class EditarSocio extends Component
         $correoNormalizado = $this->correo ? trim($this->correo) : null;
         $celularNormalizado = $this->celular ? trim($this->celular) : null;
 
-        // 3. Modificamos el registro en la base de datos sin alterar el QR ni el Token
-        $this->socio->update([
+        // 3. Modificamos el registro en la base de datos sin alterar el QR ni el PIN.
+        $datos = [
             'membresia_id' => $this->membresia_id,
             'nombre' => $nombreNormalizado,
             'apellido' => $apellidoNormalizado,
@@ -133,7 +135,24 @@ class EditarSocio extends Component
             'fecha_alta' => $this->fecha_alta,
             'fecha_vencimiento' => $this->fecha_vencimiento,
             'estado' => $this->estado,
-        ]);
+        ];
+        $camposAuditables = ['membresia_id', 'nombre', 'apellido', 'correo', 'celular', 'fecha_alta', 'fecha_vencimiento', 'estado'];
+        DB::transaction(function () use ($datos, $camposAuditables) {
+            $socio = Socio::query()->lockForUpdate()->findOrFail($this->socio->id);
+            $antes = array_intersect_key($socio->getAttributes(), array_flip($camposAuditables));
+            $socio->update($datos);
+            $despues = array_intersect_key($socio->fresh()->getAttributes(), array_flip($camposAuditables));
+            if ($antes !== $despues) {
+                Auditoria::registrar(
+                    tipoEvento: 'administrativo',
+                    accion: 'socio_actualizado',
+                    entidad: $socio,
+                    datosAntes: $antes,
+                    datosDespues: $despues,
+                    userId: auth()->id()
+                );
+            }
+        }, 3);
 
         // Redireccionamos a la ficha del socio con un mensaje flash
         session()->flash('mensaje', 'Socio actualizado correctamente.');
