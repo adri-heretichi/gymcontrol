@@ -142,7 +142,7 @@
                             <div class="flex flex-wrap gap-1.5">
                                 @forelse($grupoSeleccionado->horarios as $h)
                                     <span class="inline-block bg-white dark:bg-slate-800 px-2.5 py-1 rounded-lg text-xs font-semibold text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700">
-                                        {{ ucfirst($h->dia_semana) }} {{ substr($h->hora_inicio, 0, 5) }} a {{ substr($h->hora_fin, 0, 5) }} hs
+                                        {{ $h->dia_semana_label }} {{ substr($h->hora_inicio, 0, 5) }} a {{ substr($h->hora_fin, 0, 5) }} hs
                                     </span>
                                 @empty
                                     <span class="text-xs italic text-slate-400">Sin horarios definidos</span>

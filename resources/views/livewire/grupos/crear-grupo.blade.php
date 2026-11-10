@@ -133,6 +133,7 @@
                                 <div class="w-full sm:w-1/3">
                                     <label class="form-label !mb-1 text-2xs">Día</label>
                                     <select wire:model="horarios.{{ $index }}.dia_semana" class="form-input !py-1.5 text-xs">
+                                        <option value="">-- Seleccionar día --</option>
                                         @foreach ($diasSemana as $key => $label)
                                             <option value="{{ $key }}">{{ $label }}</option>
                                         @endforeach

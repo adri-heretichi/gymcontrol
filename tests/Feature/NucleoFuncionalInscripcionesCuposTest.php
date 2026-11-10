@@ -158,6 +158,60 @@ class NucleoFuncionalInscripcionesCuposTest extends TestCase
         ]);
     }
 
+    public function test_la_pantalla_registra_inscripcion_en_grupo_de_la_disciplina_elegida(): void
+    {
+        $socio = $this->crearSocio();
+        $this->actingAs($this->recepcionista);
+
+        Livewire::test(CrearInscripcion::class)
+            ->set('socio_id', $socio->id)
+            ->set('disciplina_id', $this->disciplinaFuncional->id)
+            ->set('grupo_id', $this->grupoFuncional->id)
+            ->call('guardar')
+            ->assertRedirect(route('inscripciones.index'));
+
+        $this->assertDatabaseHas('inscripciones', [
+            'socio_id' => $socio->id,
+            'grupo_id' => $this->grupoFuncional->id,
+            'estado' => Inscripcion::ESTADO_PENDIENTE,
+        ]);
+    }
+
+    public function test_la_duena_aprueba_la_solicitud_desde_la_pantalla_de_inscripciones(): void
+    {
+        $socio = $this->crearSocio();
+        $resultado = $this->service->solicitarInscripcion(
+            $socio,
+            $this->grupoFuncional,
+            $this->recepcionista
+        );
+
+        $this->actingAs($this->duena);
+        Livewire::test(ListarInscripciones::class)
+            ->call('aprobar', $resultado['modelo']->id)
+            ->assertHasNoErrors();
+
+        $this->assertSame(
+            Inscripcion::ESTADO_APROBADA,
+            $resultado['modelo']->fresh()->estado
+        );
+    }
+
+    public function test_la_pantalla_rechaza_un_grupo_que_no_pertenece_a_la_disciplina_elegida(): void
+    {
+        $socio = $this->crearSocio();
+        $this->actingAs($this->recepcionista);
+
+        Livewire::test(CrearInscripcion::class)
+            ->set('socio_id', $socio->id)
+            ->set('disciplina_id', $this->disciplinaKickboxing->id)
+            ->set('grupo_id', $this->grupoFuncional->id)
+            ->call('guardar')
+            ->assertHasErrors(['grupo_id']);
+
+        $this->assertDatabaseMissing('inscripciones', ['socio_id' => $socio->id]);
+    }
+
     /**
      * Test 2: La solicitud queda en estado pendiente sin aprobar.
      */
@@ -289,9 +343,9 @@ class NucleoFuncionalInscripcionesCuposTest extends TestCase
     }
 
     /**
-     * Test 9: Dos aprobaciones concurrentes no generan sobrecupo.
+     * Test 9: Dos aprobaciones serializadas no generan sobrecupo.
      */
-    public function test_09_dos_aprobaciones_simultaneas_no_generan_sobrecupo(): void
+    public function test_09_aprobaciones_serializadas_no_generan_sobrecupo(): void
     {
         // Dejar 14 alumnos aprobados en grupo de 15
         for ($i = 1; $i <= 14; $i++) {
@@ -310,7 +364,7 @@ class NucleoFuncionalInscripcionesCuposTest extends TestCase
         // La primera aprobación ocupa la última vacante
         $this->service->aprobarInscripcion($resA['modelo'], $this->duena);
 
-        // La segunda aprobación consecutiva/simultánea falla con excepción de cupo
+        // La segunda aprobación falla con excepción de cupo después de agotarse la última plaza.
         try {
             $this->service->aprobarInscripcion($resB['modelo'], $this->duena);
             $this->fail("Debió fallar por cupo agotado.");
@@ -449,6 +503,155 @@ class NucleoFuncionalInscripcionesCuposTest extends TestCase
         } catch (DomainException $e) {
             $this->assertStringContainsString("ya se encuentra registrado en la lista de espera", $e->getMessage());
         }
+    }
+
+    public function test_no_se_puede_saltar_a_una_persona_en_lista_de_espera(): void
+    {
+        $grupo = $this->crearGrupo(
+            $this->disciplinaFuncional,
+            'Grupo con espera ordenada',
+            1,
+            [['dia_semana' => 'miercoles', 'hora_inicio' => '18:00:00', 'hora_fin' => '19:00:00']]
+        );
+        $primera = ListaEspera::create([
+            'socio_id' => $this->crearSocio()->id,
+            'grupo_id' => $grupo->id,
+            'posicion' => 1,
+            'fecha_solicitud' => now()->subMinute(),
+            'estado' => ListaEspera::ESTADO_ESPERANDO,
+        ]);
+        $segunda = ListaEspera::create([
+            'socio_id' => $this->crearSocio()->id,
+            'grupo_id' => $grupo->id,
+            'posicion' => 2,
+            'fecha_solicitud' => now(),
+            'estado' => ListaEspera::ESTADO_ESPERANDO,
+        ]);
+
+        $this->actingAs($this->duena);
+        Livewire::test(ListarInscripciones::class)
+            ->set('tab', 'espera')
+            ->assertSee('Incorporar')
+            ->assertSee('Espera #2');
+
+        try {
+            $this->service->incorporarDesdeListaEspera($segunda, $this->duena);
+            $this->fail('No se debe poder saltar la primera posición de la lista de espera.');
+        } catch (DomainException $e) {
+            $this->assertStringContainsString('orden de la lista de espera', $e->getMessage());
+        }
+
+        $this->service->incorporarDesdeListaEspera($primera, $this->duena);
+        $this->assertSame(Inscripcion::ESTADO_APROBADA, Inscripcion::query()
+            ->where('socio_id', $primera->socio_id)
+            ->where('grupo_id', $grupo->id)
+            ->value('estado'));
+        $this->assertSame(ListaEspera::ESTADO_ESPERANDO, $segunda->fresh()->estado);
+    }
+
+    public function test_un_socio_en_espera_no_puede_evitar_el_orden_al_abrirse_un_cupo(): void
+    {
+        for ($i = 0; $i < 14; $i++) {
+            $socioAprobado = $this->crearSocio();
+            Inscripcion::create([
+                'socio_id' => $socioAprobado->id,
+                'grupo_id' => $this->grupoFuncional->id,
+                'fecha_inscripcion' => now()->toDateString(),
+                'estado' => Inscripcion::ESTADO_APROBADA,
+            ]);
+        }
+
+        $socio = $this->crearSocio();
+        $espera = ListaEspera::create([
+            'socio_id' => $socio->id,
+            'grupo_id' => $this->grupoFuncional->id,
+            'posicion' => 1,
+            'fecha_solicitud' => now(),
+            'estado' => ListaEspera::ESTADO_ESPERANDO,
+        ]);
+
+        try {
+            $this->service->solicitarInscripcion($socio, $this->grupoFuncional, $this->recepcionista);
+            $this->fail('El socio no debe crear otra solicitud para evitar su posición en espera.');
+        } catch (DomainException $e) {
+            $this->assertStringContainsString('lista de espera', $e->getMessage());
+        }
+
+        $this->assertSame(ListaEspera::ESTADO_ESPERANDO, $espera->fresh()->estado);
+        $this->assertDatabaseMissing('inscripciones', ['socio_id' => $socio->id]);
+    }
+
+    public function test_recepcionista_no_puede_cancelar_un_turno_de_espera(): void
+    {
+        $espera = ListaEspera::create([
+            'socio_id' => $this->crearSocio()->id,
+            'grupo_id' => $this->grupoFuncional->id,
+            'posicion' => 1,
+            'fecha_solicitud' => now(),
+            'estado' => ListaEspera::ESTADO_ESPERANDO,
+        ]);
+
+        $this->expectException(AuthorizationException::class);
+        $this->service->cancelarListaEspera($espera, $this->recepcionista);
+    }
+
+    public function test_no_se_puede_solicitar_o_aprobar_una_inscripcion_sin_horarios(): void
+    {
+        $this->grupoFuncional->horarios()->delete();
+        $socio = $this->crearSocio();
+
+        try {
+            $this->service->solicitarInscripcion($socio, $this->grupoFuncional, $this->recepcionista);
+            $this->fail('No se debe aceptar una solicitud para un grupo sin horarios configurados.');
+        } catch (DomainException $e) {
+            $this->assertStringContainsString('horarios configurados', $e->getMessage());
+        }
+
+        $inscripcion = Inscripcion::create([
+            'socio_id' => $socio->id,
+            'grupo_id' => $this->grupoFuncional->id,
+            'fecha_inscripcion' => now()->toDateString(),
+            'estado' => Inscripcion::ESTADO_PENDIENTE,
+        ]);
+
+        try {
+            $this->service->aprobarInscripcion($inscripcion, $this->duena);
+            $this->fail('No se debe aprobar una inscripción para un grupo sin horarios configurados.');
+        } catch (DomainException $e) {
+            $this->assertStringContainsString('horarios configurados', $e->getMessage());
+        }
+
+        $this->assertSame(Inscripcion::ESTADO_PENDIENTE, $inscripcion->fresh()->estado);
+    }
+
+    public function test_el_limite_operativo_sigue_siendo_15_aunque_un_registro_tenga_capacidad_mayor(): void
+    {
+        $grupo = $this->crearGrupo(
+            $this->disciplinaFuncional,
+            'Grupo con capacidad histórica inválida',
+            20,
+            [['dia_semana' => 'jueves', 'hora_inicio' => '18:00:00', 'hora_fin' => '19:00:00']]
+        );
+
+        for ($i = 0; $i < 15; $i++) {
+            $socio = $this->crearSocio();
+            Inscripcion::create([
+                'socio_id' => $socio->id,
+                'grupo_id' => $grupo->id,
+                'fecha_inscripcion' => now()->toDateString(),
+                'estado' => Inscripcion::ESTADO_APROBADA,
+            ]);
+        }
+
+        $this->assertSame(0, $grupo->fresh()->vacantesDisponibles());
+        $this->assertSame('Cupo completo: 15/15', $grupo->fresh()->texto_cupo);
+
+        $resultado = $this->service->solicitarInscripcion(
+            $this->crearSocio(),
+            $grupo,
+            $this->recepcionista
+        );
+        $this->assertSame('lista_espera', $resultado['tipo']);
     }
 
     /**

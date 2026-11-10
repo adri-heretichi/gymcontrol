@@ -43,22 +43,21 @@ class EditarGrupo extends Component
         })->toArray();
 
         if (empty($this->horarios)) {
-            $this->horarios = [
-                [
-                    'dia_semana' => 'lunes',
-                    'hora_inicio' => '18:00',
-                    'hora_fin' => '19:00',
-                ],
-            ];
+            $this->horarios = [$this->horarioVacio()];
         }
     }
 
     public function agregarHorario()
     {
-        $this->horarios[] = [
-            'dia_semana' => 'lunes',
-            'hora_inicio' => '18:00',
-            'hora_fin' => '19:00',
+        $this->horarios[] = $this->horarioVacio();
+    }
+
+    private function horarioVacio(): array
+    {
+        return [
+            'dia_semana' => '',
+            'hora_inicio' => '',
+            'hora_fin' => '',
         ];
     }
 
@@ -80,8 +79,8 @@ class EditarGrupo extends Component
             'estado' => 'required|in:activo,inactivo',
             'horarios' => 'required|array|min:1',
             'horarios.*.dia_semana' => 'required|string|in:lunes,martes,miercoles,jueves,viernes,sabado,domingo',
-            'horarios.*.hora_inicio' => 'required|string',
-            'horarios.*.hora_fin' => 'required|string',
+            'horarios.*.hora_inicio' => 'required|date_format:H:i',
+            'horarios.*.hora_fin' => 'required|date_format:H:i',
         ];
     }
 
@@ -100,6 +99,11 @@ class EditarGrupo extends Component
         'estado.in' => 'El estado seleccionado es inválido.',
         'horarios.required' => 'Debe configurar al menos un horario de clase.',
         'horarios.min' => 'Debe configurar al menos un horario de clase.',
+        'horarios.*.dia_semana.required' => 'Debe seleccionar el día de cada horario.',
+        'horarios.*.hora_inicio.required' => 'Debe indicar la hora de inicio.',
+        'horarios.*.hora_inicio.date_format' => 'La hora de inicio debe tener formato HH:MM.',
+        'horarios.*.hora_fin.required' => 'Debe indicar la hora de fin.',
+        'horarios.*.hora_fin.date_format' => 'La hora de fin debe tener formato HH:MM.',
     ];
 
     public function actualizar()
@@ -110,24 +114,14 @@ class EditarGrupo extends Component
 
         $this->validate();
 
-        // 1. Proteger que no se reduzca la capacidad por debajo de las inscripciones aprobadas
-        $inscriptos = $this->grupo->alumnosInscriptosCount();
-        if ((int) $this->cupo_maximo < $inscriptos) {
-            $this->addError(
-                'cupo_maximo',
-                "No es posible reducir el cupo a {$this->cupo_maximo} porque el grupo cuenta actualmente con {$inscriptos} alumnos con inscripción aprobada."
-            );
-            return;
-        }
-
-        // 2. Validar reglas de la colección de horarios
+        // 1. Validar reglas de la colección de horarios
         $errorHorarios = HorarioGimnasioService::validarColeccionHorarios($this->horarios);
         if ($errorHorarios) {
             $this->addError('horarios', $errorHorarios);
             return;
         }
 
-        // 3. Si el grupo está activo, validar superposición con otros grupos activos (ignorando este grupo)
+        // 2. Si el grupo está activo, validar superposición con otros grupos activos (ignorando este grupo)
         if ($this->estado === 'activo') {
             foreach ($this->horarios as $h) {
                 $conflicto = HorarioGimnasioService::buscarSuperposicionProfesora(
@@ -148,22 +142,28 @@ class EditarGrupo extends Component
             }
         }
 
-        // 4. Actualizar el grupo y recrear sus horarios
-        $antes = [
-            'disciplina_id' => $this->grupo->disciplina_id,
-            'nombre' => $this->grupo->nombre,
-            'profesor' => $this->grupo->profesor,
-            'cupo_maximo' => $this->grupo->cupo_maximo,
-            'estado' => $this->grupo->estado,
-            'horarios' => $this->grupo->horarios->map(fn ($horario) => [
-                'dia_semana' => $horario->dia_semana,
-                'hora_inicio' => $horario->hora_inicio,
-                'hora_fin' => $horario->hora_fin,
-            ])->all(),
-        ];
+        // 3. Serializar cambios de capacidad con aprobaciones que bloquean la fila del grupo.
+        $inscriptosQueImpidenReducir = DB::transaction(function () {
+            $grupo = Grupo::query()->lockForUpdate()->findOrFail($this->grupo->id);
+            $inscriptos = $grupo->alumnosInscriptosCount();
+            if ((int) $this->cupo_maximo < $inscriptos) {
+                return $inscriptos;
+            }
 
-        DB::transaction(function () use ($antes) {
-            $this->grupo->update([
+            $antes = [
+                'disciplina_id' => $grupo->disciplina_id,
+                'nombre' => $grupo->nombre,
+                'profesor' => $grupo->profesor,
+                'cupo_maximo' => $grupo->cupo_maximo,
+                'estado' => $grupo->estado,
+                'horarios' => $grupo->horarios()->get()->map(fn ($horario) => [
+                    'dia_semana' => $horario->dia_semana,
+                    'hora_inicio' => $horario->hora_inicio,
+                    'hora_fin' => $horario->hora_fin,
+                ])->all(),
+            ];
+
+            $grupo->update([
                 'disciplina_id' => $this->disciplina_id,
                 'nombre' => trim($this->nombre),
                 'profesor' => trim($this->profesor),
@@ -171,11 +171,11 @@ class EditarGrupo extends Component
                 'estado' => $this->estado,
             ]);
 
-            $this->grupo->horarios()->delete();
+            $grupo->horarios()->delete();
 
             foreach ($this->horarios as $h) {
                 GrupoHorario::create([
-                    'grupo_id' => $this->grupo->id,
+                    'grupo_id' => $grupo->id,
                     'dia_semana' => strtolower(trim($h['dia_semana'])),
                     'hora_inicio' => HorarioGimnasioService::normalizarHora($h['hora_inicio']),
                     'hora_fin' => HorarioGimnasioService::normalizarHora($h['hora_fin']),
@@ -185,19 +185,28 @@ class EditarGrupo extends Component
             Auditoria::registrar(
                 tipoEvento: 'administrativo',
                 accion: 'grupo_actualizado',
-                entidad: $this->grupo,
+                entidad: $grupo,
                 datosAntes: $antes,
                 datosDespues: [
-                    'disciplina_id' => $this->grupo->disciplina_id,
-                    'nombre' => $this->grupo->nombre,
-                    'profesor' => $this->grupo->profesor,
-                    'cupo_maximo' => $this->grupo->cupo_maximo,
-                    'estado' => $this->grupo->estado,
-                    'horarios' => $this->grupo->horarios()->get(['dia_semana', 'hora_inicio', 'hora_fin'])->toArray(),
+                    'disciplina_id' => $grupo->disciplina_id,
+                    'nombre' => $grupo->nombre,
+                    'profesor' => $grupo->profesor,
+                    'cupo_maximo' => $grupo->cupo_maximo,
+                    'estado' => $grupo->estado,
+                    'horarios' => $grupo->horarios()->get(['dia_semana', 'hora_inicio', 'hora_fin'])->toArray(),
                 ],
                 userId: auth()->id()
             );
-        });
+            return null;
+        }, 3);
+
+        if ($inscriptosQueImpidenReducir !== null) {
+            $this->addError(
+                'cupo_maximo',
+                "No es posible reducir el cupo a {$this->cupo_maximo} porque el grupo cuenta actualmente con {$inscriptosQueImpidenReducir} alumnos con inscripción aprobada."
+            );
+            return;
+        }
 
         session()->flash('message', "Grupo '{$this->grupo->nombre}' actualizado exitosamente.");
         return redirect()->route('grupos.index');

@@ -28,7 +28,13 @@
                 <p class="text-sm font-semibold mt-1 text-slate-700 dark:text-slate-400">Consulta de información personal, inscripciones, coberturas y asistencias.</p>
             </div>
             
-            <div class="flex items-center gap-3">
+            <div class="flex flex-wrap items-center gap-3">
+                @if($socio->estado === 'activo')
+                    <a href="{{ route('inscripciones.create', ['socio_id' => $socio->id]) }}" class="btn-primary">
+                        Solicitar inscripción
+                    </a>
+                @endif
+
                 <!-- Botón para Imprimir Tarjeta (Disponible para Admin y Recepcionista) -->
                 <a href="{{ route('socios.tarjeta-pdf', $socio->id) }}" target="_blank" class="btn-secondary">
                     <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">

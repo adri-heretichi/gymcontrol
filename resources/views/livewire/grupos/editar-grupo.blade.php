@@ -17,7 +17,7 @@
                 <div>
                     <span class="text-xs font-bold uppercase tracking-widest text-indigo-700 dark:text-indigo-400">Estado de Inscripciones</span>
                     <p class="text-sm font-semibold text-slate-800 dark:text-slate-200 mt-0.5">
-                        Alumnos inscriptos confirmados: <span class="font-black text-indigo-600 dark:text-indigo-400">{{ $grupo->alumnosInscriptosCount() }}</span> / {{ $grupo->cupo_maximo }}
+                        Alumnos inscriptos confirmados: <span class="font-black text-indigo-600 dark:text-indigo-400">{{ $grupo->alumnosInscriptosCount() }}</span> / {{ $grupo->limiteCupo() }}
                     </p>
                 </div>
                 <span class="text-xs text-slate-500 dark:text-slate-400">
@@ -145,6 +145,7 @@
                                 <div class="w-full sm:w-1/3">
                                     <label class="form-label !mb-1 text-2xs">Día</label>
                                     <select wire:model="horarios.{{ $index }}.dia_semana" class="form-input !py-1.5 text-xs">
+                                        <option value="">-- Seleccionar día --</option>
                                         @foreach ($diasSemana as $key => $label)
                                             <option value="{{ $key }}">{{ $label }}</option>
                                         @endforeach

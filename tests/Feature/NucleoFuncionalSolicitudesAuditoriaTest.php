@@ -8,6 +8,7 @@ use App\Models\Asistencia;
 use App\Models\Auditoria;
 use App\Models\Disciplina;
 use App\Models\Grupo;
+use App\Models\GrupoHorario;
 use App\Models\Inscripcion;
 use App\Models\Membresia;
 use App\Models\Solicitud;
@@ -448,12 +449,21 @@ class NucleoFuncionalSolicitudesAuditoriaTest extends TestCase
     {
         $disciplina = Disciplina::create(['nombre' => $nombre . ' ' . uniqid(), 'estado' => 'activo']);
 
-        return Grupo::create([
+        $grupo = Grupo::create([
             'disciplina_id' => $disciplina->id,
             'nombre' => $nombre,
             'cupo_maximo' => $cupo,
             'estado' => 'activo',
         ]);
+
+        GrupoHorario::create([
+            'grupo_id' => $grupo->id,
+            'dia_semana' => 'lunes',
+            'hora_inicio' => '18:00:00',
+            'hora_fin' => '19:00:00',
+        ]);
+
+        return $grupo;
     }
 
     private function crearInscripcion(Socio $socio, Grupo $grupo): Inscripcion

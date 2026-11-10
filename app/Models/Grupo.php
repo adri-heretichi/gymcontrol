@@ -89,7 +89,7 @@ class Grupo extends Model
      */
     public function vacantesDisponibles(): int
     {
-        return max(0, $this->cupo_maximo - $this->alumnosInscriptosCount());
+        return max(0, $this->limiteCupo() - $this->alumnosInscriptosCount());
     }
 
     /**
@@ -97,7 +97,12 @@ class Grupo extends Model
      */
     public function tieneCupoDisponible(): bool
     {
-        return $this->alumnosInscriptosCount() < $this->cupo_maximo;
+        return $this->alumnosInscriptosCount() < $this->limiteCupo();
+    }
+
+    public function limiteCupo(): int
+    {
+        return min(15, max(0, (int) $this->cupo_maximo));
     }
 
     /**
@@ -110,10 +115,10 @@ class Grupo extends Model
         $vacantes = $this->vacantesDisponibles();
 
         if ($vacantes === 0) {
-            return "Cupo completo: {$inscriptos}/{$this->cupo_maximo}";
+            return "Cupo completo: {$inscriptos}/{$this->limiteCupo()}";
         }
 
-        return "{$inscriptos}/{$this->cupo_maximo} – {$vacantes} vacantes";
+        return "{$inscriptos}/{$this->limiteCupo()} – {$vacantes} vacantes";
     }
 
     /**
@@ -142,10 +147,9 @@ class Grupo extends Model
         }
 
         return $this->horarios->map(function ($h) {
-            $dia = ucfirst($h->dia_semana);
             $ini = substr($h->hora_inicio, 0, 5);
             $fin = substr($h->hora_fin, 0, 5);
-            return "{$dia} {$ini} a {$fin} hs";
+            return "{$h->dia_semana_label} {$ini} a {$fin} hs";
         })->implode(' | ');
     }
 }

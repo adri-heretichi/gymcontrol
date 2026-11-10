@@ -145,6 +145,30 @@ class NucleoFuncionalControlAccesoTest extends TestCase
         $this->assertSame('inscripcion_inexistente', $sinInscripcion['codigo']);
     }
 
+    public function test_rejected_and_dropped_enrollments_never_authorize_access(): void
+    {
+        foreach ([Inscripcion::ESTADO_RECHAZADA, Inscripcion::ESTADO_BAJA] as $index => $estado) {
+            $socio = $this->crearSocio([
+                'pin' => '45678' . $index,
+                'qr_token' => str_repeat($index === 0 ? 'd' : 'e', 64),
+                'estado_credencial' => CredencialService::ESTADO_ACTIVO,
+                'decision_medica' => 'no_requerido',
+            ]);
+            $inscripcion = $this->crearInscripcion($socio, $this->grupo, $estado);
+            $this->crearCobertura($inscripcion);
+
+            $resultado = $this->control->evaluarAcceso(
+                $socio->pin,
+                'pin',
+                $this->grupo->id,
+                $this->momento
+            );
+
+            $this->assertFalse($resultado['autorizado']);
+            $this->assertSame('inscripcion_inexistente', $resultado['codigo']);
+        }
+    }
+
     public function test_approved_enrollment_and_current_discipline_coverage_authorize_access(): void
     {
         $resultado = $this->control->evaluarAcceso($this->socio->pin, 'pin', $this->grupo->id, $this->momento);

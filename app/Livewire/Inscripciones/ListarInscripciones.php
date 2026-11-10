@@ -315,6 +315,8 @@ class ListarInscripciones extends Component
             if ($inscripcionActual) {
                 $gruposDestinoDisponibles = Grupo::where('id', '!=', $inscripcionActual->grupo_id)
                     ->where('estado', 'activo')
+                    ->whereHas('disciplina', fn ($query) => $query->where('estado', 'activo'))
+                    ->whereHas('horarios')
                     ->with(['disciplina', 'horarios', 'inscripciones'])
                     ->orderBy('disciplina_id')
                     ->get();
@@ -376,6 +378,21 @@ class ListarInscripciones extends Component
             $datos = $query->paginate(10);
         }
 
+        $primerasEsperas = collect();
+        if ($this->tab === 'espera') {
+            $gruposEnPagina = $datos->getCollection()->pluck('grupo_id')->unique();
+            $primerasEsperas = ListaEspera::query()
+                ->where('estado', ListaEspera::ESTADO_ESPERANDO)
+                ->whereIn('grupo_id', $gruposEnPagina)
+                ->orderBy('grupo_id')
+                ->orderBy('posicion')
+                ->orderBy('fecha_solicitud')
+                ->orderBy('id')
+                ->get(['id', 'grupo_id'])
+                ->groupBy('grupo_id')
+                ->map(fn ($esperas) => $esperas->first()->id);
+        }
+
         return view('livewire.inscripciones.listar-inscripciones', [
             'datos' => $datos,
             'disciplinas' => $disciplinas,
@@ -385,6 +402,7 @@ class ListarInscripciones extends Component
             'conteoAprobadas' => $conteoAprobadas,
             'conteoEspera' => $conteoEspera,
             'conteoHistorial' => $conteoHistorial,
+            'primerasEsperas' => $primerasEsperas,
         ])->layout('layouts.app');
     }
 }

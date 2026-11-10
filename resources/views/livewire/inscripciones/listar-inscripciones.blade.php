@@ -169,7 +169,7 @@
                                     <div class="space-y-0.5">
                                         @foreach($item->grupo->horarios as $h)
                                             <div class="text-2xs font-semibold">
-                                                {{ ucfirst($h->dia_semana) }} {{ substr($h->hora_inicio, 0, 5) }}-{{ substr($h->hora_fin, 0, 5) }}
+                                                {{ $h->dia_semana_label }} {{ substr($h->hora_inicio, 0, 5) }}-{{ substr($h->hora_fin, 0, 5) }}
                                             </div>
                                         @endforeach
                                     </div>
@@ -257,14 +257,24 @@
                                             @if(auth()->user()->rol === 'admin')
                                                 <!-- Dueña: Incorporar si hay vacantes -->
                                                 @if($item->grupo->vacantesDisponibles() > 0)
-                                                    <button
-                                                        wire:click="incorporarDeEspera({{ $item->id }})"
-                                                        wire:confirm="¿Incorporar a '{{ $item->socio->nombre_completo }}' a la vacante liberada en '{{ $item->grupo->nombre }}'?"
-                                                        class="btn-action-success"
-                                                        title="Incorporar a la plaza disponible"
-                                                    >
-                                                        Incorporar
-                                                    </button>
+                                                    @if((int) $primerasEsperas->get($item->grupo_id) === (int) $item->id)
+                                                        <button
+                                                            wire:click="incorporarDeEspera({{ $item->id }})"
+                                                            wire:confirm="¿Incorporar a '{{ $item->socio->nombre_completo }}' a la vacante liberada en '{{ $item->grupo->nombre }}'?"
+                                                            class="btn-action-success"
+                                                            title="Incorporar a la plaza disponible"
+                                                        >
+                                                            Incorporar
+                                                        </button>
+                                                    @else
+                                                        <button
+                                                            disabled
+                                                            class="opacity-40 cursor-not-allowed btn-action-view"
+                                                            title="Debe respetarse el orden de la lista de espera"
+                                                        >
+                                                            Espera #{{ $item->posicion }}
+                                                        </button>
+                                                    @endif
                                                 @else
                                                     <button
                                                         disabled

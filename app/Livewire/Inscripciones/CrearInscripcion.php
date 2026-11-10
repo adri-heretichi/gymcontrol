@@ -56,6 +56,7 @@ class CrearInscripcion extends Component
     {
         return [
             'socio_id' => 'required|exists:socios,id',
+            'disciplina_id' => 'required|exists:disciplinas,id',
             'grupo_id' => 'required|exists:grupos,id',
             'observaciones' => 'nullable|string|max:500',
         ];
@@ -64,6 +65,8 @@ class CrearInscripcion extends Component
     protected $messages = [
         'socio_id.required' => 'Debe seleccionar un socio.',
         'socio_id.exists' => 'El socio seleccionado no existe.',
+        'disciplina_id.required' => 'Debe seleccionar una disciplina.',
+        'disciplina_id.exists' => 'La disciplina seleccionada no existe.',
         'grupo_id.required' => 'Debe seleccionar un grupo de disciplina.',
         'grupo_id.exists' => 'El grupo seleccionado no existe.',
         'observaciones.max' => 'Las observaciones no pueden superar los 500 caracteres.',
@@ -74,7 +77,18 @@ class CrearInscripcion extends Component
         $this->validate();
 
         $socio = Socio::findOrFail($this->socio_id);
-        $grupo = Grupo::with('disciplina', 'horarios')->findOrFail($this->grupo_id);
+        $grupo = Grupo::with('disciplina', 'horarios')
+            ->whereKey($this->grupo_id)
+            ->where('disciplina_id', $this->disciplina_id)
+            ->where('estado', 'activo')
+            ->whereHas('disciplina', fn ($query) => $query->where('estado', 'activo'))
+            ->whereHas('horarios')
+            ->first();
+
+        if (!$grupo) {
+            $this->addError('grupo_id', 'El grupo debe pertenecer a la disciplina seleccionada, estar activo y tener horarios configurados.');
+            return;
+        }
 
         $service = app(InscripcionService::class);
 
@@ -115,12 +129,21 @@ class CrearInscripcion extends Component
         if ($this->disciplina_id) {
             $grupos = Grupo::where('disciplina_id', $this->disciplina_id)
                 ->where('estado', 'activo')
-                ->with(['horarios', 'inscripciones'])
+                ->whereHas('disciplina', fn ($query) => $query->where('estado', 'activo'))
+                ->whereHas('horarios')
+                ->with('horarios')
                 ->orderBy('nombre')
                 ->get();
         }
 
-        $grupoSeleccionado = $this->grupo_id ? Grupo::with(['horarios', 'disciplina'])->find($this->grupo_id) : null;
+        $grupoSeleccionado = $this->grupo_id && $this->disciplina_id
+            ? Grupo::with(['horarios', 'disciplina'])
+                ->whereKey($this->grupo_id)
+                ->where('disciplina_id', $this->disciplina_id)
+                ->where('estado', 'activo')
+                ->whereHas('horarios')
+                ->first()
+            : null;
 
         return view('livewire.inscripciones.crear-inscripcion', [
             'sociosSugeridos' => $sociosSugeridos,

@@ -88,7 +88,7 @@
                                         <div class="space-y-1">
                                             @foreach($grupo->horarios as $h)
                                                 <div class="inline-block bg-slate-100 dark:bg-slate-700/50 px-2 py-0.5 rounded text-2xs font-bold mr-1">
-                                                    {{ ucfirst($h->dia_semana) }} {{ substr($h->hora_inicio, 0, 5) }} - {{ substr($h->hora_fin, 0, 5) }}
+                                                    {{ $h->dia_semana_label }} {{ substr($h->hora_inicio, 0, 5) }} - {{ substr($h->hora_fin, 0, 5) }}
                                                 </div>
                                             @endforeach
                                         </div>
