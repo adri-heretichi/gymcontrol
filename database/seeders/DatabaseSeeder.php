@@ -19,11 +19,12 @@ class DatabaseSeeder extends Seeder
         // Llamamos a cada uno de los seeders en orden de dependencia
         $this->call([
             UserSeeder::class,         // 1. Usuarios técnicos (admin/recepcionista)
-            MembresiaSeeder::class,    // 2. Planes de membresía
-            SocioSeeder::class,        // 3. Socios (requiere membresías)
-            AptoFisicoSeeder::class,    // 4. Aptos médicos (requiere socios)
-            PagoSeeder::class,          // 5. Historial de pagos (requiere socios)
-            AsistenciaSeeder::class,    // 6. Historial de asistencias (requiere socios)
+            DisciplinaSeeder::class,   // 2. Disciplinas del gimnasio
+            MembresiaSeeder::class,    // 3. Planes de membresía
+            SocioSeeder::class,        // 4. Socios (requiere membresías)
+            AptoFisicoSeeder::class,    // 5. Aptos médicos (requiere socios)
+            PagoSeeder::class,          // 6. Historial de pagos (requiere socios)
+            AsistenciaSeeder::class,    // 7. Historial de asistencias (requiere socios)
         ]);
     }
 }
