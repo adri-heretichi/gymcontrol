@@ -33,9 +33,8 @@ class VerSocio extends Component
     {
         $this->authorize('view', $socio);
 
-        // 1. Carga optimizada de relaciones: Solo cargamos la membresía mediante Eager Loading, 
-        // ya que los pagos, asistencias y certificados médicos se consultan con queries directos optimizados.
-        $this->socio = $socio->load(['membresia']);
+        // Los pagos, asistencias y certificados se consultan con queries optimizados.
+        $this->socio = $socio;
 
         // 2. Generación ultra defensiva de iniciales para el avatar temporal
         $nombre = trim($this->socio->nombre ?? '');

@@ -56,9 +56,7 @@
                         <tr class="custom-table-head">
                             <th class="custom-table-th">Socio</th>
                             <th class="custom-table-th">DNI</th>
-                            <th class="custom-table-th">Token</th>
-                            <th class="custom-table-th">Membresía</th>
-                            <th class="custom-table-th">Vencimiento</th>
+                            <th class="custom-table-th">Inscripciones</th>
                             <th class="custom-table-th">Estado</th>
                             <th class="custom-table-th text-center">Acciones</th>
                         </tr>
@@ -105,34 +103,9 @@
                                 <td class="custom-table-td text-slate-700 dark:text-slate-300">
                                     {{ $socio->dni }}
                                 </td>
-                                <!-- Token -->
-                                <td class="custom-table-td font-mono text-xs text-slate-500 dark:text-slate-400">
-                                    {{ $socio->token }}
-                                </td>
-                                <!-- Membresía -->
+                                <!-- Actividades vinculadas a inscripciones -->
                                 <td class="custom-table-td">
-                                    <span class="badge-info">
-                                        {{ $socio->membresia?->nombre ?? 'Sin membresía' }}
-                                    </span>
-                                </td>
-                                <!-- Vencimiento (Con alerta si expiró) -->
-                                <td class="custom-table-td">
-                                    @if($socio->fecha_vencimiento)
-                                        @if($socio->fecha_vencimiento->isPast())
-                                            <span class="text-rose-600 dark:text-rose-400 font-semibold flex items-center gap-1">
-                                                <svg class="h-4 w-4 text-rose-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                                                </svg>
-                                                {{ $socio->fecha_vencimiento->format('d/m/Y') }}
-                                            </span>
-                                        @else
-                                            <span class="text-emerald-600 dark:text-emerald-400 font-bold">
-                                                {{ $socio->fecha_vencimiento->format('d/m/Y') }}
-                                            </span>
-                                        @endif
-                                    @else
-                                        <span class="text-slate-400 dark:text-slate-500 italic font-medium">Sin vencimiento</span>
-                                    @endif
+                                    <span class="badge-info">{{ $socio->inscripciones_count }}</span>
                                 </td>
                                 <!-- Estado -->
                                 <td class="custom-table-td">
@@ -182,7 +155,7 @@
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="7" class="px-6 py-12 text-center text-slate-400 dark:text-slate-500 italic">
+                                <td colspan="5" class="px-6 py-12 text-center text-slate-400 dark:text-slate-500 italic">
                                     <div class="flex flex-col items-center justify-center">
                                         <svg class="w-12 h-12 text-slate-300 dark:text-slate-700 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>

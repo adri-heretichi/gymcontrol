@@ -19,16 +19,16 @@
         <!-- Banner del clima fijo en el layout — fuera de Livewire para que nunca desaparezca -->
         <div id="clima-banner"
              class="fixed top-0 left-0 right-0 z-50 hidden items-center justify-center gap-6 px-6 py-3"
-             style="background: linear-gradient(135deg, rgba(99,102,241,0.25) 0%, rgba(139,92,246,0.25) 100%);
+             style="background: linear-gradient(135deg, rgba(249,115,22,0.24) 0%, rgba(212,167,44,0.16) 100%);
                     border-bottom: 1px solid rgba(255,255,255,0.1);
                     backdrop-filter: blur(10px);">
             <span id="clima-icono" class="text-2xl"></span>
             <div class="flex items-center gap-4 text-sm font-bold text-white">
-                <span>🌡️ <span id="clima-temp" class="text-indigo-300"></span>°C</span>
+                <span>🌡️ <span id="clima-temp" class="text-orange-300"></span>°C</span>
                 <span class="text-slate-600">|</span>
-                <span>💧 <span id="clima-humedad" class="text-indigo-300"></span>%</span>
+                <span>💧 <span id="clima-humedad" class="text-orange-300"></span>%</span>
                 <span class="text-slate-600">|</span>
-                <span>💨 <span id="clima-viento" class="text-indigo-300"></span> km/h</span>
+                <span>💨 <span id="clima-viento" class="text-orange-300"></span> km/h</span>
                 <span class="text-slate-600">|</span>
                 <span id="clima-desc" class="text-slate-300 font-semibold"></span>
                 <span class="text-slate-300 font-semibold">· Formosa</span>

@@ -25,7 +25,7 @@
                 <h2 class="text-3xl font-black tracking-tight text-slate-900 dark:text-white">
                     Ficha del Socio
                 </h2>
-                <p class="text-sm font-semibold mt-1 text-slate-700 dark:text-slate-400">Consulta detallada de información personal, membresía, pagos y asistencias.</p>
+                <p class="text-sm font-semibold mt-1 text-slate-700 dark:text-slate-400">Consulta de información personal, inscripciones, coberturas y asistencias.</p>
             </div>
             
             <div class="flex items-center gap-3">
@@ -73,10 +73,13 @@
                     
                     <div class="p-8">
                         <!-- Cabecera de la credencial -->
-                        <div class="flex justify-between items-start mb-6">
-                            <div>
-                                <span class="text-xs font-black tracking-widest text-indigo-400 uppercase">GYMCONTROL</span>
-                                <span class="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">CREDENCIAL VIRTUAL</span>
+                        <div class="flex flex-wrap items-start justify-between gap-3 mb-6">
+                            <div class="flex items-center gap-3">
+                                <img src="{{ asset('images/fenix/logo-oficial.jpg') }}" alt="Gimnasio Fénix" class="h-10 w-10 rounded-lg object-cover ring-1 ring-amber-400/40">
+                                <div>
+                                    <span class="block text-xs font-black tracking-widest text-amber-400 uppercase">GIMNASIO FÉNIX</span>
+                                    <span class="block text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">CREDENCIAL · GYMCONTROL</span>
+                                </div>
                             </div>
                             <!-- Badge de presencia premium -->
                             @if($estaPresente)
@@ -154,11 +157,13 @@
                 </div>
 
                 <!-- QR persistente de la credencial -->
-                <div class="text-center">
+                <div class="rounded-2xl border border-slate-800 bg-black p-5 text-center">
+                    <p class="mb-3 text-xs font-black uppercase tracking-widest text-amber-400">QR de acceso · Fénix</p>
                     @if($socio->tieneCredencialesActivas())
                         <img src="{{ route('socios.qr', $socio) }}"
                              alt="QR de acceso"
-                             class="mx-auto w-40 h-40">
+                             class="mx-auto h-40 w-40 rounded bg-white p-1">
+                        <p class="mt-3 text-[10px] font-bold uppercase tracking-widest text-slate-400">Sistema GymControl</p>
                     @else
                         <p class="text-sm text-gray-400">QR disponible después de emitir la credencial.</p>
                     @endif
@@ -260,42 +265,17 @@
                             </div>
                         </div>
 
-                        <!-- Grupo 2: Membresía y Estados Médicos -->
+                        <!-- Grupo 2: Actividad y Estados Médicos -->
                         <div class="space-y-6">
-                            <h4 class="text-xs font-black uppercase tracking-widest text-indigo-500 dark:text-indigo-400">Estado de Membresía y Apto</h4>
+                            <h4 class="text-xs font-black uppercase tracking-widest text-indigo-500 dark:text-indigo-400">Actividad y requisito médico</h4>
                             
                             <div class="bg-slate-50 dark:bg-slate-900/40 p-4 rounded-xl space-y-4">
                                 <div>
-                                    <span class="block text-2xs font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-1">Membresía Contratada</span>
-                                    <span class="inline-flex px-3 py-1 text-xs font-extrabold bg-indigo-50 text-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-400 rounded-lg border border-indigo-100 dark:border-indigo-900/50">
-                                        {{ $socio->membresia?->nombre ?? 'Sin membresía contratada' }}
-                                    </span>
-                                </div>
-                                
-                                <div>
-                                    <span class="block text-2xs font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500">Vencimiento de Membresía</span>
-                                    @if($socio->fecha_vencimiento)
-                                        <div class="flex items-center gap-2 mt-1">
-                                            <span class="text-sm font-bold text-slate-800 dark:text-slate-200">
-                                                {{ $socio->fecha_vencimiento->format('d/m/Y') }}
-                                            </span>
-                                            @if($socio->fecha_vencimiento->lt(\Carbon\Carbon::today()))
-                                                <span class="px-2 py-0.5 text-[10px] font-black bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-400 rounded-md border border-rose-200 dark:border-rose-900">
-                                                    EXPIRADA
-                                                </span>
-                                            @elseif($socio->fecha_vencimiento->diffInDays(\Carbon\Carbon::today()) <= 7)
-                                                <span class="px-2 py-0.5 text-[10px] font-black bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-400 rounded-md border border-amber-200 dark:border-amber-900 animate-pulse">
-                                                    PROXIMA A VENCER
-                                                </span>
-                                            @else
-                                                <span class="px-2 py-0.5 text-[10px] font-black bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-400 rounded-md border border-emerald-200 dark:border-emerald-900">
-                                                    VIGENTE
-                                                </span>
-                                            @endif
-                                        </div>
-                                    @else
-                                        <span class="text-sm font-bold text-slate-400 dark:text-slate-500 italic">No especificado</span>
-                                    @endif
+                                    <span class="block text-2xs font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-2">Gestión de actividad</span>
+                                    <div class="flex flex-wrap gap-2">
+                                        <a href="{{ route('inscripciones.index') }}" class="btn-secondary">Ver inscripciones</a>
+                                        <a href="{{ route('pagos.coberturas-socio', $socio) }}" class="btn-secondary">Ver coberturas</a>
+                                    </div>
                                 </div>
 
                                 <div>

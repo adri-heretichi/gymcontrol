@@ -176,6 +176,9 @@ class ReporteController extends Controller
     public function tarjeta(Socio $socio)
     {
         $svgData = null;
+        $logoData = 'data:image/jpeg;base64,' . base64_encode(
+            file_get_contents(public_path('images/fenix/logo-oficial.jpg'))
+        );
         if ($socio->tieneCredencialesActivas()) {
             $svgContenido = \SimpleSoftwareIO\QrCode\Facades\QrCode::format('svg')
                 ->size(200)
@@ -183,7 +186,7 @@ class ReporteController extends Controller
             $svgData = 'data:image/svg+xml;base64,' . base64_encode($svgContenido);
         }
 
-        $pdf = Pdf::loadView('reportes.tarjeta', compact('socio', 'svgData'));
+        $pdf = Pdf::loadView('reportes.tarjeta', compact('socio', 'svgData', 'logoData'));
         $pdf->setPaper([0, 0, 153.07, 243.78], 'portrait');
         $pdf->setOption('isHtml5ParserEnabled', true);
         $pdf->setOption('isRemoteEnabled', false);

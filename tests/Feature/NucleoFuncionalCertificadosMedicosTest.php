@@ -7,7 +7,6 @@ use App\Models\Auditoria;
 use App\Models\Disciplina;
 use App\Models\Grupo;
 use App\Models\Inscripcion;
-use App\Models\Membresia;
 use App\Models\Pago;
 use App\Models\Socio;
 use App\Models\Solicitud;
@@ -56,7 +55,6 @@ class NucleoFuncionalCertificadosMedicosTest extends TestCase
     private CertificadoMedicoService $service;
     private User $duena;
     private User $recepcionista;
-    private Membresia $membresia;
 
     protected function setUp(): void
     {
@@ -80,12 +78,6 @@ class NucleoFuncionalCertificadosMedicosTest extends TestCase
             'rol'      => 'recepcionista',
         ]);
 
-        $this->membresia = Membresia::create([
-            'nombre'        => 'Membresía Base',
-            'precio'        => 35000,
-            'duracion_dias' => 30,
-            'estado'        => 'activo',
-        ]);
     }
 
     private function crearSocio(array $atributos = []): Socio
@@ -94,7 +86,6 @@ class NucleoFuncionalCertificadosMedicosTest extends TestCase
         $n++;
 
         return Socio::create(array_merge([
-            'membresia_id'    => $this->membresia->id,
             'nombre'          => "Socio{$n}",
             'apellido'        => 'Prueba',
             'dni'             => str_pad((string)$n, 8, '0', STR_PAD_LEFT),
@@ -124,7 +115,6 @@ class NucleoFuncionalCertificadosMedicosTest extends TestCase
             ->set('sexo', 'M')
             ->set('correo', 'carlos@fenix.test')
             ->set('celular', '1144332211')
-            ->set('membresia_id', $this->membresia->id)
             ->set('fecha_alta', now()->toDateString())
             ->call('guardar')
             ->assertHasNoErrors();

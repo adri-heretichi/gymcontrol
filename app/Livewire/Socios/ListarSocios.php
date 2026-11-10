@@ -60,8 +60,8 @@ class ListarSocios extends Component
 
     public function render()
     {
-        // Consulta optimizada con buscador y búsqueda ampliada (celular agregada)
-        $socios = Socio::with('membresia')
+        // Consulta optimizada con buscador y conteo de inscripciones vigentes.
+        $socios = Socio::withCount('inscripciones')
             ->where(function ($query) {
                 $query->where('nombre', 'like', '%' . $this->buscar . '%')
                       ->orWhere('apellido', 'like', '%' . $this->buscar . '%')

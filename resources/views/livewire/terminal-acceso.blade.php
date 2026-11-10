@@ -9,16 +9,16 @@
     {{-- Banner del clima cargado desde el navegador vía JavaScript --}}
     {{-- Se mantiene visible entre polls de Livewire usando @script --}}
     <div id="clima-banner" class="fixed top-0 left-0 right-0 z-50 hidden items-center justify-center gap-6 px-6 py-3"
-         style="background: linear-gradient(135deg, rgba(99,102,241,0.25) 0%, rgba(139,92,246,0.25) 100%);
+         style="background: linear-gradient(135deg, rgba(249,115,22,0.24) 0%, rgba(212,167,44,0.16) 100%);
                 border-bottom: 1px solid rgba(255,255,255,0.1);
                 backdrop-filter: blur(10px);">
         <span id="clima-icono" class="text-2xl"></span>
         <div class="flex items-center gap-4 text-sm font-bold text-white">
-            <span>🌡️ <span id="clima-temp" class="text-indigo-300"></span>°C</span>
+            <span>🌡️ <span id="clima-temp" class="text-orange-300"></span>°C</span>
             <span class="text-slate-600">|</span>
-            <span>💧 <span id="clima-humedad" class="text-indigo-300"></span>%</span>
+            <span>💧 <span id="clima-humedad" class="text-orange-300"></span>%</span>
             <span class="text-slate-600">|</span>
-            <span>💨 <span id="clima-viento" class="text-indigo-300"></span> km/h</span>
+            <span>💨 <span id="clima-viento" class="text-orange-300"></span> km/h</span>
             <span class="text-slate-600">|</span>
             <span id="clima-desc" class="text-slate-300 font-semibold"></span>
             <span class="text-slate-300 font-semibold">· Formosa</span>
@@ -26,21 +26,16 @@
     </div>
 
     <!-- Efectos luminosos de fondo -->
-    <div class="absolute -right-24 -top-24 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none"></div>
-    <div class="absolute -left-24 -bottom-24 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl pointer-events-none"></div>
+    <div class="absolute -right-24 -top-24 w-96 h-96 bg-orange-500/10 rounded-full blur-3xl pointer-events-none"></div>
+    <div class="absolute -left-24 -bottom-24 w-96 h-96 bg-amber-500/10 rounded-full blur-3xl pointer-events-none"></div>
 
     <!-- Encabezado de la Terminal -->
-    <div class="flex justify-between items-center z-10 mt-14">
-        <div class="flex items-center gap-3">
-            <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
-                <svg class="w-6 h-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M12 2v4M6 8h12M4 11v8a3 3 0 003 3h10a3 3 0 003-3v-8H4z" />
-                    <path d="M7 8V6a5 5 0 0110 0v2" />
-                </svg>
-            </div>
+    <div class="z-10 mt-14 flex flex-wrap items-center justify-between gap-4">
+        <div class="flex min-w-0 items-center gap-3 sm:gap-5">
+            <img src="{{ asset('images/fenix/logo-oficial.jpg') }}" alt="Gimnasio Fénix" class="h-12 w-12 rounded-lg object-cover ring-1 ring-amber-400/50 sm:h-16 sm:w-16">
             <div>
-                <span class="block font-black text-xl tracking-tight bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">GYMCONTROL 24 HS</span>
-                <span class="block text-[9px] font-extrabold tracking-widest text-slate-500 uppercase">Terminal de Autogestión</span>
+                <span class="block text-lg font-black uppercase tracking-widest text-orange-300 sm:text-2xl">Fénix</span>
+                <span class="block text-[9px] font-extrabold uppercase tracking-widest text-slate-400 sm:text-xs">Terminal de acceso · GymControl</span>
             </div>
         </div>
 
@@ -77,8 +72,8 @@
             </div>
 
         @elseif($estadoAcceso === 'salida')
-            <!-- PANEL AZUL: Salida Registrada -->
-            <div class="w-full bg-gradient-to-br from-indigo-600 to-indigo-800 text-white rounded-3xl p-10 md:p-16 shadow-2xl relative overflow-hidden border border-indigo-500/30 text-center space-y-6">
+            <!-- PANEL NARANJA: Salida Registrada -->
+            <div class="w-full bg-gradient-to-br from-orange-600 to-orange-800 text-white rounded-3xl p-10 md:p-16 shadow-2xl relative overflow-hidden border border-orange-400/40 text-center space-y-6">
                 <div class="absolute -right-16 -bottom-16 w-64 h-64 bg-white/5 rounded-full blur-3xl pointer-events-none"></div>
                 <div class="w-24 h-24 bg-white/20 rounded-full flex items-center justify-center border-4 border-white/30 mx-auto">
                     <svg class="w-14 h-14 text-white" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24">
@@ -86,9 +81,9 @@
                     </svg>
                 </div>
                 <div>
-                    <span class="text-xs font-black uppercase tracking-widest text-indigo-100/80">Salida Registrada</span>
+                    <span class="text-xs font-black uppercase tracking-widest text-orange-100/90">Salida Registrada</span>
                     <h2 class="text-4xl md:text-5xl font-black mt-2 tracking-tight">¡Hasta luego, {{ $socioInfo?->nombre }}!</h2>
-                    <p class="text-lg text-indigo-100/90 mt-2 font-semibold">{{ $mensajeAcceso }}</p>
+                    <p class="text-lg text-orange-100/90 mt-2 font-semibold">{{ $mensajeAcceso }}</p>
                 </div>
             </div>
 
@@ -131,7 +126,7 @@
             <div class="w-full max-w-xl text-center space-y-8">
                 <div class="space-y-3">
                     <h1 class="text-4xl md:text-5xl font-black tracking-tight text-white leading-tight">
-                        Bienvenido a <span class="bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">GymControl</span>
+                        Bienvenido a <span class="bg-gradient-to-r from-orange-300 to-amber-400 bg-clip-text text-transparent">Gimnasio Fénix</span>
                     </h1>
                     <p class="text-slate-400 text-sm md:text-base font-semibold leading-relaxed">
                         Ingresá tu PIN de acceso. El ingreso y la salida son acciones separadas.
@@ -140,7 +135,7 @@
 
                 <!-- PIN para ingreso -->
                 <div class="bg-slate-900/60 p-8 rounded-3xl border border-slate-800 shadow-2xl relative">
-                    <div class="absolute inset-x-0 top-0 h-1 bg-indigo-500/50 shadow-[0_0_15px_#6366f1] animate-[pulse_2s_infinite]"></div>
+                    <div class="absolute inset-x-0 top-0 h-1 bg-orange-500/50 shadow-[0_0_15px_#f97316] animate-[pulse_2s_infinite]"></div>
 
                     <form wire:submit.prevent="procesar" class="space-y-4">
                         <input
@@ -209,7 +204,7 @@
 
     <!-- Pie de página de la terminal -->
     <div class="text-center z-10 text-[9px] font-extrabold tracking-widest text-slate-600 uppercase border-t border-slate-900 pt-6">
-        &copy; {{ date('Y') }} GymControl 24hs. Todos los derechos reservados.
+        &copy; {{ date('Y') }} Gimnasio Fénix · Sistema GymControl
     </div>
 
 </div>

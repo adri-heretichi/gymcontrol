@@ -87,37 +87,21 @@
 
                 <hr class="border-slate-100 dark:border-slate-800">
 
-                <!-- Sección 3: Configuración de Membresía e Ingreso -->
+                <!-- Sección 3: Datos de alta -->
                 <div>
                     <h3 class="text-sm font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest mb-4">
-                        3. Membresía y Fechas
+                        3. Datos de alta
                     </h3>
                     
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        <!-- Membresía (Select Dinámico) -->
-                        <div>
-                            <label for="membresia_id" class="form-label">Membresía</label>
-                            <select id="membresia_id" wire:model="membresia_id" class="form-input">
-                                <option value="">Seleccione un plan...</option>
-                                @foreach($membresias as $membresia)
-                                    <option value="{{ $membresia->id }}">{{ $membresia->nombre }} - ${{ number_format($membresia->precio, 2, ',', '.') }}</option>
-                                @endforeach
-                            </select>
-                            @error('membresia_id') <span class="text-xs text-rose-500 font-semibold mt-1 block">{{ $message }}</span> @enderror
-                        </div>
-
-                        <!-- Fecha de Alta -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div>
                             <label for="fecha_alta" class="form-label">Fecha de Alta</label>
                             <input type="date" id="fecha_alta" wire:model="fecha_alta" class="form-input">
                             @error('fecha_alta') <span class="text-xs text-rose-500 font-semibold mt-1 block">{{ $message }}</span> @enderror
                         </div>
-
-                        <!-- Fecha de Vencimiento -->
                         <div>
-                            <label for="fecha_vencimiento" class="form-label">Fecha de Vencimiento (Requerido)</label>
-                            <input type="date" id="fecha_vencimiento" wire:model="fecha_vencimiento" class="form-input">
-                            @error('fecha_vencimiento') <span class="text-xs text-rose-500 font-semibold mt-1 block">{{ $message }}</span> @enderror
+                            <p class="form-label">Acceso y pagos</p>
+                            <p class="text-sm text-slate-600 dark:text-slate-300">Se gestionan por disciplina, grupo, inscripción y cobertura; no por una membresía general.</p>
                         </div>
                     </div>
                 </div>

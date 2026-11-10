@@ -10,7 +10,7 @@ body {
   width: 54mm;
   height: 86mm;
   overflow: hidden;
-  background: #ffffff;
+  background: #0a0a0a;
 }
 .tarjeta {
   position: absolute;
@@ -18,8 +18,8 @@ body {
   left: 0;
   width: 54mm;
   height: 86mm;
-  background: #ffffff;
-  border: 1.5pt solid #1a2a5e;
+  background: #0a0a0a;
+  border: 1.5pt solid #d4a72c;
   overflow: hidden;
   font-family: Arial, sans-serif;
 }
@@ -30,19 +30,19 @@ body {
 }
 .icono {
   font-size: 14pt;
-  color: #1a2a5e;
+  color: #d4a72c;
   line-height: 1;
 }
 .linea {
   border: none;
-  border-top: 0.5pt solid #1a2a5e;
+  border-top: 0.5pt solid #d4a72c;
   width: 70%;
   margin: 1.5mm auto;
 }
 .nombre {
   font-size: 9pt;
   font-weight: bold;
-  color: #1a2a5e;
+  color: #ffffff;
   text-transform: uppercase;
   text-align: center;
   padding: 1mm 2mm;
@@ -52,7 +52,8 @@ body {
   text-align: center;
   padding: 2mm;
   margin: 0 3mm;
-  border: 1pt solid #1a2a5e;
+  border: 1pt solid #d4a72c;
+  background: #ffffff;
 }
 .qr {
   width: 34mm;
@@ -64,29 +65,42 @@ body {
   left: 0;
   width: 54mm;
   height: 12mm;
-  background: #1a2a5e;
+  background: #000000;
+  border-top: 1pt solid #d4a72c;
   text-align: center;
   padding-top: 3mm;
 }
 .footer-texto {
   font-size: 9pt;
   font-weight: bold;
-  color: #ffffff;
+  color: #d4a72c;
   text-transform: uppercase;
   letter-spacing: 1pt;
 }
 .estrella {
-  color: #ffffff;
+  color: #d4a72c;
   font-size: 7pt;
   display: block;
   margin-bottom: 1mm;
+}
+.logo-fenix {
+  width: 16mm;
+  height: 16mm;
+  object-fit: cover;
+  border: 0.5pt solid #d4a72c;
+}
+.marca-secundaria {
+  color: #d4a72c;
+  font-size: 6pt;
+  font-weight: bold;
+  letter-spacing: 0.5pt;
 }
 </style>
 </head>
 <body>
 <div class="tarjeta">
   <div class="header">
-    <div class="icono">&#9961;</div>
+    <img class="logo-fenix" src="{{ $logoData }}" alt="Gimnasio Fénix">
     <hr class="linea">
     <p class="nombre">{{ $socio->nombre }} {{ $socio->apellido }}</p>
     <hr class="linea">
@@ -102,7 +116,8 @@ body {
   </div>
   <div class="footer">
     <span class="estrella">&#9733;</span>
-    <span class="footer-texto">GYMCONTROL</span>
+    <span class="footer-texto">FÉNIX</span>
+    <span class="marca-secundaria">SISTEMA GYMCONTROL</span>
   </div>
 </div>
 </body>

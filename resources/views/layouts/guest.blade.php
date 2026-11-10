@@ -26,14 +26,14 @@
             .split-container {
                 display: flex;
                 min-height: 100vh;
-                height: 100vh;
-                overflow: hidden;
+                min-height: 100svh;
+                overflow-x: hidden;
             }
             .left-pane {
                 display: none;
                 flex: 1.2;
                 position: relative;
-                background-image: linear-gradient(135deg, rgba(15, 23, 42, 0.85), rgba(30, 27, 75, 0.95)), url('{{ asset('images/gym_bg.png') }}');
+                background-image: linear-gradient(135deg, rgba(10, 10, 10, 0.82), rgba(10, 10, 10, 0.96)), url('{{ asset('images/gym_bg.png') }}');
                 background-size: cover;
                 background-position: center;
                 flex-direction: column;
@@ -48,6 +48,8 @@
             }
             .right-pane {
                 flex: 1;
+                min-height: 100vh;
+                min-height: 100svh;
                 display: flex;
                 flex-direction: column;
                 justify-content: center;
@@ -65,7 +67,7 @@
                 font-size: 1.8rem;
                 font-weight: 900;
                 letter-spacing: -0.05em;
-                background: linear-gradient(to right, #818cf8, #c084fc);
+                background: linear-gradient(to right, #fdba74, #f97316);
                 -webkit-background-clip: text;
                 -webkit-text-fill-color: transparent;
                 text-transform: uppercase;
@@ -88,9 +90,9 @@
                 width: 2.5rem;
                 height: 2.5rem;
                 border-radius: 0.75rem;
-                background-color: rgba(99, 102, 241, 0.15);
-                color: #818cf8;
-                border: 1px solid rgba(99, 102, 241, 0.2);
+                background-color: rgba(249, 115, 22, 0.15);
+                color: #fdba74;
+                border: 1px solid rgba(249, 115, 22, 0.3);
                 flex-shrink: 0;
             }
             .feature-text h4 {
@@ -131,12 +133,12 @@
                 box-sizing: border-box !important;
             }
             input[type="email"]:focus, input[type="password"]:focus {
-                border-color: #6366f1 !important;
+                border-color: #f97316 !important;
                 outline: none !important;
-                box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.25) !important;
+                box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.25) !important;
             }
             button[type="submit"] {
-                background-color: #4f46e5 !important; /* Indigo 600 */
+                background-color: #ea580c !important;
                 color: #ffffff !important;
                 font-weight: 800 !important;
                 text-transform: uppercase !important;
@@ -152,17 +154,17 @@
                 box-sizing: border-box !important;
             }
             button[type="submit"]:hover {
-                background-color: #4338ca !important; /* Indigo 700 */
+                background-color: #c2410c !important;
                 transform: translateY(-1px) !important;
             }
             a {
-                color: #818cf8 !important; /* Indigo 400 */
+                color: #fdba74 !important;
                 font-weight: 600 !important;
                 transition: color 0.15s ease-in-out !important;
                 text-decoration: none !important;
             }
             a:hover {
-                color: #a5b4fc !important; /* Indigo 300 */
+                color: #fed7aa !important;
                 text-decoration: underline !important;
             }
             .checkbox-label {
@@ -194,18 +196,14 @@
             <!-- Left Pane: Visual Brand Info -->
             <div class="left-pane">
                 <div class="brand-logo">
-                    <!-- Kettlebell Icon SVG -->
-                    <svg class="w-8 h-8 text-indigo-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M12 2v4M6 8h12M4 11v8a3 3 0 003 3h10a3 3 0 003-3v-8H4z" />
-                        <path d="M7 8V6a5 5 0 0110 0v2" />
-                    </svg>
+                    <img src="{{ asset('images/fenix/logo-oficial.jpg') }}" alt="Gimnasio Fénix" class="h-14 w-14 rounded-lg object-cover ring-1 ring-amber-400/40">
                     <span class="brand-name">GymControl</span>
                 </div>
 
                 <div>
                     <h1 class="text-4xl font-extrabold text-white tracking-tight leading-tight" style="font-size: 2.25rem; font-weight: 900; line-height: 1.2;">
                         Gestión 24 horas <br>
-                        <span style="color: #818cf8;">fácil e inteligente.</span>
+                        <span style="color: #fdba74;">fácil e inteligente.</span>
                     </h1>
                     <p class="text-slate-400 mt-4 text-sm max-w-md" style="color: #94a3b8; font-size: 0.875rem; line-height: 1.5; margin-top: 1rem;">
                         Plataforma integral para administración de socios, asistencias en tiempo real y facturación automatizada.
@@ -231,8 +229,8 @@
                                 </svg>
                             </div>
                             <div class="feature-text">
-                                <h4>Membresías y Aptos Médicos</h4>
-                                <p>Validación de vigencias y alertas visuales instantáneas al personal.</p>
+                                <h4>Disciplinas, grupos e inscripciones</h4>
+                                <p>Gestión de actividades, horarios, cupos y solicitudes de inscripción.</p>
                             </div>
                         </div>
 
@@ -260,12 +258,9 @@
                 <div class="card-wrapper">
                     <!-- Mobile Logo Branding -->
                     <div class="lg:hidden flex flex-col items-center mb-8" style="display: flex; flex-direction: column; align-items: center; margin-bottom: 2rem;">
-                        <div class="flex items-center gap-2 mb-2" style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
-                            <svg class="w-8 h-8 text-indigo-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width: 2rem; height: 2rem; color: #818cf8;">
-                                <path d="M12 2v4M6 8h12M4 11v8a3 3 0 003 3h10a3 3 0 003-3v-8H4z" />
-                                <path d="M7 8V6a5 5 0 0110 0v2" />
-                            </svg>
-                            <span class="brand-name" style="font-size: 1.5rem; font-weight: 900; background: linear-gradient(to right, #818cf8, #c084fc); -webkit-background-clip: text; -webkit-text-fill-color: transparent; text-transform: uppercase;">GymControl</span>
+                        <div class="flex flex-col items-center gap-2 mb-2" style="display: flex; flex-direction: column; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
+                            <img src="{{ asset('images/fenix/logo-oficial.jpg') }}" alt="Gimnasio Fénix" class="h-20 w-20 rounded-xl object-cover ring-1 ring-amber-400/40">
+                            <span class="brand-name" style="font-size: 1.5rem; font-weight: 900; background: linear-gradient(to right, #fdba74, #f97316); -webkit-background-clip: text; -webkit-text-fill-color: transparent; text-transform: uppercase;">GymControl</span>
                         </div>
                         <h2 class="text-lg font-bold text-slate-300" style="font-size: 1.125rem; font-weight: 700; color: #cbd5e1; margin: 0;">Iniciar Sesión</h2>
                     </div>
@@ -279,7 +274,7 @@
         <footer class="bg-white border-t border-gray-200 py-6 mt-auto" x-data="{ openEquipo: false }">
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center text-sm text-gray-500 flex justify-center items-center gap-1">
                 <span>GymControl &copy; 2026 &middot;</span>
-                <button type="button" @click="openEquipo = true" class="text-indigo-600 hover:text-indigo-900 font-semibold focus:outline-none">
+                <button type="button" @click="openEquipo = true" class="text-orange-700 hover:text-orange-900 font-semibold focus:outline-none">
                     [Ver equipo &rarr;]
                 </button>
             </div>
@@ -326,7 +321,7 @@
                                     Lógica del sistema, base de datos y gestión de información
                                 </div>
                                 <p class="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                                    Responsable de organizar el funcionamiento interno de GymControl, incluyendo la gestión de socios, membresías, pagos, aptos físicos y asistencias. Su trabajo permite que la información se registre, se procese y se consulte correctamente.
+                                    Responsable de organizar el funcionamiento interno de GymControl, incluyendo socios, actividades, coberturas, certificados individuales y asistencias.
                                 </p>
                             </div>
 
@@ -362,7 +357,7 @@
                                     Integración entre interfaz, funcionalidades y control de asistencia
                                 </div>
                                 <p class="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                                    Responsable de conectar la parte visual con la lógica interna del sistema. Su trabajo se enfoca en integrar funciones como ingreso y egreso de socios, validación de membresías, uso de token o QR y generación de reportes dentro de GymControl.
+                                    Responsable de conectar la interfaz con los flujos de inscripción, pagos por actividad, ingreso y egreso por PIN o QR, y generación de reportes.
                                 </p>
                             </div>
                         </div>

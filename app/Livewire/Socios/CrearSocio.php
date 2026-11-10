@@ -3,7 +3,6 @@
 namespace App\Livewire\Socios;
 
 use App\Events\GymRealtimeUpdate;
-use App\Models\Membresia;
 use App\Models\Socio;
 use Carbon\Carbon;
 use Livewire\Component;
@@ -17,19 +16,14 @@ class CrearSocio extends Component
     public $sexo = 'M'; // Por defecto Masculino
     public $correo = '';
     public $celular = '';
-    public $membresia_id = null; // Debe ser seleccionada por el operador
     public $fecha_alta = '';
-    public $fecha_vencimiento = ''; // Obligatoriamente seleccionada de forma manual por el operador
     public $estado = 'activo'; // Activo por defecto al registrarse
     
     // Propiedad foto preparada para futura carga de archivos (temporalmente nula)
     public $foto = null;
 
-    // Listado de membresías activas para la lista desplegable
-    public $membresias = [];
-
     /**
-     * Inicializa la fecha de alta por defecto y carga las membresías activas.
+     * Inicializa la fecha de alta por defecto.
      */
     public function mount()
     {
@@ -37,7 +31,6 @@ class CrearSocio extends Component
             abort(403, 'No tienes los permisos necesarios para acceder a esta sección.');
         }
         $this->fecha_alta = Carbon::today()->format('Y-m-d');
-        $this->membresias = Membresia::where('estado', 'activo')->get();
     }
 
     /**
@@ -52,9 +45,7 @@ class CrearSocio extends Component
             'sexo' => 'required|in:M,F',
             'correo' => 'nullable|email|unique:socios,correo|max:255',
             'celular' => 'nullable|string|max:50',
-            'membresia_id' => 'required|exists:membresias,id',
             'fecha_alta' => 'required|date',
-            'fecha_vencimiento' => 'nullable|date',
             'foto' => 'nullable', // Regla preparada para futuras integraciones de uploads
         ];
     }
@@ -71,10 +62,7 @@ class CrearSocio extends Component
         'sexo.required' => 'Debe seleccionar el sexo.',
         'correo.email' => 'El formato del correo electrónico es inválido.',
         'correo.unique' => 'Este correo electrónico ya está registrado.',
-        'membresia_id.required' => 'Debe seleccionar una membresía.',
         'fecha_alta.required' => 'La fecha de alta es obligatoria.',
-        'fecha_vencimiento.required' => 'La fecha de vencimiento es obligatoria y debe ser seleccionada manualmente.',
-        'fecha_vencimiento.after_or_equal' => 'El vencimiento no puede ser anterior al alta.',
     ];
 
     /**
@@ -104,7 +92,7 @@ class CrearSocio extends Component
         // 3. Registramos el socio en la base de datos
         // Sin emitir inmediatamente QR ni PIN, con decisión médica en pendiente
         $socioCreado = Socio::create([
-            'membresia_id' => $this->membresia_id,
+            'membresia_id' => null,
             'nombre' => $nombreNormalizado,
             'apellido' => $apellidoNormalizado,
             'dni' => $this->dni,

@@ -24,10 +24,6 @@ Route::middleware(['auth'])->group(function () {
     Route::middleware(['rol:admin'])->group(function () {
         Route::get('socios/{socio}/editar', EditarSocio::class)->name('socios.edit');
 
-        // CRUD de Membresías: Escritura
-        Route::get('membresias/crear', \App\Livewire\Membresias\CrearMembresia::class)->name('membresias.create');
-        Route::get('membresias/{membresia}/editar', \App\Livewire\Membresias\EditarMembresia::class)->name('membresias.edit');
-
         // Gestión de Operadores
         Route::get('operadores', \App\Livewire\Operadores\ListarOperadores::class)->name('operadores.index');
         Route::get('operadores/crear', \App\Livewire\Operadores\CrearOperador::class)->name('operadores.create');
@@ -55,9 +51,6 @@ Route::middleware(['auth'])->group(function () {
     // Gestión de Inscripciones, Aprobaciones y Cupos (Accesible por ambos roles)
     Route::get('inscripciones', \App\Livewire\Inscripciones\ListarInscripciones::class)->name('inscripciones.index');
     Route::get('inscripciones/crear', \App\Livewire\Inscripciones\CrearInscripcion::class)->name('inscripciones.create');
-
-    // CRUD de Membresías: Lectura (Accesible por ambos roles)
-    Route::get('membresias', \App\Livewire\Membresias\ListarMembresias::class)->name('membresias.index');
 
     // CRUD de Aptos Físicos: Lectura y Carga (Accesible por ambos roles)
     Route::get('aptos-fisicos', \App\Livewire\AptosFisicos\ListarAptosFisicos::class)->name('aptos-fisicos.index');

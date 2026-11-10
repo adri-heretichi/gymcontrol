@@ -160,20 +160,20 @@ class Socio extends Model
     }
 
     /**
-     * Verifica si el socio posee cuota vigente (por fecha general o coberturas de pago).
+     * Verifica si una inscripción aprobada tiene cobertura vigente en un pago activo.
      */
     public function tieneCuotaVigente(): bool
     {
-        if ($this->fecha_vencimiento && ($this->fecha_vencimiento->isToday() || $this->fecha_vencimiento->isFuture())) {
-            return true;
-        }
+        $fecha = now(config('app.timezone'))->toDateString();
 
-        return PagoDetalle::whereHas('inscripcion', function ($q) {
-            $q->where('socio_id', $this->id);
-        })
-        ->where('fecha_inicio_cobertura', '<=', now()->toDateString())
-        ->where('fecha_fin_cobertura', '>=', now()->toDateString())
-        ->exists();
+        return $this->inscripciones()
+            ->where('estado', Inscripcion::ESTADO_APROBADA)
+            ->whereHas('pagoDetalles', fn ($query) => $query
+                ->where('estado_cobertura', PagoDetalle::COBERTURA_VIGENTE)
+                ->whereDate('fecha_inicio_cobertura', '<=', $fecha)
+                ->whereDate('fecha_fin_cobertura', '>=', $fecha)
+                ->whereHas('pago', fn ($pago) => $pago->where('estado', Pago::ESTADO_ACTIVO)))
+            ->exists();
     }
 
     /**
@@ -184,13 +184,8 @@ class Socio extends Model
      */
     public function puedeEmitirCredenciales(): bool
     {
-        $tieneInscripcionAprobada = $this->inscripciones()
-            ->where('estado', Inscripcion::ESTADO_APROBADA)
-            ->exists();
-
-        return $tieneInscripcionAprobada
-            && $this->tieneCuotaVigente()
-            && $this->cumpleRequisitoMedico();
+        return app(\App\Services\CredencialService::class)
+            ->evaluarRequisitosEmision($this)['habilitado'];
     }
 
     /**

@@ -91,7 +91,7 @@ class PagoDetalle extends Model
      */
     public function scopeVigenteEn($query, string $fecha)
     {
-        return $query->where('fecha_inicio_cobertura', '<=', $fecha)
-                     ->where('fecha_fin_cobertura', '>=', $fecha);
+        return $query->whereDate('fecha_inicio_cobertura', '<=', $fecha)
+                     ->whereDate('fecha_fin_cobertura', '>=', $fecha);
     }
 }

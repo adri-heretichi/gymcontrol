@@ -23,15 +23,15 @@
             <!-- Banner del clima fijo debajo de la navegación -->
             <div id="clima-banner-app"
                  class="hidden items-center justify-center gap-4 px-6 py-2 text-sm font-semibold"
-                 style="background: linear-gradient(135deg, rgba(26,42,94,0.08) 0%, rgba(99,102,241,0.08) 100%);
-                        border-bottom: 1px solid rgba(99,102,241,0.15);">
+                 style="background: linear-gradient(135deg, rgba(249,115,22,0.08) 0%, rgba(212,167,44,0.08) 100%);
+                        border-bottom: 1px solid rgba(249,115,22,0.2);">
                 <span id="clima-icono-app" class="text-lg"></span>
                 <span class="text-slate-600 dark:text-slate-300">
-                    🌡️ <span id="clima-temp-app" class="font-bold text-indigo-600"></span>°C
+                    🌡️ <span id="clima-temp-app" class="font-bold text-orange-700"></span>°C
                     &nbsp;|&nbsp;
-                    💧 <span id="clima-humedad-app" class="font-bold text-indigo-600"></span>%
+                    💧 <span id="clima-humedad-app" class="font-bold text-orange-700"></span>%
                     &nbsp;|&nbsp;
-                    💨 <span id="clima-viento-app" class="font-bold text-indigo-600"></span> km/h
+                    💨 <span id="clima-viento-app" class="font-bold text-orange-700"></span> km/h
                     &nbsp;|&nbsp;
                     <span id="clima-desc-app" class="text-slate-500"></span>
                     · Formosa
@@ -103,7 +103,7 @@
                                         Lógica del sistema, base de datos y gestión de información
                                     </div>
                                     <p class="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                                        Responsable de organizar el funcionamiento interno de GymControl, incluyendo la gestión de socios, membresías, pagos, aptos físicos y asistencias. Su trabajo permite que la información se registre, se procese y se consulte correctamente.
+                                        Responsable de organizar el funcionamiento interno de GymControl, incluyendo socios, actividades, coberturas, certificados individuales y asistencias.
                                     </p>
                                 </div>
 
@@ -139,7 +139,7 @@
                                         Integración entre interfaz, funcionalidades y control de asistencia
                                     </div>
                                     <p class="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                                        Responsable de conectar la parte visual con la lógica interna del sistema. Su trabajo se enfoca en integrar funciones como ingreso y egreso de socios, validación de membresías, uso de token o QR y generación de reportes dentro de GymControl.
+                                        Responsable de conectar la interfaz con los flujos de inscripción, pagos por actividad, ingreso y egreso por PIN o QR, y generación de reportes.
                                     </p>
                                 </div>
                             </div>

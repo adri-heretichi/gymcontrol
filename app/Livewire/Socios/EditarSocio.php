@@ -3,9 +3,7 @@
 namespace App\Livewire\Socios;
 
 use App\Models\Auditoria;
-use App\Models\Membresia;
 use App\Models\Socio;
-use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Livewire\Component;
 
@@ -21,18 +19,13 @@ class EditarSocio extends Component
     public $sexo = '';
     public $correo = '';
     public $celular = '';
-    public $membresia_id = '';
     public $fecha_alta = '';
-    public $fecha_vencimiento = '';
     
     // El estado del socio
     public $estado = '';
     
     // Propiedad foto preparada
     public $foto = null;
-
-    // Listado de membresías activas para la lista desplegable
-    public $membresias = [];
 
     /**
      * Inicializa y carga los datos del socio en los campos del formulario.
@@ -43,8 +36,6 @@ class EditarSocio extends Component
             abort(403, 'No tienes los permisos necesarios para acceder a esta sección.');
         }
         $this->socio = $socio;
-        $this->membresias = Membresia::where('estado', 'activo')->get();
-
         // Hidratamos las variables del formulario de forma defensiva
         $this->nombre = $socio->nombre;
         $this->apellido = $socio->apellido;
@@ -52,9 +43,7 @@ class EditarSocio extends Component
         $this->sexo = $socio->sexo;
         $this->correo = $socio->correo;
         $this->celular = $socio->celular;
-        $this->membresia_id = $socio->membresia_id;
         $this->fecha_alta = $socio->fecha_alta ? $socio->fecha_alta->format('Y-m-d') : '';
-        $this->fecha_vencimiento = $socio->fecha_vencimiento ? $socio->fecha_vencimiento->format('Y-m-d') : '';
         $this->estado = $socio->estado;
     }
 
@@ -70,9 +59,7 @@ class EditarSocio extends Component
             'sexo' => 'required|in:M,F',
             'correo' => 'nullable|email|unique:socios,correo,' . $this->socio->id . '|max:255',
             'celular' => 'nullable|string|max:50',
-            'membresia_id' => 'required|exists:membresias,id',
             'fecha_alta' => 'required|date',
-            'fecha_vencimiento' => 'required|date|after_or_equal:fecha_alta',
             'foto' => 'nullable', // Preparado para futuras integraciones
         ];
 
@@ -96,10 +83,7 @@ class EditarSocio extends Component
         'sexo.required' => 'Debe seleccionar el sexo.',
         'correo.email' => 'El formato del correo electrónico es inválido.',
         'correo.unique' => 'Este correo electrónico ya está registrado por otro socio.',
-        'membresia_id.required' => 'Debe seleccionar una membresía.',
         'fecha_alta.required' => 'La fecha de alta es obligatoria.',
-        'fecha_vencimiento.required' => 'La fecha de vencimiento es obligatoria.',
-        'fecha_vencimiento.after_or_equal' => 'El vencimiento no puede ser anterior al alta.',
         'estado.required' => 'El estado es obligatorio.',
     ];
 
@@ -125,7 +109,6 @@ class EditarSocio extends Component
 
         // 3. Modificamos el registro en la base de datos sin alterar el QR ni el PIN.
         $datos = [
-            'membresia_id' => $this->membresia_id,
             'nombre' => $nombreNormalizado,
             'apellido' => $apellidoNormalizado,
             'dni' => $this->dni,
@@ -133,10 +116,9 @@ class EditarSocio extends Component
             'correo' => $correoNormalizado,
             'celular' => $celularNormalizado,
             'fecha_alta' => $this->fecha_alta,
-            'fecha_vencimiento' => $this->fecha_vencimiento,
             'estado' => $this->estado,
         ];
-        $camposAuditables = ['membresia_id', 'nombre', 'apellido', 'correo', 'celular', 'fecha_alta', 'fecha_vencimiento', 'estado'];
+        $camposAuditables = ['nombre', 'apellido', 'correo', 'celular', 'fecha_alta', 'estado'];
         DB::transaction(function () use ($datos, $camposAuditables) {
             $socio = Socio::query()->lockForUpdate()->findOrFail($this->socio->id);
             $antes = array_intersect_key($socio->getAttributes(), array_flip($camposAuditables));
