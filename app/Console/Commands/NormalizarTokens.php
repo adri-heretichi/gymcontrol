@@ -33,23 +33,12 @@ class NormalizarTokens extends Command
         $headers = ['ID', 'Nombre', 'Token Anterior', 'Token Nuevo'];
         $rows = [];
 
-        $qrDir = storage_path('app/private/qrs');
-        if (!file_exists($qrDir)) {
-            mkdir($qrDir, 0755, true);
-        }
-
         foreach ($socios as $socio) {
             $tokenAnterior = $socio->token;
             $tokenNuevo = str_pad($numero, 4, '0', STR_PAD_LEFT);
             
             $socio->update(['token' => $tokenNuevo]);
 
-            // Regenerar el QR con el nuevo token secuencial (SVG)
-            $qrPath = $qrDir . '/qr_' . $socio->id . '.svg';
-            \SimpleSoftwareIO\QrCode\Facades\QrCode::format('svg')
-                ->size(200)
-                ->generate(config('app.url') . '/terminal/scan/' . $tokenNuevo, $qrPath);
-            
             $rows[] = [
                 $socio->id,
                 $socio->nombre . ' ' . $socio->apellido,

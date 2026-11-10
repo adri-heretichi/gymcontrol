@@ -1,101 +1,71 @@
 FROM php:8.3-fpm-alpine
-# Build version: 2026-07-04-v3
 
-# Instalar dependencias del sistema compatibles con Alpine
-RUN apk update && apk add --no-cache \
-    git \
+RUN apk add --no-cache \
     curl \
-    openssl \
-    postgresql-dev \
+    curl-dev \
+    freetype-dev \
+    g++ \
+    git \
+    icu-dev \
+    libjpeg-turbo-dev \
+    libpng-dev \
+    libzip-dev \
+    make \
     nodejs \
     npm \
-    make \
-    g++ \
-    libpng-dev \
-    freetype-dev \
-    libjpeg-turbo-dev \
-    libzip-dev \
-    icu-dev \
     oniguruma-dev \
+    postgresql-dev \
     tzdata \
-    && docker-php-ext-configure gd \
-        --with-freetype --with-jpeg \
+    && docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install \
-        pdo_pgsql \
-        pgsql \
-        opcache \
-        pcntl \
+        bcmath \
+        curl \
         exif \
         gd \
-        zip \
         intl \
-        bcmath \
         mbstring \
+        opcache \
+        pcntl \
+        pdo_mysql \
+        pdo_pgsql \
+        pgsql \
+        zip \
     && cp /usr/share/zoneinfo/America/Argentina/Buenos_Aires /etc/localtime \
-    && echo "America/Argentina/Buenos_Aires" > /etc/timezone \
-    && rm -rf /var/cache/apk/*
+    && echo "America/Argentina/Buenos_Aires" > /etc/timezone
 
-# Instalar Composer
-RUN curl -sS https://getcomposer.org/installer | php \
-    -- --install-dir=/usr/local/bin --filename=composer
+COPY --from=composer:2 /usr/bin/composer /usr/local/bin/composer
 
-# Directorio de trabajo
 WORKDIR /var/www
+COPY --chown=www-data:www-data . .
 
-# Copiar proyecto
-COPY . .
+ARG VITE_REVERB_APP_KEY=
+ARG VITE_REVERB_HOST=
+ARG VITE_REVERB_PORT=8080
+ARG VITE_REVERB_SCHEME=https
+ENV VITE_REVERB_APP_KEY=${VITE_REVERB_APP_KEY} \
+    VITE_REVERB_HOST=${VITE_REVERB_HOST} \
+    VITE_REVERB_PORT=${VITE_REVERB_PORT} \
+    VITE_REVERB_SCHEME=${VITE_REVERB_SCHEME}
 
-# Crear directorios necesarios antes de composer
-RUN mkdir -p /var/www/bootstrap/cache \
-    && mkdir -p /var/www/storage/framework/sessions \
-    && mkdir -p /var/www/storage/framework/views \
-    && mkdir -p /var/www/storage/framework/cache \
-    && mkdir -p /var/www/storage/logs \
-    && chmod -R 775 /var/www/bootstrap/cache \
-    && chmod -R 775 /var/www/storage
+RUN mkdir -p \
+        bootstrap/cache \
+        storage/app/private \
+        storage/framework/cache \
+        storage/framework/sessions \
+        storage/framework/views \
+        storage/logs \
+    && composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader \
+    && npm ci \
+    && npm run build \
+    && rm -rf node_modules \
+    && chown -R www-data:www-data bootstrap/cache storage \
+    && chmod -R 775 bootstrap/cache storage
 
-# Instalar dependencias PHP sin dev
-RUN composer install --prefer-dist --no-dev --optimize-autoloader
+COPY docker/start-container.sh /usr/local/bin/start-container
+RUN chmod 755 /usr/local/bin/start-container
 
-# Instalar dependencias JS y compilar
-RUN npm install && npm run build
+ENV SERVICE_ROLE=web
+EXPOSE 8000 8080
+USER www-data
 
-# Copiar .env base
-RUN cp .env.example .env
-
-# Generar clave
-RUN php artisan key:generate
-
-# Permisos finales
-RUN chown -R www-data:www-data /var/www \
-    && chmod -R 775 /var/www/storage \
-    && chmod -R 775 /var/www/bootstrap/cache
-
-EXPOSE 8000
-
-RUN printf '#!/bin/sh\n\
-set -e\n\
-\n\
-echo "=== GymControl - Iniciando en Render ==="\n\
-\n\
-php artisan optimize:clear\n\
-\n\
-php artisan storage:link || true\n\
-\n\
-php artisan vendor:publish --tag=livewire:config --force\n\
-php artisan vendor:publish --tag=laravel-pagination --force\n\
-\n\
-php artisan migrate --force\n\
-php artisan db:seed --class=DatabaseSeeder --force 2>/dev/null || true\n\
-php artisan tokens:normalizar\n\
-\n\
-php artisan optimize\n\
-\n\
-echo "=== Deploy completado. Iniciando servidor ==="\n\
-export TZ=America/Argentina/Buenos_Aires\n\
-exec php artisan serve --host=0.0.0.0 --port=${PORT:-8000}\n\
-' > /usr/local/bin/start-container
-
-RUN chmod +x /usr/local/bin/start-container
-
-CMD ["/usr/local/bin/start-container"]
+ENTRYPOINT ["/usr/local/bin/start-container"]

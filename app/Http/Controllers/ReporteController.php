@@ -175,22 +175,13 @@ class ReporteController extends Controller
      */
     public function tarjeta(Socio $socio)
     {
-        $qrPath = storage_path('app/private/qrs/qr_' . $socio->id . '.svg');
-
-        // Regenerar el QR si por algún motivo no existe en el disco
-        if (!file_exists($qrPath)) {
-            $qrDir = storage_path('app/private/qrs');
-            if (!file_exists($qrDir)) {
-                mkdir($qrDir, 0755, true);
-            }
-            \SimpleSoftwareIO\QrCode\Facades\QrCode::format('svg')
+        $svgData = null;
+        if ($socio->tieneCredencialesActivas()) {
+            $svgContenido = \SimpleSoftwareIO\QrCode\Facades\QrCode::format('svg')
                 ->size(200)
-                ->generate(config('app.url') . '/terminal/scan/' . $socio->token, $qrPath);
+                ->generate(config('app.url') . '/terminal/scan/' . $socio->qr_token);
+            $svgData = 'data:image/svg+xml;base64,' . base64_encode($svgContenido);
         }
-
-        // Codificar la imagen en base64 para que DomPDF la renderice correctamente desde memoria
-        $svgContenido = file_get_contents($qrPath);
-        $svgData = 'data:image/svg+xml;base64,' . base64_encode($svgContenido);
 
         $pdf = Pdf::loadView('reportes.tarjeta', compact('socio', 'svgData'));
         $pdf->setPaper([0, 0, 153.07, 243.78], 'portrait');

@@ -3,7 +3,9 @@
 namespace App\Livewire\Socios;
 
 use App\Models\Socio;
+use App\Services\CredencialService;
 use Carbon\Carbon;
+use InvalidArgumentException;
 use Livewire\Component;
 use Livewire\WithPagination;
 
@@ -29,6 +31,8 @@ class VerSocio extends Component
      */
     public function mount(Socio $socio)
     {
+        $this->authorize('view', $socio);
+
         // 1. Carga optimizada de relaciones: Solo cargamos la membresía mediante Eager Loading, 
         // ya que los pagos, asistencias y certificados médicos se consultan con queries directos optimizados.
         $this->socio = $socio->load(['membresia']);
@@ -75,30 +79,130 @@ class VerSocio extends Component
             ->take(5)
             ->get();
 
-        // Verificar si existe el archivo QR en formato SVG (Problema 5)
-        $this->existeQr = file_exists(storage_path('app/private/qrs/qr_' . $this->socio->id . '.svg'));
+        // Cargar estado y evaluación médica (Fase 6)
+        $this->decision_medica_seleccionada = $this->socio->decision_medica ?? 'pendiente';
+        $this->decision_medica_observacion  = $this->socio->decision_medica_obs ?? '';
+        $this->evaluacionMedica = app(\App\Services\CertificadoMedicoService::class)->evaluarRequisitoMedico($this->socio);
+        $this->evaluacionCredenciales = app(CredencialService::class)->evaluarRequisitosEmision($this->socio);
     }
 
-    // Propiedad para saber si existe el QR en disco
-    public bool $existeQr = false;
+    // Gestión médica individual (Fase 6)
+    public string $decision_medica_seleccionada = '';
+    public string $decision_medica_observacion = '';
+    public string $nota_solicitud_medica = '';
+    public array $evaluacionMedica = [];
+    public string $motivoCredenciales = '';
+    public string $pinEmitido = '';
+    public array $evaluacionCredenciales = [];
 
     /**
-     * Regenera el código QR del socio en formato SVG al hacer clic en el botón (Problema 5).
+     * Define o modifica la decisión médica del socio (Exclusivo de la Dueña).
      */
-    public function regenerarQr()
+    public function actualizarDecisionMedica(): void
     {
-        $qrDir = storage_path('app/private/qrs');
-        if (!file_exists($qrDir)) {
-            mkdir($qrDir, 0755, true);
+        $this->authorize('gestionarDecisionMedica', $this->socio);
+
+        $service = app(\App\Services\CertificadoMedicoService::class);
+        $this->socio = $service->definirDecision(
+            socio: $this->socio,
+            nuevaDecision: $this->decision_medica_seleccionada,
+            duena: auth()->user(),
+            observacion: $this->decision_medica_observacion ?: null
+        );
+
+        $this->evaluacionMedica = $service->evaluarRequisitoMedico($this->socio);
+        $this->decision_medica_observacion = $this->socio->decision_medica_obs ?? '';
+
+        session()->flash('mensaje_medico', 'Decisión médica actualizada correctamente.');
+    }
+
+    /**
+     * Permite a la Recepcionista informar a la Dueña para revisión médica.
+     */
+    public function enviarSolicitudRevisionMedica(): void
+    {
+        abort_unless(auth()->user()->esDuena() || auth()->user()->esRecepcionista(), 403);
+
+        $this->validate([
+            'nota_solicitud_medica' => 'required|string|min:5|max:500',
+        ], [
+            'nota_solicitud_medica.required' => 'Ingresá el motivo o detalle de la documentación presentada.',
+            'nota_solicitud_medica.min' => 'El mensaje debe tener al menos 5 caracteres.',
+        ]);
+
+        $service = app(\App\Services\CertificadoMedicoService::class);
+        $service->informarRevisionADuena(
+            socio: $this->socio,
+            recepcionista: auth()->user(),
+            descripcion: $this->nota_solicitud_medica
+        );
+
+        $this->nota_solicitud_medica = '';
+        session()->flash('mensaje_medico', 'Notificación enviada a la dueña para revisión.');
+    }
+
+    public function emitirCredenciales(): void
+    {
+        $this->authorize('emitirCredenciales', $this->socio);
+
+        try {
+            $credenciales = app(CredencialService::class)->emitirPrimeraVez($this->socio, auth()->user());
+        } catch (InvalidArgumentException $exception) {
+            $this->addError('credenciales', $exception->getMessage());
+            return;
         }
-        $qrPath = $qrDir . '/qr_' . $this->socio->id . '.svg';
 
-        \SimpleSoftwareIO\QrCode\Facades\QrCode::format('svg')
-            ->size(200)
-            ->generate(config('app.url') . '/terminal/scan/' . $this->socio->token, $qrPath);
+        $this->pinEmitido = $credenciales['pin'];
+        $this->socio->refresh();
+        $this->evaluacionCredenciales = app(CredencialService::class)->evaluarRequisitosEmision($this->socio);
+    }
 
-        $this->existeQr = true;
-        session()->flash('message', 'Código QR regenerado con éxito.');
+    public function reponerCredenciales(): void
+    {
+        $this->authorize('emitirCredenciales', $this->socio);
+        $this->validate([
+            'motivoCredenciales' => ['required', 'string', 'max:1000'],
+        ]);
+
+        try {
+            $credenciales = app(CredencialService::class)->reponerCredenciales(
+                $this->socio,
+                auth()->user(),
+                $this->motivoCredenciales
+            );
+        } catch (InvalidArgumentException $exception) {
+            $this->addError('credenciales', $exception->getMessage());
+            return;
+        }
+
+        $this->motivoCredenciales = '';
+        $this->pinEmitido = $credenciales['pin'];
+        $this->socio->refresh();
+        $this->evaluacionCredenciales = app(CredencialService::class)->evaluarRequisitosEmision($this->socio);
+    }
+
+    public function revocarCredenciales(): void
+    {
+        $this->authorize('emitirCredenciales', $this->socio);
+        $this->validate([
+            'motivoCredenciales' => ['required', 'string', 'max:1000'],
+        ]);
+
+        try {
+            app(CredencialService::class)->revocarCredenciales(
+                $this->socio,
+                auth()->user(),
+                $this->motivoCredenciales
+            );
+        } catch (InvalidArgumentException $exception) {
+            $this->addError('credenciales', $exception->getMessage());
+            return;
+        }
+
+        $this->motivoCredenciales = '';
+        $this->pinEmitido = '';
+        $this->socio->refresh();
+        $this->evaluacionCredenciales = app(CredencialService::class)->evaluarRequisitosEmision($this->socio);
     }
 
     public function render()

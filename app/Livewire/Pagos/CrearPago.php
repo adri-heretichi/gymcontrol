@@ -2,115 +2,268 @@
 
 namespace App\Livewire\Pagos;
 
+use App\Models\Inscripcion;
 use App\Models\Pago;
 use App\Models\Socio;
+use App\Services\PagoService;
 use Carbon\Carbon;
 use Livewire\Component;
 
+/**
+ * CrearPago – Fase 5.
+ *
+ * Permite registrar un pago con uno o varios conceptos (detalles) por inscripción.
+ * Utiliza PagoService como única fuente de lógica de negocio.
+ *
+ * FLUJO:
+ *   1. Operador busca/selecciona socio.
+ *   2. Sistema muestra inscripciones activas del socio con su estado de cobertura.
+ *   3. Operador selecciona inscripción(es), indica período y monto por cada una.
+ *   4. Sistema calcula el total y valida todo en servidor.
+ *   5. Se guarda mediante PagoService (transaccional).
+ *   6. Mensaje de confirmación.
+ *
+ * RESTRICCIONES:
+ *   - No aprueba inscripciones.
+ *   - No emite credenciales.
+ *   - No modifica fecha_vencimiento global del socio.
+ */
 class CrearPago extends Component
 {
-    public $socio_id;
-    public $fecha_pago;
-    public $importe;
-    public $metodo_pago = 'efectivo';
-    
-    // Indica si el socio está bloqueado por venir desde su perfil
-    public $deshabilitarSocio = false;
-    public $socioPreseleccionado = null;
+    // ── Datos del pago ──────────────────────────────────────────────────────────
+    public ?int   $socio_id       = null;
+    public string $fecha_pago     = '';
+    public string $metodo_pago    = 'efectivo';
+    public string $referencia     = '';
 
-    protected function rules()
+    // ── Detalles multi-concepto ─────────────────────────────────────────────────
+    // Cada elemento: ['inscripcion_id', 'concepto', 'fecha_inicio', 'fecha_fin', 'subtotal']
+    public array $detalles = [];
+
+    // ── Estado UI ───────────────────────────────────────────────────────────────
+    public bool   $deshabilitarSocio     = false;
+    public ?Socio $socioPreseleccionado  = null;
+    public array  $inscripcionesDisponibles = [];
+    public array  $coberturaActual          = [];
+
+    // ── Errores UI ──────────────────────────────────────────────────────────────
+    public ?string $errorGeneral = null;
+
+    public function mount(?Socio $socio = null): void
     {
-        return [
-            'socio_id' => 'required|exists:socios,id',
-            'fecha_pago' => 'required|date',
-            'importe' => 'required|numeric|min:0',
-            'metodo_pago' => 'required|in:efectivo,tarjeta,transferencia',
-        ];
-    }
-
-    protected $validationAttributes = [
-        'socio_id' => 'socio',
-        'fecha_pago' => 'fecha de pago',
-        'importe' => 'importe',
-        'metodo_pago' => 'método de pago',
-    ];
-
-    public function mount(?Socio $socio = null)
-    {
-        $this->fecha_pago = Carbon::today()->format('Y-m-d');
+        $this->fecha_pago = Carbon::now(config('app.timezone'))->format('Y-m-d');
+        $this->detalles   = [$this->detalleVacio()];
 
         if ($socio && $socio->exists) {
-            $this->socio_id = $socio->id;
+            $this->socio_id             = $socio->id;
             $this->socioPreseleccionado = $socio;
-            $this->deshabilitarSocio = true;
-            $this->importe = $socio->membresia?->precio ?? '';
+            $this->deshabilitarSocio    = true;
+            $this->cargarInscripciones();
         }
     }
 
-    public function updatedSocioId($value)
+    // ── Reactivos ───────────────────────────────────────────────────────────────
+
+    public function updatedSocioId($value): void
     {
-        if ($value) {
-            $socio = Socio::find($value);
-            $this->importe = $socio?->membresia?->precio ?? '';
-        } else {
-            $this->importe = '';
+        $this->cargarInscripciones();
+        $this->detalles = [$this->detalleVacio()];
+        $this->errorGeneral = null;
+    }
+
+    public function updatedDetalles(): void
+    {
+        $this->errorGeneral = null;
+    }
+
+    // ── Métodos públicos ────────────────────────────────────────────────────────
+
+    /** Agrega una fila de detalle vacía al formulario. */
+    public function agregarDetalle(): void
+    {
+        $this->detalles[] = $this->detalleVacio();
+    }
+
+    /** Elimina una fila de detalle por índice. */
+    public function quitarDetalle(int $index): void
+    {
+        if (count($this->detalles) > 1) {
+            array_splice($this->detalles, $index, 1);
+            $this->detalles = array_values($this->detalles);
         }
     }
 
-    public function guardar()
+    /** Calcula el total sumando los subtotales de los detalles. */
+    public function getImporteTotalProperty(): float
     {
-        $this->validate();
+        return collect($this->detalles)->sum(fn ($d) => (float) ($d['subtotal'] ?? 0));
+    }
+
+    /**
+     * Cuando el operador selecciona una inscripción en un detalle,
+     * precarga la próxima fecha sugerida de cobertura.
+     */
+    public function actualizarFechasDetalle(int $index): void
+    {
+        $inscripcionId = $this->detalles[$index]['inscripcion_id'] ?? null;
+        if (!$inscripcionId) {
+            return;
+        }
+
+        $inscripcion = Inscripcion::find($inscripcionId);
+        if (!$inscripcion) {
+            return;
+        }
+
+        $service = app(PagoService::class);
+        $inicio  = $service->obtenerProximaFechaInicio($inscripcion);
+        // Fin sugerido: último día del mes del inicio (guía, no regla fija)
+        $finSugerido = Carbon::parse($inicio)->endOfMonth()->toDateString();
+
+        $this->detalles[$index]['fecha_inicio'] = $inicio;
+        $this->detalles[$index]['fecha_fin']    = $finSugerido;
+
+        // Mostrar cobertura actual de esta inscripción
+        $service = app(PagoService::class);
+        $this->coberturaActual[$inscripcionId] =
+            $service->consultarCoberturaInscripcion($inscripcion);
+    }
+
+    /** Guarda el pago usando PagoService (transaccional). */
+    public function guardar(): void
+    {
+        $this->errorGeneral = null;
+
+        // Validación Livewire
+        $this->validate($this->rules(), $this->messages());
 
         $socio = Socio::findOrFail($this->socio_id);
-        $hoy = Carbon::today();
-        $vencimientoActual = $socio->fecha_vencimiento;
+        $operador = auth()->user();
 
-        // Si la membresía está vigente sumar al vencimiento actual
-        // Si está vencida o es nula, sumar desde hoy
-        $membresia = $socio->membresia;
+        try {
+            $service = app(PagoService::class);
+            $pago = $service->registrarPago(
+                socio: $socio,
+                detalles: $this->detalles,
+                medioPago: $this->metodo_pago,
+                operador: $operador,
+                referencia: $this->referencia ?: null,
+                fechaPago: $this->fecha_pago,
+            );
 
-        if ($membresia && str_contains(strtolower($membresia->nombre), 'diario')) {
-           $nuevaFecha = $hoy->copy();
-        } else {
-           $nuevaFecha = ($vencimientoActual && $vencimientoActual->gt($hoy))
-             ? $vencimientoActual->copy()->addMonth()
-             : $hoy->copy()->addMonth();
+            session()->flash('message',
+                "✓ Pago registrado para {$socio->nombre} {$socio->apellido}. "
+                . "Total: \$" . number_format($pago->importe, 2, ',', '.') . "."
+            );
+
+            $this->dispatch('pagoRegistrado');
+            $this->redirect(route('pagos.index'), navigate: true);
+
+        } catch (\InvalidArgumentException | \RuntimeException $e) {
+            $this->errorGeneral = $e->getMessage();
         }
-
-        // Crear el pago
-        Pago::create([
-            'socio_id' => $this->socio_id,
-            'fecha_pago' => $this->fecha_pago,
-            'importe' => $this->importe,
-            'metodo_pago' => $this->metodo_pago,
-        ]);
-     
-        // Actualizar vencimiento y estado del socio
-        $socio->update([
-            'fecha_vencimiento' => $nuevaFecha->toDateString(),
-            'estado' => 'activo',
-        ]);
-        // Notificar a la ficha del socio que se actualizó
-        $this->dispatch('pagoRegistrado');
-
-        session()->flash('message', "Pago registrado con éxito para {$socio->nombre} {$socio->apellido}. Vencimiento extendido al " . $nuevaFecha->format('d/m/Y') . ".");
-
-        return redirect()->route('pagos.index');
     }
 
-    public function render()
+    // ── Render ──────────────────────────────────────────────────────────────────
+
+    public function render(): \Illuminate\View\View
     {
         $socios = [];
         if (!$this->deshabilitarSocio) {
-            // Solo listamos socios activos
-            $socios = Socio::where('estado', 'activo')
-                ->orderBy('apellido')
-                ->orderBy('nombre')
-                ->get();
+            $socios = Socio::orderBy('apellido')->orderBy('nombre')->get();
         }
 
         return view('livewire.pagos.crear-pago', [
-            'socios' => $socios
+            'socios'       => $socios,
+            'mediosPago'   => Pago::MEDIOS_PAGO,
+            'importeTotal' => $this->importeTotal,
         ])->layout('layouts.app');
+    }
+
+    // ── Internos ────────────────────────────────────────────────────────────────
+
+    private function detalleVacio(): array
+    {
+        return [
+            'inscripcion_id' => '',
+            'concepto'       => '',
+            'fecha_inicio'   => $this->fecha_pago ?: Carbon::now(config('app.timezone'))->toDateString(),
+            'fecha_fin'      => '',
+            'subtotal'       => '',
+        ];
+    }
+
+    private function cargarInscripciones(): void
+    {
+        $this->inscripcionesDisponibles = [];
+        if (!$this->socio_id) {
+            return;
+        }
+
+        $inscripciones = Inscripcion::with('grupo.disciplina')
+            ->where('socio_id', $this->socio_id)
+            ->whereIn('estado', [Inscripcion::ESTADO_APROBADA, Inscripcion::ESTADO_PENDIENTE])
+            ->get();
+
+        $service = app(PagoService::class);
+
+        $this->inscripcionesDisponibles = $inscripciones->map(function (Inscripcion $insc) use ($service) {
+            $cobertura = $service->consultarCoberturaInscripcion($insc);
+            return [
+                'id'         => $insc->id,
+                'label'      => ($insc->grupo?->disciplina?->nombre ?? 'Sin disciplina')
+                    . ' – ' . ($insc->grupo?->nombre ?? ''),
+                'estado_inscripcion' => $insc->estado,
+                'cobertura_vigente'  => $cobertura['vigente'],
+                'fecha_fin'          => $cobertura['fecha_fin'],
+            ];
+        })->toArray();
+    }
+
+    protected function rules(): array
+    {
+        $rules = [
+            'socio_id'    => 'required|exists:socios,id',
+            'fecha_pago'  => 'required|date',
+            'metodo_pago' => 'required|in:efectivo,debito,credito,mercadopago,tarjeta,transferencia',
+            'referencia'  => 'nullable|string|max:100',
+            'detalles'    => 'required|array|min:1',
+        ];
+
+        foreach ($this->detalles as $i => $det) {
+            $rules["detalles.{$i}.concepto"]       = 'required|string|max:150';
+            $rules["detalles.{$i}.fecha_inicio"]   = 'required|date';
+            $rules["detalles.{$i}.fecha_fin"]      = "required|date|after_or_equal:detalles.{$i}.fecha_inicio";
+            $rules["detalles.{$i}.subtotal"]       = 'required|numeric|min:0';
+            $rules["detalles.{$i}.inscripcion_id"] = 'nullable|exists:inscripciones,id';
+        }
+
+        return $rules;
+    }
+
+    protected function messages(): array
+    {
+        $msgs = [
+            'socio_id.required'   => 'Seleccioná un socio.',
+            'socio_id.exists'     => 'El socio seleccionado no existe.',
+            'fecha_pago.required' => 'La fecha de pago es obligatoria.',
+            'fecha_pago.date'     => 'La fecha de pago no es válida.',
+            'metodo_pago.required'=> 'Seleccioná un medio de pago.',
+            'metodo_pago.in'      => 'Medio de pago no reconocido.',
+            'detalles.required'   => 'Agregá al menos un concepto.',
+            'detalles.min'        => 'Agregá al menos un concepto.',
+        ];
+
+        foreach ($this->detalles as $i => $det) {
+            $n = $i + 1;
+            $msgs["detalles.{$i}.concepto.required"]     = "El concepto del ítem #{$n} es obligatorio.";
+            $msgs["detalles.{$i}.fecha_inicio.required"] = "La fecha de inicio del ítem #{$n} es obligatoria.";
+            $msgs["detalles.{$i}.fecha_fin.required"]    = "La fecha de fin del ítem #{$n} es obligatoria.";
+            $msgs["detalles.{$i}.fecha_fin.after_or_equal"] = "La fecha de fin del ítem #{$n} no puede ser anterior al inicio.";
+            $msgs["detalles.{$i}.subtotal.required"]     = "El importe del ítem #{$n} es obligatorio.";
+            $msgs["detalles.{$i}.subtotal.min"]          = "El importe del ítem #{$n} no puede ser negativo.";
+        }
+
+        return $msgs;
     }
 }

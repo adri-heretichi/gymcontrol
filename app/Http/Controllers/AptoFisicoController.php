@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\AptoFisico;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Storage;
 
 class AptoFisicoController extends Controller
@@ -13,10 +14,7 @@ class AptoFisicoController extends Controller
      */
     public function descargar(AptoFisico $aptoFisico)
     {
-        // 1. Verificación defensiva de sesión
-        if (!auth()->check()) {
-            abort(403, 'Sesión no válida.');
-        }
+        Gate::authorize('view', $aptoFisico);
 
         // 2. Comprobación de existencia del archivo en el disco privado
         if (is_null($aptoFisico->archivo)) {

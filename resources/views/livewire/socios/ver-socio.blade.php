@@ -129,34 +129,89 @@
                                 @endif
                             </div>
 
-                            <!-- Token de Acceso Teclado -->
+                            <!-- PIN permanente de la credencial emitida -->
                             <div class="border border-slate-800 p-4 rounded-2xl bg-slate-950">
                                 <span class="block text-2xs font-bold uppercase tracking-widest text-center mb-1.5 text-slate-400">
-                                    TOKEN PIN DE ACCESO
+                                    CREDENCIAL
                                 </span>
-                                <code class="text-2xl font-mono font-black tracking-widest block text-center text-amber-400">
-                                    {{ $socio->token }}
-                                </code>
+                                @if($socio->tieneCredencialesActivas())
+                                    @can('emitirCredenciales', $socio)
+                                        <span class="block text-center text-xs text-slate-400 mb-1">PIN de seis dígitos</span>
+                                        <code class="text-2xl font-mono font-black tracking-widest block text-center text-amber-400">
+                                            {{ $socio->pin }}
+                                        </code>
+                                    @else
+                                        <span class="block text-center text-sm font-bold text-emerald-400">Credencial emitida</span>
+                                    @endcan
+                                @else
+                                    <span class="block text-center text-sm font-bold text-slate-400">
+                                        {{ strtoupper(str_replace('_', ' ', $socio->estado_credencial ?? 'sin_emitir')) }}
+                                    </span>
+                                @endif
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <!-- Módulo QR de Acceso -->
+                <!-- QR persistente de la credencial -->
                 <div class="text-center">
-                    @if(Storage::disk('local')->exists('private/qrs/qr_' . $socio->id . '.svg'))
+                    @if($socio->tieneCredencialesActivas())
                         <img src="{{ route('socios.qr', $socio) }}"
                              alt="QR de acceso"
                              class="mx-auto w-40 h-40">
                     @else
-                        <p class="text-sm text-gray-400">QR no generado aún</p>
+                        <p class="text-sm text-gray-400">QR disponible después de emitir la credencial.</p>
                     @endif
-                    <button wire:click="regenerarQr"
-                            class="mt-3 px-4 py-2 bg-indigo-600 hover:bg-indigo-700
-                                   text-white text-sm rounded-lg">
-                        Regenerar QR
-                    </button>
                 </div>
+
+                @can('emitirCredenciales', $socio)
+                    <div class="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-5 space-y-4">
+                        <h3 class="font-black text-slate-900 dark:text-white">Gestión de credenciales</h3>
+
+                        @if($pinEmitido !== '')
+                            <div class="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
+                                PIN emitido: <code class="font-black">{{ $pinEmitido }}</code>
+                            </div>
+                        @endif
+
+                        @if($socio->estado_credencial === 'sin_emitir')
+                            @if(!($evaluacionCredenciales['habilitado'] ?? false))
+                                <p class="text-sm text-amber-700 dark:text-amber-300">
+                                    {{ $evaluacionCredenciales['motivo'] ?? 'No se cumplen los requisitos de emisión.' }}
+                                </p>
+                            @endif
+                            <button type="button" wire:click="emitirCredenciales" class="btn-primary">
+                                Emitir credenciales
+                            </button>
+                        @else
+                            <div>
+                                <label class="form-label" for="motivoCredenciales">Motivo de reposición o revocación</label>
+                                <textarea id="motivoCredenciales" wire:model="motivoCredenciales" maxlength="1000"
+                                          class="form-input" rows="2"></textarea>
+                                @error('motivoCredenciales')
+                                    <p class="mt-1 text-xs text-rose-500">{{ $message }}</p>
+                                @enderror
+                            </div>
+
+                            <div class="flex flex-wrap gap-2">
+                                <button type="button" wire:click="reponerCredenciales" class="btn-secondary">
+                                    Reponer credenciales
+                                </button>
+                                @if($socio->estado_credencial === 'activo')
+                                    <button type="button" wire:click="revocarCredenciales"
+                                            wire:confirm="¿Confirmás la revocación excepcional de estas credenciales?"
+                                            class="btn-action-danger">
+                                        Revocar credenciales
+                                    </button>
+                                @endif
+                            </div>
+                        @endif
+
+                        @error('credenciales')
+                            <p class="text-sm font-semibold text-rose-600">{{ $message }}</p>
+                        @enderror
+                    </div>
+                @endcan
             </div>
 
             <!-- COLUMNA DERECHA: Información Detallada y Tablas -->
@@ -244,27 +299,25 @@
                                 </div>
 
                                 <div>
-                                    <span class="block text-2xs font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500">Estado de Apto Físico</span>
-                                    @if($ultimoApto)
-                                        <div class="flex items-center gap-2 mt-1">
-                                            <span class="text-sm font-bold text-slate-800 dark:text-slate-200">
-                                                Vence: {{ $ultimoApto->fecha_vencimiento->format('d/m/Y') }}
+                                    <span class="block text-2xs font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500">Requisito Médico Administrativo</span>
+                                    @php
+                                        $eval = $evaluacionMedica ?: $socio->estadoRequisitoMedico();
+                                    @endphp
+                                    <div class="mt-1 flex flex-wrap items-center gap-2">
+                                        @if($eval['cumple'])
+                                            <span class="px-2.5 py-1 text-xs font-black bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-400 rounded-md border border-emerald-300">
+                                                CUMPLIDO (Caso {{ $eval['caso'] }})
                                             </span>
-                                            @if($ultimoApto->fecha_vencimiento->isPast() || $ultimoApto->estado === 'vencido')
-                                                <span class="px-2 py-0.5 text-[10px] font-black bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-400 rounded-md border border-rose-200 dark:border-rose-900 animate-pulse">
-                                                    VENCIDO
-                                                </span>
-                                            @else
-                                                <span class="px-2 py-0.5 text-[10px] font-black bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-400 rounded-md border border-emerald-200 dark:border-emerald-900">
-                                                    APROBADO
-                                                </span>
-                                            @endif
-                                        </div>
-                                    @else
-                                        <span class="inline-flex items-center mt-1 px-2.5 py-1 rounded-md text-2xs font-black bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-400 border border-amber-200 dark:border-amber-900">
-                                            PENDIENTE DE ENTREGA
+                                        @else
+                                            <span class="px-2.5 py-1 text-xs font-black bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-400 rounded-md border border-rose-300 animate-pulse">
+                                                NO CUMPLIDO (Caso {{ $eval['caso'] }})
+                                            </span>
+                                        @endif
+                                        <span class="text-xs text-slate-500 dark:text-slate-400 font-medium">
+                                            Decisión: <strong>{{ strtoupper(str_replace('_', ' ', $socio->decision_medica ?? 'pendiente')) }}</strong>
                                         </span>
-                                    @endif
+                                    </div>
+                                    <p class="text-xs text-slate-500 dark:text-slate-400 mt-1 italic">{{ $eval['mensaje'] }}</p>
                                 </div>
 
                                 <div>
@@ -319,6 +372,103 @@
                             </tbody>
                         </table>
                     </div>
+                </div>
+
+                <!-- Panel de Gestión de Decisión Médica Individual (Fase 6) -->
+                <div class="bg-white dark:bg-slate-800 shadow-xl rounded-3xl border border-slate-100 dark:border-slate-800 p-8">
+                    <div class="flex items-center justify-between border-b border-slate-100 dark:border-slate-700 pb-4 mb-4">
+                        <div class="flex items-center gap-2">
+                            <h3 class="text-lg font-black text-slate-900 dark:text-white uppercase tracking-wider">
+                                Situación Médica Administrativa
+                            </h3>
+                            <span class="text-2xs font-extrabold bg-indigo-50 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300 px-2.5 py-1 rounded-md border border-indigo-200">
+                                Fase 6
+                            </span>
+                        </div>
+                    </div>
+
+                    @if(session()->has('mensaje_medico'))
+                        <div class="mb-4 p-3 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 text-sm font-semibold">
+                            {{ session('mensaje_medico') }}
+                        </div>
+                    @endif
+
+                    <!-- Bloque para la Dueña -->
+                    @can('gestionarDecisionMedica', $socio)
+                        <form wire:submit.prevent="actualizarDecisionMedica" class="space-y-4">
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">
+                                        Decisión Médica Individual (Exclusivo Dueña)
+                                    </label>
+                                    <select wire:model="decision_medica_seleccionada" class="w-full text-sm rounded-lg border-slate-300 dark:border-slate-700 dark:bg-slate-900 text-slate-900 dark:text-white">
+                                        <option value="pendiente">Pendiente (Aún sin definir)</option>
+                                        <option value="requerido">Requiere certificado médico</option>
+                                        <option value="no_requerido">No requiere certificado médico</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">
+                                        Observación / Motivo
+                                    </label>
+                                    <input type="text" wire:model="decision_medica_observacion"
+                                           placeholder="Ej: Aprobación legal, excepción o detalle administrativo"
+                                           class="w-full text-sm rounded-lg border-slate-300 dark:border-slate-700 dark:bg-slate-900 text-slate-900 dark:text-white">
+                                </div>
+                            </div>
+                            <div class="flex items-center justify-between pt-2">
+                                <div class="text-xs text-slate-500">
+                                    @if($socio->decision_medica_at)
+                                        Última decisión: {{ $socio->decision_medica_at->format('d/m/Y H:i') }}
+                                        @if($socio->decisionMedicaPor)
+                                            por {{ $socio->decisionMedicaPor->name }}
+                                        @endif
+                                    @else
+                                        Sin decisión previa registrada.
+                                    @endif
+                                </div>
+                                <button type="submit" class="btn-primary">
+                                    Guardar Decisión Médica
+                                </button>
+                            </div>
+                        </form>
+                    @else
+                        <!-- Vista para Recepción -->
+                        <div class="space-y-4">
+                            <div class="p-4 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3">
+                                <div>
+                                    <span class="block text-2xs font-extrabold uppercase text-slate-400">Estado de Decisión de la Dueña</span>
+                                    <span class="text-base font-black text-slate-800 dark:text-slate-200">
+                                        {{ strtoupper(str_replace('_', ' ', $socio->decision_medica ?? 'pendiente')) }}
+                                    </span>
+                                    @if($socio->decision_medica_obs)
+                                        <p class="text-xs text-slate-500 mt-0.5">Nota: {{ $socio->decision_medica_obs }}</p>
+                                    @endif
+                                </div>
+                                <div class="text-xs text-slate-500 text-right">
+                                    Recepcionista: Solo consulta y registro de documentación.
+                                </div>
+                            </div>
+
+                            <!-- Notificar a la Dueña -->
+                            <form wire:submit.prevent="enviarSolicitudRevisionMedica" class="pt-2 border-t border-slate-100 dark:border-slate-700">
+                                <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">
+                                    Informar o Solicitar Revisión a la Dueña
+                                </label>
+                                <div class="flex gap-2">
+                                    <input type="text" wire:model="nota_solicitud_medica"
+                                           placeholder="Ej: El socio trajo certificado nuevo emitido hoy para revisión..."
+                                           class="flex-1 text-sm rounded-lg border-slate-300 dark:border-slate-700 dark:bg-slate-900 text-slate-900 dark:text-white">
+                                    <button type="submit" class="btn-secondary whitespace-nowrap">
+                                        Enviar Notificación
+                                    </button>
+                                </div>
+                                @error('nota_solicitud_medica')
+                                    <p class="text-xs text-rose-500 mt-1 font-semibold">{{ $message }}</p>
+                                @enderror
+                            </form>
+                        </div>
+                    @endcan
                 </div>
 
                 <!-- Historial de Aptos Físicos -->

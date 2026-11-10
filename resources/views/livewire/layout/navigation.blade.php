@@ -36,6 +36,15 @@ new class extends Component
                     <x-nav-link :href="route('socios.index')" :active="request()->routeIs('socios.*')" wire:navigate>
                         Socios
                     </x-nav-link>
+                    <x-nav-link :href="route('disciplinas.index')" :active="request()->routeIs('disciplinas.*')" wire:navigate>
+                        Disciplinas
+                    </x-nav-link>
+                    <x-nav-link :href="route('grupos.index')" :active="request()->routeIs('grupos.*')" wire:navigate>
+                        Grupos
+                    </x-nav-link>
+                    <x-nav-link :href="route('inscripciones.index')" :active="request()->routeIs('inscripciones.*')" wire:navigate>
+                        Inscripciones
+                    </x-nav-link>
                     <x-nav-link :href="route('membresias.index')" :active="request()->routeIs('membresias.*')" wire:navigate>
                         Membresías
                     </x-nav-link>
@@ -51,7 +60,13 @@ new class extends Component
                     <x-nav-link :href="route('asistencias.index')" :active="request()->routeIs('asistencias.*')" wire:navigate>
                         Historial
                     </x-nav-link>
+                    <x-nav-link :href="route('solicitudes.index')" :active="request()->routeIs('solicitudes.*')" wire:navigate>
+                        Solicitudes
+                    </x-nav-link>
                     @if(auth()->user()->rol === 'admin')
+                        <x-nav-link :href="route('auditoria.index')" :active="request()->routeIs('auditoria.*')" wire:navigate>
+                            Auditoría
+                        </x-nav-link>
                         <x-nav-link :href="route('operadores.index')" :active="request()->routeIs('operadores.*')" wire:navigate>
                             Operadores
                         </x-nav-link>
@@ -110,6 +125,15 @@ new class extends Component
             <x-responsive-nav-link :href="route('socios.index')" :active="request()->routeIs('socios.*')" wire:navigate>
                 Socios
             </x-responsive-nav-link>
+            <x-responsive-nav-link :href="route('disciplinas.index')" :active="request()->routeIs('disciplinas.*')" wire:navigate>
+                Disciplinas
+            </x-responsive-nav-link>
+            <x-responsive-nav-link :href="route('grupos.index')" :active="request()->routeIs('grupos.*')" wire:navigate>
+                Grupos
+            </x-responsive-nav-link>
+            <x-responsive-nav-link :href="route('inscripciones.index')" :active="request()->routeIs('inscripciones.*')" wire:navigate>
+                Inscripciones
+            </x-responsive-nav-link>
             <x-responsive-nav-link :href="route('membresias.index')" :active="request()->routeIs('membresias.*')" wire:navigate>
                 Membresías
             </x-responsive-nav-link>
@@ -125,7 +149,13 @@ new class extends Component
             <x-responsive-nav-link :href="route('asistencias.index')" :active="request()->routeIs('asistencias.*')" wire:navigate>
                 Historial
             </x-responsive-nav-link>
+            <x-responsive-nav-link :href="route('solicitudes.index')" :active="request()->routeIs('solicitudes.*')" wire:navigate>
+                Solicitudes
+            </x-responsive-nav-link>
             @if(auth()->user()->rol === 'admin')
+                <x-responsive-nav-link :href="route('auditoria.index')" :active="request()->routeIs('auditoria.*')" wire:navigate>
+                    Auditoría
+                </x-responsive-nav-link>
                 <x-responsive-nav-link :href="route('operadores.index')" :active="request()->routeIs('operadores.*')" wire:navigate>
                     Operadores
                 </x-responsive-nav-link>

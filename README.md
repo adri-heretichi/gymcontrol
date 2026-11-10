@@ -13,13 +13,6 @@ GymControl es una plataforma web completa desarrollada con **Laravel 12** y **Li
 
 > El servidor puede tardar ~30 segundos en responder la primera vez (plan gratuito de Render).
 
-**Credenciales de prueba:**
-
-| Rol | Email | Contraseña |
-|---|---|---|
-| Administrador | admin@gymcontrol.com | password |
-| Recepcionista | recepcionista@gymcontrol.com | password |
-
 ---
 
 ## 📌 ¿Qué problema resuelve?
@@ -96,6 +89,23 @@ Endpoints autenticados con Laravel Sanctum para integración con aplicaciones m�
 | Contenedor | Docker (php:8.3-fpm-alpine) |
 | Hosting | Render.com |
 | API externa | Open-Meteo (clima Formosa) |
+
+### Actualizaciones en tiempo real (desarrollo local)
+
+La aplicación usa Laravel Reverb con canales privados para actualizar pantallas autenticadas. En XAMPP, configurá `BROADCAST_CONNECTION=reverb`, `QUEUE_CONNECTION=database` y las variables `REVERB_*` / `VITE_REVERB_*` de `.env.example`; generá un `APP_KEY` y valores únicos para `REVERB_APP_KEY` y `REVERB_APP_SECRET`. El puerto WebSocket local es `8080`.
+
+Podés iniciar todos los procesos de desarrollo con `composer run dev`, o iniciar cada proceso en una terminal independiente:
+
+```powershell
+php artisan serve --host=127.0.0.1 --port=8000
+php artisan reverb:start --host=0.0.0.0 --port=8080
+php artisan queue:work database --queue=realtime,default --tries=3
+npm run dev
+```
+
+La conexión WebSocket requiere que el navegador alcance el host/puerto configurado en `VITE_REVERB_HOST` y `VITE_REVERB_PORT`; el proceso HTTP debe alcanzar el host/puerto en `REVERB_HOST` y `REVERB_PORT`. El `Dockerfile` admite procesos independientes con `SERVICE_ROLE=web`, `SERVICE_ROLE=reverb` y `SERVICE_ROLE=queue`; todos requieren la misma configuración segura de aplicación y base de datos. Proporcioná `VITE_REVERB_*` como argumentos de compilación para que el cliente compilado pueda conectar. Montá almacenamiento persistente en `/var/www/storage/app/private` para conservar certificados. El contenedor no genera claves, ejecuta migraciones ni lanza seeders al arrancar: gestioná esos pasos explícitamente fuera del arranque. No incluyas secretos en imágenes, JavaScript ni archivos versionados.
+
+Para aprovisionar operadores iniciales, configurá temporalmente `GYMCONTROL_BOOTSTRAP_OWNER_EMAIL`, `GYMCONTROL_BOOTSTRAP_OWNER_PASSWORD`, `GYMCONTROL_BOOTSTRAP_RECEPTION_EMAIL` y `GYMCONTROL_BOOTSTRAP_RECEPTION_PASSWORD` con correos válidos y contraseñas de al menos 16 caracteres; luego ejecutá `php artisan db:seed --class=UserSeeder` y quitá esas variables. El seeder solo crea cuentas inexistentes y no restablece contraseñas. `DatabaseSeeder` contiene datos de demostración y se bloquea en producción.
 
 ---
 
@@ -180,8 +190,8 @@ Sistema disponible en **http://localhost:8000**
 ```json
 POST /api/v1/auth/login
 {
-  "email": "admin@gymcontrol.com",
-  "password": "password"
+  "email": "operator@example.invalid",
+  "password": "<your-password>"
 }
 ```
 
@@ -202,7 +212,7 @@ POST /api/v1/auth/login
 
 ## 🐳 Deploy en Render
 
-El proyecto incluye un `Dockerfile` optimizado para producción basado en `php:8.3-fpm-alpine`.
+El proyecto incluye un `Dockerfile` basado en `php:8.3-fpm-alpine`. El proceso se selecciona con `SERVICE_ROLE`; configurar el entorno, el almacenamiento persistente y la ejecución explícita de migraciones son responsabilidades del operador.
 
 **Variables de entorno requeridas en Render:**
 

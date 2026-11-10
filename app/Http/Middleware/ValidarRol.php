@@ -23,7 +23,13 @@ class ValidarRol
         }
 
         // 2. Comparamos el rol del usuario logueado con el rol requerido por la ruta
-        if ($request->user()->rol !== $rol) {
+        $autorizado = match ($rol) {
+            'admin' => $request->user()->esDuena(),
+            'recepcionista' => $request->user()->esRecepcionista(),
+            default => $request->user()->rol === $rol,
+        };
+
+        if (!$autorizado) {
             // Si no coincide, abortamos con un código 403 (Prohibido) y un mensaje descriptivo
             abort(403, 'No tienes los permisos necesarios para acceder a esta sección.');
         }

@@ -11,4 +11,5 @@ return [
     |
     */
     'terminal_solo_red_local' => env('TERMINAL_SOLO_RED_LOCAL', true),
+
 ];

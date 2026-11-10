@@ -68,19 +68,19 @@ class SocioPermissionsTest extends TestCase
     }
 
     /**
-     * Test de restricciones del rol Recepcionista.
+     * Test de permisos del rol Recepcionista (Fase 2: puede registrar socios pero no editarlos).
      */
     public function test_recepcionista_tiene_acceso_limitado_opcion_b(): void
     {
         $this->actingAs($this->recepcionista);
 
-        // Accesos permitidos
+        // Accesos permitidos (consulta y alta de socios)
         $this->get('/dashboard')->assertStatus(200);
         $this->get('/socios')->assertStatus(200);
         $this->get('/socios/' . $this->socio->id)->assertStatus(200);
+        $this->get('/socios/crear')->assertStatus(200);
 
-        // Accesos denegados (Bajo la Opción B, deben retornar 403)
-        $this->get('/socios/crear')->assertStatus(403);
+        // Accesos denegados (edición reservada a la dueña, debe retornar 403)
         $this->get('/socios/' . $this->socio->id . '/editar')->assertStatus(403);
     }
 }

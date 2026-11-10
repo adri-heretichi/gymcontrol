@@ -3,6 +3,7 @@
 namespace Database\Seeders;
 
 use Illuminate\Database\Seeder;
+use RuntimeException;
 
 class DatabaseSeeder extends Seeder
 {
@@ -11,6 +12,10 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
+        if (app()->isProduction()) {
+            throw new RuntimeException('DatabaseSeeder contains development fixtures and cannot run in production.');
+        }
+
         // Llamamos a cada uno de los seeders en orden de dependencia
         $this->call([
             UserSeeder::class,         // 1. Usuarios técnicos (admin/recepcionista)

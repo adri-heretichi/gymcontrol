@@ -17,9 +17,11 @@ Route::middleware(['auth'])->group(function () {
     // Perfil del operador
     Route::view('profile', 'profile')->name('profile');
 
-    // CRUD de Socios: Escritura (Solo accesible por Administradores - Opción B)
+    // Registro de Socios (Accesible por Dueña y Recepcionista)
+    Route::get('socios/crear', CrearSocio::class)->name('socios.create');
+
+    // Operaciones exclusivas de la Dueña / Administradora
     Route::middleware(['rol:admin'])->group(function () {
-        Route::get('socios/crear', CrearSocio::class)->name('socios.create');
         Route::get('socios/{socio}/editar', EditarSocio::class)->name('socios.edit');
 
         // CRUD de Membresías: Escritura
@@ -33,11 +35,26 @@ Route::middleware(['auth'])->group(function () {
 
         // CRUD de Aptos Físicos: Escritura (Solo Administradores)
         Route::get('aptos-fisicos/{aptoFisico}/editar', \App\Livewire\AptosFisicos\EditarAptoFisico::class)->name('aptos-fisicos.edit');
+
+        // CRUD de Disciplinas y Grupos: Escritura (Solo Dueña / Administradora)
+        Route::get('disciplinas/crear', \App\Livewire\Disciplinas\CrearDisciplina::class)->name('disciplinas.create');
+        Route::get('disciplinas/{disciplina}/editar', \App\Livewire\Disciplinas\EditarDisciplina::class)->name('disciplinas.edit');
+
+        Route::get('grupos/crear', \App\Livewire\Grupos\CrearGrupo::class)->name('grupos.create');
+        Route::get('grupos/{grupo}/editar', \App\Livewire\Grupos\EditarGrupo::class)->name('grupos.edit');
     });
 
     // CRUD de Socios: Lectura (Accesible por ambos roles)
     Route::get('socios', ListarSocios::class)->name('socios.index');
     Route::get('socios/{socio}', VerSocio::class)->name('socios.show');
+
+    // CRUD de Disciplinas y Grupos: Lectura (Accesible por ambos roles)
+    Route::get('disciplinas', \App\Livewire\Disciplinas\ListarDisciplinas::class)->name('disciplinas.index');
+    Route::get('grupos', \App\Livewire\Grupos\ListarGrupos::class)->name('grupos.index');
+
+    // Gestión de Inscripciones, Aprobaciones y Cupos (Accesible por ambos roles)
+    Route::get('inscripciones', \App\Livewire\Inscripciones\ListarInscripciones::class)->name('inscripciones.index');
+    Route::get('inscripciones/crear', \App\Livewire\Inscripciones\CrearInscripcion::class)->name('inscripciones.create');
 
     // CRUD de Membresías: Lectura (Accesible por ambos roles)
     Route::get('membresias', \App\Livewire\Membresias\ListarMembresias::class)->name('membresias.index');
@@ -47,16 +64,21 @@ Route::middleware(['auth'])->group(function () {
     Route::get('socios/{socio}/aptos-fisicos/crear', \App\Livewire\AptosFisicos\CrearAptoFisico::class)->name('aptos-fisicos.create');
     Route::get('aptos-fisicos/{aptoFisico}/descargar', [\App\Http\Controllers\AptoFisicoController::class, 'descargar'])->name('aptos-fisicos.download');
 
-    // CRUD de Pagos: Lectura y Carga (Accesible por ambos roles)
+    // CRUD de Pagos: Lectura y Carga (Accesible por ambos roles) – Fase 5
     Route::get('pagos', \App\Livewire\Pagos\ListarPagos::class)->name('pagos.index');
     Route::get('socios/{socio}/pagos/crear', \App\Livewire\Pagos\CrearPago::class)->name('pagos.create');
     Route::get('pagos/crear', \App\Livewire\Pagos\CrearPago::class)->name('pagos.create-general');
+
+    // Coberturas por socio: consulta de estado económico de cada inscripción (Fase 5)
+    Route::get('socios/{socio}/coberturas', \App\Livewire\Pagos\CoberturasSocio::class)->name('pagos.coberturas-socio');
 
     // Control de Ingreso y Salida (Accesible por ambos roles)
     Route::get('control-acceso', \App\Livewire\ControlAcceso::class)->name('control-acceso');
 
     // Historial de Asistencias (Accesible por ambos roles)
     Route::get('asistencias', \App\Livewire\Asistencias\ListarAsistencias::class)->name('asistencias.index');
+    Route::get('solicitudes', \App\Livewire\Solicitudes\GestionarSolicitudes::class)->name('solicitudes.index');
+    Route::get('auditoria', \App\Livewire\Auditoria\PanelAuditoria::class)->name('auditoria.index');
 
     // Reportes PDF (Etapa 12)
     Route::get('socios/{socio}/reporte-pdf', [\App\Http\Controllers\ReporteController::class, 'fichaSocio'])->name('reportes.ficha-socio');
@@ -70,7 +92,9 @@ Route::middleware(['auth'])->group(function () {
 
 // Terminal Pública de Acceso (Parte 4)
 Route::get('terminal', \App\Livewire\TerminalAcceso::class)->name('terminal')->middleware('red.local');
-Route::get('/terminal/scan/{token}', [ScanQrController::class, 'scan'])->name('terminal.scan');
+Route::get('/terminal/scan/{token}', [ScanQrController::class, 'scan'])->middleware('throttle:30,1')->name('terminal.scan');
+Route::post('/terminal/scan/ingreso', [ScanQrController::class, 'ingresar'])->middleware('throttle:8,1')->name('terminal.scan.ingreso');
+Route::post('/terminal/scan/salida', [ScanQrController::class, 'salir'])->middleware('throttle:8,1')->name('terminal.scan.salida');
 
 // --- RUTAS DE PRUEBA DE ROLES ---
 Route::get('solo-admin', function () {

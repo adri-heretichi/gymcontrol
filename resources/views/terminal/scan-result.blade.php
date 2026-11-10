@@ -4,8 +4,6 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>GymControl - Acceso</title>
-    <!-- Redirección automática después de 5 segundos -->
-    <meta http-equiv="refresh" content="5;url=/terminal/scan/{{ $token }}?ready=1">
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
 <body class="min-h-screen flex flex-col justify-center items-center text-center p-6 {{ $estado === 'exito' ? 'bg-[#22c55e]' : ($estado === 'salida' ? 'bg-[#3b82f6]' : 'bg-[#ef4444]') }} text-white font-sans">
@@ -45,6 +43,9 @@
                 @endif
                 <div class="bg-black/20 rounded-2xl p-4 border border-white/10 mx-auto max-w-sm">
                     <p class="text-md font-bold leading-relaxed">{{ $motivo }}</p>
+                    @if(!empty($actividad['disciplina']))
+                        <p class="mt-2 text-sm">{{ $actividad['disciplina'] }} — {{ $actividad['grupo'] }}</p>
+                    @endif
                 </div>
             </div>
         @endif

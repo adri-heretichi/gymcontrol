@@ -1,18 +1,9 @@
 <div class="min-h-screen flex flex-col justify-between p-6 md:p-12 relative overflow-hidden bg-slate-950 text-slate-100"
-     x-data="{ refocus() { $refs.tokenInput.focus() } }"
+     x-data="{ refocus() { if ($refs.tokenInput) $refs.tokenInput.focus() } }"
      x-init="
          refocus();
          document.body.addEventListener('click', () => refocus());
-         $watch('$wire.estadoAcceso', value => {
-             if (value) {
-                 setTimeout(() => {
-                     $wire.resetState();
-                     refocus();
-                 }, 3000);
-             }
-         });
      "
-     wire:poll.1s="checkExternalScan"
 >
 
     {{-- Banner del clima cargado desde el navegador vía JavaScript --}}
@@ -52,7 +43,7 @@
                 <span class="block text-[9px] font-extrabold tracking-widest text-slate-500 uppercase">Terminal de Autogestión</span>
             </div>
         </div>
-        
+
         <div class="text-slate-400 font-mono text-sm font-semibold bg-slate-900/80 px-4 py-2 rounded-2xl border border-slate-800">
             {{ now()->format('H:i') }}
         </div>
@@ -60,7 +51,7 @@
 
     <!-- Área de Contenido Principal -->
     <div class="flex-1 flex flex-col justify-center items-center max-w-4xl w-full mx-auto my-8 z-10">
-        
+
         @if($estadoAcceso === 'exito')
             <!-- PANEL VERDE: Ingreso Autorizado -->
             <div class="w-full bg-gradient-to-br from-emerald-500 to-teal-700 text-white rounded-3xl p-10 md:p-16 shadow-2xl relative overflow-hidden border border-emerald-400/30 text-center space-y-6 animate-[pulse_1.5s_infinite]">
@@ -72,9 +63,17 @@
                 </div>
                 <div>
                     <span class="text-xs font-black uppercase tracking-widest text-emerald-100/80">Ingreso Autorizado</span>
-                    <h2 class="text-4xl md:text-5xl font-black mt-2 tracking-tight">{{ $mensajeAcceso }}</h2>
+                    <h2 class="text-4xl md:text-5xl font-black mt-2 tracking-tight">{{ $socioInfo?->nombre }}</h2>
+                    <p class="text-lg text-emerald-100/90 mt-2 font-semibold">{{ $mensajeAcceso }}</p>
+                    @if($actividadAcceso && !empty($actividadAcceso['disciplina']))
+                        <p class="mt-2 text-base font-bold">{{ $actividadAcceso['disciplina'] }} — {{ $actividadAcceso['grupo'] }}</p>
+                    @endif
+                    @if($horarioAcceso)
+                        <p class="text-sm text-emerald-100">{{ ucfirst($horarioAcceso['dia']) }}, {{ $horarioAcceso['hora_inicio'] }}–{{ $horarioAcceso['hora_fin'] }}</p>
+                    @endif
                     <p class="text-lg text-emerald-100/90 mt-2 font-semibold">¡Que tengas un excelente entrenamiento!</p>
                 </div>
+                <button type="button" wire:click="resetState" class="rounded-xl border border-white/40 px-5 py-3 font-bold text-white">Siguiente socio</button>
             </div>
 
         @elseif($estadoAcceso === 'salida')
@@ -110,7 +109,21 @@
                     <div class="mt-4 p-4 bg-black/10 rounded-2xl border border-white/10 max-w-lg mx-auto">
                         <p class="text-base font-bold text-rose-100 leading-relaxed">{{ $motivoRechazo }}</p>
                     </div>
+                    @if($opcionesActividad)
+                        <form wire:submit.prevent="procesar" class="mx-auto mt-5 max-w-md space-y-3 text-left">
+                            <label for="grupo-seleccionado" class="block text-sm font-bold text-white">Seleccioná el grupo y volvé a ingresar el PIN</label>
+                            <select id="grupo-seleccionado" wire:model="grupoSeleccionado" class="w-full rounded-xl border-slate-600 bg-slate-900 text-white">
+                                <option value="">Seleccionar grupo</option>
+                                @foreach($opcionesActividad as $opcion)
+                                    <option value="{{ $opcion['grupo_id'] }}">{{ $opcion['disciplina'] }} — {{ $opcion['grupo'] }}</option>
+                                @endforeach
+                            </select>
+                            <input type="password" wire:model="pin" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="off" aria-label="PIN de seis números" class="w-full rounded-xl border-slate-600 bg-slate-900 text-center text-2xl font-black tracking-[0.3em] text-white">
+                            <button type="submit" wire:loading.attr="disabled" class="w-full rounded-xl bg-indigo-600 px-5 py-3 font-black text-white disabled:opacity-50">Registrar ingreso</button>
+                        </form>
+                    @endif
                 </div>
+                <button type="button" wire:click="resetState" class="rounded-xl border border-white/40 px-5 py-3 font-bold text-white">Nuevo intento</button>
             </div>
 
         @else
@@ -121,27 +134,67 @@
                         Bienvenido a <span class="bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">GymControl</span>
                     </h1>
                     <p class="text-slate-400 text-sm md:text-base font-semibold leading-relaxed">
-                        Ingresá tu Token PIN de acceso o escaneá el código QR generado desde tu celular para habilitar el ingreso o salida.
+                        Ingresá tu PIN de acceso. El ingreso y la salida son acciones separadas.
                     </p>
                 </div>
 
-                <!-- Input para Token/USB Reader -->
+                <!-- PIN para ingreso -->
                 <div class="bg-slate-900/60 p-8 rounded-3xl border border-slate-800 shadow-2xl relative">
                     <div class="absolute inset-x-0 top-0 h-1 bg-indigo-500/50 shadow-[0_0_15px_#6366f1] animate-[pulse_2s_infinite]"></div>
 
                     <form wire:submit.prevent="procesar" class="space-y-4">
-                        <input 
-                            type="text" 
-                            id="token"
+                        <input
+                            type="password"
+                            id="pin"
                             x-ref="tokenInput"
-                            wire:model="token" 
-                            wire:keydown.enter.prevent="procesar"
-                            placeholder="Digitá tu token aquí..." 
+                            wire:model="pin"
+                            wire:loading.attr="disabled"
+                            inputmode="numeric"
+                            pattern="[0-9]{6}"
+                            maxlength="6"
+                            placeholder="Ingresá el PIN de seis dígitos..."
                             autocomplete="off"
-                            class="w-full text-center py-5 border-2 border-slate-800 bg-slate-950/80 rounded-2xl text-3xl font-black tracking-widest text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 shadow-inner"
+                            aria-label="PIN de seis números"
+                            class="w-full text-center py-5 border-2 border-slate-800 bg-slate-950/80 rounded-2xl text-3xl font-black tracking-widest text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 shadow-inner"
                         />
+                        @error('pin') <p class="text-sm font-bold text-rose-300">{{ $message }}</p> @enderror
+                        <button type="submit" wire:loading.attr="disabled" class="w-full rounded-xl bg-indigo-600 px-6 py-3 font-black text-white disabled:opacity-50">
+                            <span wire:loading.remove wire:target="procesar">Registrar ingreso</span>
+                            <span wire:loading wire:target="procesar">Validando...</span>
+                        </button>
                     </form>
                 </div>
+
+                @if($estadoAcceso === 'exito' || $estadoAcceso === 'error')
+                    <div class="rounded-2xl border p-5 text-left {{ $estadoAcceso === 'exito' ? 'border-emerald-500/40 bg-emerald-950/70' : 'border-rose-500/40 bg-rose-950/70' }}" role="status" aria-live="polite">
+                        <h2 class="text-xl font-black text-white">
+                            {{ $estadoAcceso === 'exito' ? 'Ingreso autorizado' : 'Acceso denegado' }}
+                        </h2>
+                        @if($socioInfo)
+                            <p class="mt-1 text-lg font-bold text-white">{{ $socioInfo->nombre }} {{ $socioInfo->apellido }}</p>
+                        @endif
+                        <p class="mt-2 text-sm text-slate-100">{{ $mensajeAcceso }}</p>
+                        @if($actividadAcceso && !empty($actividadAcceso['disciplina']))
+                            <p class="mt-2 text-sm font-semibold text-slate-200">
+                                {{ $actividadAcceso['disciplina'] }}{{ !empty($actividadAcceso['grupo']) ? ' — ' . $actividadAcceso['grupo'] : '' }}
+                            </p>
+                        @endif
+                        @if($horarioAcceso)
+                            <p class="text-sm text-slate-200">
+                                {{ ucfirst($horarioAcceso['dia']) }}, {{ $horarioAcceso['hora_inicio'] }}–{{ $horarioAcceso['hora_fin'] }}
+                            </p>
+                        @endif
+                        @if($opcionesActividad)
+                            <label for="grupo-seleccionado" class="mt-4 block text-sm font-bold text-white">Hay más de una actividad en curso. Seleccioná el grupo y volvé a ingresar el PIN.</label>
+                            <select id="grupo-seleccionado" wire:model="grupoSeleccionado" class="mt-2 w-full rounded-xl border-slate-600 bg-slate-900 text-white">
+                                <option value="">Seleccionar grupo</option>
+                                @foreach($opcionesActividad as $opcion)
+                                    <option value="{{ $opcion['grupo_id'] }}">{{ $opcion['disciplina'] }} — {{ $opcion['grupo'] }}</option>
+                                @endforeach
+                            </select>
+                        @endif
+                    </div>
+                @endif
 
                 <div class="flex flex-col items-center gap-2">
                     <div class="flex items-center gap-2 px-4 py-2 bg-slate-900/40 rounded-full border border-slate-800/80">

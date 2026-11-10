@@ -120,14 +120,6 @@
                                             Editar
                                         </a>
 
-                                        <!-- Eliminar (Admin only) -->
-                                        <button 
-                                            wire:click="eliminar({{ $apto->id }})" 
-                                            wire:confirm="¿Estás seguro de que deseas ELIMINAR definitivamente este certificado médico? Esta acción no se puede deshacer."
-                                            class="btn-action-danger"
-                                        >
-                                            Eliminar
-                                        </button>
                                     @endif
                                 </td>
                             </tr>
