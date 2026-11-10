@@ -30,12 +30,12 @@ class CredencialService
     /**
      * Evalúa los requisitos para emitir por primera vez, sin modificar al socio.
      *
-     * @return array{habilitado: bool, motivo: string|null}
+     * @return array{habilitado: bool, motivo: string|null, codigo: string}
      */
     public function evaluarRequisitosEmision(Socio $socio): array
     {
         if ($socio->estado !== 'activo') {
-            return ['habilitado' => false, 'motivo' => 'El socio no está activo.'];
+            return ['habilitado' => false, 'motivo' => 'El socio no está activo.', 'codigo' => 'socio_inactivo'];
         }
 
         $inscripciones = $socio->inscripciones()
@@ -43,7 +43,11 @@ class CredencialService
             ->get();
 
         if ($inscripciones->isEmpty()) {
-            return ['habilitado' => false, 'motivo' => 'El socio no tiene inscripción aprobada.'];
+            return [
+                'habilitado' => false,
+                'motivo' => 'El socio no tiene inscripción aprobada.',
+                'codigo' => 'sin_inscripcion_aprobada',
+            ];
         }
 
         $tieneCoberturaVigente = $inscripciones->contains(
@@ -52,7 +56,11 @@ class CredencialService
         );
 
         if (!$tieneCoberturaVigente) {
-            return ['habilitado' => false, 'motivo' => 'El socio no tiene cobertura económica vigente.'];
+            return [
+                'habilitado' => false,
+                'motivo' => 'El socio no tiene cobertura económica vigente.',
+                'codigo' => 'cobertura_pendiente',
+            ];
         }
 
         $evaluacionMedica = $this->certificadoMedicoService->evaluarRequisitoMedico($socio);
@@ -60,14 +68,22 @@ class CredencialService
             CertificadoMedicoService::ESTADO_REQUERIDO,
             CertificadoMedicoService::ESTADO_NO_REQUERIDO,
         ], true)) {
-            return ['habilitado' => false, 'motivo' => 'La decisión médica del socio está pendiente.'];
+            return [
+                'habilitado' => false,
+                'motivo' => 'La decisión médica del socio está pendiente.',
+                'codigo' => 'decision_medica_pendiente',
+            ];
         }
 
         if (!$evaluacionMedica['cumple']) {
-            return ['habilitado' => false, 'motivo' => 'El socio requiere un certificado médico vigente.'];
+            return [
+                'habilitado' => false,
+                'motivo' => 'El socio requiere un certificado médico vigente.',
+                'codigo' => 'documentacion_medica_pendiente',
+            ];
         }
 
-        return ['habilitado' => true, 'motivo' => null];
+        return ['habilitado' => true, 'motivo' => null, 'codigo' => 'requisitos_completos'];
     }
 
     /**

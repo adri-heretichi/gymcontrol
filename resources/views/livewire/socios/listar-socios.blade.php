@@ -57,7 +57,8 @@
                             <th class="custom-table-th">Socio</th>
                             <th class="custom-table-th">DNI</th>
                             <th class="custom-table-th">Inscripciones</th>
-                            <th class="custom-table-th">Estado</th>
+                            <th class="custom-table-th">Estado administrativo</th>
+                            <th class="custom-table-th">Situación de acceso</th>
                             <th class="custom-table-th text-center">Acciones</th>
                         </tr>
                     </thead>
@@ -119,6 +120,20 @@
                                         </span>
                                     @endif
                                 </td>
+                                <td class="custom-table-td">
+                                    @php($estadoAcceso = $estadosAcceso[$socio->id])
+                                    <span @class([
+                                        'inline-flex rounded-full px-2.5 py-1 text-xs font-semibold',
+                                        'bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-200' => $estadoAcceso['tipo'] === 'bloqueado',
+                                        'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200' => $estadoAcceso['tipo'] === 'pendiente',
+                                        'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200' => $estadoAcceso['tipo'] === 'completo',
+                                    ])>
+                                        {{ $estadoAcceso['etiqueta'] }}
+                                    </span>
+                                    <p class="mt-1 max-w-xs text-xs text-slate-500 dark:text-slate-300">
+                                        {{ $estadoAcceso['detalle'] }}
+                                    </p>
+                                </td>
                                 <!-- Acciones -->
                                 <td class="custom-table-td text-center flex justify-center gap-2">
                                     <!-- Ver Detalles (Ruta socios.show) -->
@@ -155,7 +170,7 @@
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="5" class="px-6 py-12 text-center text-slate-400 dark:text-slate-500 italic">
+                                <td colspan="6" class="px-6 py-12 text-center text-slate-400 dark:text-slate-500 italic">
                                     <div class="flex flex-col items-center justify-center">
                                         <svg class="w-12 h-12 text-slate-300 dark:text-slate-700 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>

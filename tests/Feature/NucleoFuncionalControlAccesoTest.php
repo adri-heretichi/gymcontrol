@@ -154,6 +154,23 @@ class NucleoFuncionalControlAccesoTest extends TestCase
         $this->assertSame(PagoDetalle::COBERTURA_VIGENTE, $this->cobertura->estado_cobertura);
     }
 
+    public function test_general_membership_is_not_required_when_enrollment_coverage_and_schedule_are_valid(): void
+    {
+        $this->socio->update([
+            'membresia_id' => null,
+            'fecha_vencimiento' => null,
+        ]);
+
+        $resultado = $this->control->evaluarAcceso(
+            $this->socio->pin,
+            ControlAccesoService::METODO_PIN,
+            $this->grupo->id,
+            $this->momento
+        );
+
+        $this->assertTrue($resultado['autorizado']);
+    }
+
     public function test_expired_or_other_discipline_coverage_does_not_authorize_access(): void
     {
         $this->cobertura->update([

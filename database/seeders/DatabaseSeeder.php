@@ -20,11 +20,10 @@ class DatabaseSeeder extends Seeder
         $this->call([
             UserSeeder::class,         // 1. Usuarios técnicos (admin/recepcionista)
             DisciplinaSeeder::class,   // 2. Disciplinas del gimnasio
-            MembresiaSeeder::class,    // 3. Planes de membresía
-            SocioSeeder::class,        // 4. Socios (requiere membresías)
-            AptoFisicoSeeder::class,    // 5. Aptos médicos (requiere socios)
-            PagoSeeder::class,          // 6. Historial de pagos (requiere socios)
-            AsistenciaSeeder::class,    // 7. Historial de asistencias (requiere socios)
+            SocioSeeder::class,        // 3. Socios preliminares sin inscripción ni membresía general
+            AptoFisicoSeeder::class,   // 4. Documentación médica histórica
+            PagoSeeder::class,         // 5. Historial de pagos
+            AsistenciaSeeder::class,   // 6. Historial de asistencias
         ]);
     }
 }

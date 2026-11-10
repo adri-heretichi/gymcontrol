@@ -3,6 +3,8 @@
 namespace App\Livewire\Socios;
 
 use App\Models\Socio;
+use App\Models\Inscripcion;
+use App\Services\CredencialService;
 use Livewire\Component;
 use Livewire\WithPagination;
 
@@ -62,6 +64,7 @@ class ListarSocios extends Component
     {
         // Consulta optimizada con buscador y conteo de inscripciones vigentes.
         $socios = Socio::withCount('inscripciones')
+            ->with('inscripciones:id,socio_id,estado')
             ->where(function ($query) {
                 $query->where('nombre', 'like', '%' . $this->buscar . '%')
                       ->orWhere('apellido', 'like', '%' . $this->buscar . '%')
@@ -74,8 +77,86 @@ class ListarSocios extends Component
             ->orderBy($this->ordenarPor, $this->ordenarDireccion)
             ->paginate(10);
 
+        $estadosAcceso = $socios->getCollection()->mapWithKeys(
+            fn (Socio $socio) => [$socio->id => $this->estadoAccesoParaListado($socio)]
+        );
+
         return view('livewire.socios.listar-socios', [
-            'socios' => $socios
+            'socios' => $socios,
+            'estadosAcceso' => $estadosAcceso,
         ])->layout('layouts.app');
+    }
+
+    /**
+     * Resume requisitos previos sin afirmar que el ingreso esté autorizado ahora:
+     * el control de acceso también valida credencial, actividad y horario.
+     *
+     * @return array{etiqueta: string, detalle: string, tipo: string}
+     */
+    private function estadoAccesoParaListado(Socio $socio): array
+    {
+        if ($socio->estado !== 'activo') {
+            return [
+                'etiqueta' => 'Administrativamente inactivo',
+                'detalle' => 'No puede ingresar mientras se mantenga inactivo.',
+                'tipo' => 'bloqueado',
+            ];
+        }
+
+        $inscripciones = $socio->inscripciones;
+        if ($inscripciones->isEmpty()) {
+            return [
+                'etiqueta' => 'Registro preliminar',
+                'detalle' => 'Sin inscripción a disciplina y grupo; todavía no puede ingresar.',
+                'tipo' => 'pendiente',
+            ];
+        }
+
+        $inscripcionesAprobadas = $inscripciones->where('estado', Inscripcion::ESTADO_APROBADA);
+        if ($inscripcionesAprobadas->isEmpty()) {
+            if ($inscripciones->contains('estado', Inscripcion::ESTADO_PENDIENTE)) {
+                return [
+                    'etiqueta' => 'Inscripción pendiente',
+                    'detalle' => 'La inscripción requiere aprobación de la dueña.',
+                    'tipo' => 'pendiente',
+                ];
+            }
+
+            return [
+                'etiqueta' => 'Sin inscripción aprobada',
+                'detalle' => 'No puede ingresar sin una inscripción aprobada.',
+                'tipo' => 'pendiente',
+            ];
+        }
+
+        $evaluacion = app(CredencialService::class)->evaluarRequisitosEmision($socio);
+
+        return match ($evaluacion['codigo']) {
+            'cobertura_pendiente' => [
+                'etiqueta' => 'Pendiente de pago/cobertura',
+                'detalle' => 'La inscripción aprobada necesita una cobertura pagada vigente.',
+                'tipo' => 'pendiente',
+            ],
+            'decision_medica_pendiente' => [
+                'etiqueta' => 'Pendiente de decisión médica',
+                'detalle' => 'La dueña debe definir si requiere certificado.',
+                'tipo' => 'pendiente',
+            ],
+            'documentacion_medica_pendiente' => [
+                'etiqueta' => 'Documentación médica pendiente',
+                'detalle' => 'Falta un certificado vigente o una excepción autorizada por la dueña.',
+                'tipo' => 'pendiente',
+            ],
+            'requisitos_completos' => [
+                'etiqueta' => 'Requisitos previos completos',
+                'detalle' => 'El ingreso aún valida credencial activa, grupo y horario.',
+                'tipo' => 'completo',
+            ],
+            default => [
+                'etiqueta' => 'Sin inscripción aprobada',
+                'detalle' => $evaluacion['motivo'] ?? 'No puede ingresar.',
+                'tipo' => 'pendiente',
+            ],
+        };
     }
 }
