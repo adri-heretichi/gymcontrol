@@ -18,9 +18,9 @@ use DomainException;
 class InscripcionService
 {
     /**
-     * Registra una solicitud de inscripción para un socio en un grupo.
-     * Si el grupo tiene vacantes, genera una inscripción con estado 'pendiente' y su Solicitud.
-     * Si el grupo está completo, registra al socio en la Lista de Espera del grupo.
+     * Confirma una inscripción si el grupo tiene una vacante.
+     * Los datos heredados de lista de espera se conservan, pero no se agregan
+     * automáticamente nuevos socios a un grupo completo.
      */
     public function solicitarInscripcion(
         Socio $socio,
@@ -88,48 +88,22 @@ class InscripcionService
                 ->where('estado', Inscripcion::ESTADO_APROBADA)
                 ->count();
 
-            // Si el grupo ya está completo (15 o cupo_maximo alcanzado), va a Lista de Espera
+            // Una inscripción confirmada ocupa una plaza; un grupo completo no admite altas.
             if ($inscriptosActuales >= $grupoLocked->limiteCupo()) {
-                $ultimaPosicion = ListaEspera::where('grupo_id', $grupoLocked->id)
-                    ->where('estado', ListaEspera::ESTADO_ESPERANDO)
-                    ->max('posicion') ?? 0;
-
-                $nuevaPosicion = $ultimaPosicion + 1;
-
-                $espera = ListaEspera::create([
-                    'socio_id' => $socio->id,
-                    'grupo_id' => $grupoLocked->id,
-                    'posicion' => $nuevaPosicion,
-                    'fecha_solicitud' => now(),
-                    'estado' => ListaEspera::ESTADO_ESPERANDO,
-                    'observaciones' => $observaciones ?: 'Ingreso a lista de espera por cupo colmado.',
-                ]);
-
-                Auditoria::registrar(
-                    'administrativo',
-                    'registro_lista_espera',
-                    $espera,
-                    null,
-                    $espera->toArray(),
-                    $solicitante->id
+                throw new DomainException(
+                    "El grupo '{$grupoLocked->nombre}' está completo ({$inscriptosActuales}/{$grupoLocked->limiteCupo()}). Seleccione otro grupo de la disciplina con vacantes."
                 );
-
-                return [
-                    'tipo' => 'lista_espera',
-                    'modelo' => $espera,
-                    'mensaje' => "Grupo completo ({$inscriptosActuales}/{$grupoLocked->limiteCupo()}). Solicitud registrada en lista de espera (Posición #{$nuevaPosicion}).",
-                ];
             }
 
-            // Si hay cupo disponible, se genera la inscripción en estado 'pendiente'
+            // Si hay cupo, la recepción confirma directamente la inscripción.
             if ($inscripcionExistente) {
                 // Reutilizar registro histórico existente (ej. previa baja o rechazo)
                 $datosAntes = $inscripcionExistente->toArray();
                 $inscripcionExistente->update([
                     'fecha_inscripcion' => now()->toDateString(),
-                    'estado' => Inscripcion::ESTADO_PENDIENTE,
+                    'estado' => Inscripcion::ESTADO_APROBADA,
                     'aprobado_por' => null,
-                    'aprobado_at' => null,
+                    'aprobado_at' => now(),
                     'fecha_baja' => null,
                     'motivo_baja' => null,
                     'baja_por' => null,
@@ -144,43 +118,35 @@ class InscripcionService
                     'socio_id' => $socio->id,
                     'grupo_id' => $grupoLocked->id,
                     'fecha_inscripcion' => now()->toDateString(),
-                    'estado' => Inscripcion::ESTADO_PENDIENTE,
+                    'estado' => Inscripcion::ESTADO_APROBADA,
+                    'aprobado_at' => now(),
                 ]);
             }
 
-            // Crear la Solicitud formal para la bandeja de la dueña
-            $solicitud = Solicitud::create([
-                'socio_id' => $socio->id,
-                'solicitante_id' => $solicitante->id,
-                'tipo' => Solicitud::TIPO_INSCRIPCION,
-                'inscripcion_id' => $inscripcion->id,
-                'grupo_id' => $grupoLocked->id,
-                'descripcion' => $observaciones ?: "Solicitud de inscripción al grupo {$grupoLocked->nombre} ({$grupoLocked->disciplina->nombre}).",
-                'estado' => Solicitud::ESTADO_PENDIENTE,
-            ]);
-
             Auditoria::registrar(
                 'administrativo',
-                'solicitud_inscripcion',
-                $solicitud,
+                'inscripcion_confirmada',
+                $inscripcion,
                 $datosAntes ? ['inscripcion' => $datosAntes] : null,
                 [
                     'socio_id' => $socio->id,
                     'inscripcion_id' => $inscripcion->id,
                     'grupo_id' => $grupoLocked->id,
-                    'estado' => $solicitud->estado,
+                    'estado' => $inscripcion->estado,
+                    'registrado_por' => $solicitante->id,
+                    'observaciones' => $observaciones,
                     'inscripcion' => $inscripcion->toArray(),
                 ],
                 $solicitante->id
             );
 
-            event(GymRealtimeUpdate::request($solicitud, 'created'));
+            event(GymRealtimeUpdate::enrollment($inscripcion, 'confirmed'));
 
             return [
-                'tipo' => 'inscripcion_pendiente',
+                'tipo' => 'inscripcion_confirmada',
                 'modelo' => $inscripcion,
-                'solicitud' => $solicitud,
-                'mensaje' => "Solicitud de inscripción registrada con éxito. Queda pendiente de aprobación por la dueña.",
+                'mensaje' => "Inscripción confirmada en {$grupoLocked->nombre}. El socio ocupa una plaza; quedan " .
+                    max(0, $grupoLocked->limiteCupo() - $inscriptosActuales - 1) . ' vacantes.',
             ];
         });
     }
@@ -217,6 +183,9 @@ class InscripcionService
 
             // 2. Bloquear y validar la inscripción antes de contabilizar el cupo.
             $inscripcionLocked = Inscripcion::where('id', $inscripcion->id)->lockForUpdate()->firstOrFail();
+            if ($inscripcionLocked->estaAprobada()) {
+                return $inscripcionLocked;
+            }
             if (!$inscripcionLocked->estaPendiente()) {
                 throw new DomainException("Solo una inscripción pendiente puede aprobarse.");
             }

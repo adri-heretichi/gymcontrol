@@ -183,19 +183,27 @@ class NucleoFuncionalSolicitudesAuditoriaTest extends TestCase
         $this->assertTrue(app(CertificadoMedicoService::class)->evaluarRequisitoMedico($socio->fresh())['cumple']);
     }
 
-    public function test_solicitud_de_inscripcion_se_aprueba_una_sola_vez_y_aplica_cupo(): void
+    public function test_solicitud_heredada_de_inscripcion_se_aprueba_una_sola_vez_y_aplica_cupo(): void
     {
         $socio = $this->crearSocio();
         $grupo = $this->crearGrupo('Funcional', 1);
-        $resultado = app(InscripcionService::class)->solicitarInscripcion(
-            $socio,
-            $grupo,
-            $this->recepcionista,
-            'Inscripción solicitada'
-        );
-        $solicitud = $resultado['solicitud'];
+        $inscripcion = Inscripcion::create([
+            'socio_id' => $socio->id,
+            'grupo_id' => $grupo->id,
+            'fecha_inscripcion' => now()->toDateString(),
+            'estado' => Inscripcion::ESTADO_PENDIENTE,
+        ]);
+        $solicitud = Solicitud::create([
+            'socio_id' => $socio->id,
+            'solicitante_id' => $this->recepcionista->id,
+            'tipo' => Solicitud::TIPO_INSCRIPCION,
+            'inscripcion_id' => $inscripcion->id,
+            'grupo_id' => $grupo->id,
+            'descripcion' => 'Solicitud heredada de inscripción',
+            'estado' => Solicitud::ESTADO_PENDIENTE,
+        ]);
 
-        $this->assertSame(Inscripcion::ESTADO_PENDIENTE, $resultado['modelo']->fresh()->estado);
+        $this->assertSame(Inscripcion::ESTADO_PENDIENTE, $inscripcion->fresh()->estado);
         app(SolicitudService::class)->resolver(
             $solicitud,
             $this->duena,
@@ -203,7 +211,7 @@ class NucleoFuncionalSolicitudesAuditoriaTest extends TestCase
             'Cupo confirmado.'
         );
 
-        $this->assertSame(Inscripcion::ESTADO_APROBADA, $resultado['modelo']->fresh()->estado);
+        $this->assertSame(Inscripcion::ESTADO_APROBADA, $inscripcion->fresh()->estado);
         $this->assertSame(Solicitud::ESTADO_APROBADA, $solicitud->fresh()->estado);
         $this->assertDatabaseHas('auditorias', [
             'auditable_type' => Solicitud::class,

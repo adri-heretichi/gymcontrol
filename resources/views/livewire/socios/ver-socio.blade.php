@@ -31,7 +31,7 @@
             <div class="flex flex-wrap items-center gap-3">
                 @if($socio->estado === 'activo')
                     <a href="{{ route('inscripciones.create', ['socio_id' => $socio->id]) }}" class="btn-primary">
-                        Solicitar inscripción
+                        Inscribir en un grupo
                     </a>
                 @endif
 
@@ -286,6 +286,7 @@
 
                                 <div>
                                     <span class="block text-2xs font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500">Habilitación oficial por inscripción</span>
+                                    <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">La inscripción y la habilitación son estados distintos. Confirmar un grupo no reemplaza los requisitos de pago ni médicos.</p>
                                     <span @class([
                                         'inline-flex mt-1 rounded-full px-2.5 py-1 text-xs font-black',
                                         'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' => $habilitacionSocio['habilitado'],

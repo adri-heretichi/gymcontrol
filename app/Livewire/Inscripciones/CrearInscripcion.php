@@ -142,6 +142,7 @@ class CrearInscripcion extends Component
                 ->where('disciplina_id', $this->disciplina_id)
                 ->where('estado', 'activo')
                 ->whereHas('horarios')
+                ->whereHas('disciplina', fn ($query) => $query->where('estado', 'activo'))
                 ->first()
             : null;
 

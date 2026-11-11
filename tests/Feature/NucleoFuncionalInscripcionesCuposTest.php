@@ -15,6 +15,7 @@ use App\Models\Socio;
 use App\Models\Solicitud;
 use App\Models\User;
 use App\Services\InscripcionService;
+use App\Services\HabilitacionSocioService;
 use DomainException;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -133,7 +134,7 @@ class NucleoFuncionalInscripcionesCuposTest extends TestCase
     /**
      * Test 1: Recepción solicita una inscripción.
      */
-    public function test_01_recepcion_solicita_inscripcion(): void
+    public function test_01_recepcion_confirma_inscripcion_directamente(): void
     {
         $socio = $this->crearSocio();
 
@@ -144,18 +145,14 @@ class NucleoFuncionalInscripcionesCuposTest extends TestCase
             'Solicitud inicial recepcion'
         );
 
-        $this->assertEquals('inscripcion_pendiente', $resultado['tipo']);
+        $this->assertSame('inscripcion_confirmada', $resultado['tipo']);
         $this->assertDatabaseHas('inscripciones', [
             'socio_id' => $socio->id,
             'grupo_id' => $this->grupoFuncional->id,
-            'estado' => Inscripcion::ESTADO_PENDIENTE,
+            'estado' => Inscripcion::ESTADO_APROBADA,
         ]);
-        $this->assertDatabaseHas('solicitudes', [
-            'socio_id' => $socio->id,
-            'solicitante_id' => $this->recepcionista->id,
-            'tipo' => Solicitud::TIPO_INSCRIPCION,
-            'estado' => Solicitud::ESTADO_PENDIENTE,
-        ]);
+        $this->assertDatabaseMissing('solicitudes', ['socio_id' => $socio->id]);
+        $this->assertStringContainsString('quedan 14 vacantes', $resultado['mensaje']);
     }
 
     public function test_la_pantalla_registra_inscripcion_en_grupo_de_la_disciplina_elegida(): void
@@ -173,11 +170,11 @@ class NucleoFuncionalInscripcionesCuposTest extends TestCase
         $this->assertDatabaseHas('inscripciones', [
             'socio_id' => $socio->id,
             'grupo_id' => $this->grupoFuncional->id,
-            'estado' => Inscripcion::ESTADO_PENDIENTE,
+            'estado' => Inscripcion::ESTADO_APROBADA,
         ]);
     }
 
-    public function test_la_duena_aprueba_la_solicitud_desde_la_pantalla_de_inscripciones(): void
+    public function test_la_duena_consulta_la_inscripcion_confirmada_sin_aprobarla(): void
     {
         $socio = $this->crearSocio();
         $resultado = $this->service->solicitarInscripcion(
@@ -188,8 +185,9 @@ class NucleoFuncionalInscripcionesCuposTest extends TestCase
 
         $this->actingAs($this->duena);
         Livewire::test(ListarInscripciones::class)
-            ->call('aprobar', $resultado['modelo']->id)
-            ->assertHasNoErrors();
+            ->set('tab', 'aprobadas')
+            ->assertSee('Inscripciones confirmadas')
+            ->assertSee($socio->nombre_completo);
 
         $this->assertSame(
             Inscripcion::ESTADO_APROBADA,
@@ -213,59 +211,115 @@ class NucleoFuncionalInscripcionesCuposTest extends TestCase
     }
 
     /**
-     * Test 2: La solicitud queda en estado pendiente sin aprobar.
+     * La recepción confirma una inscripción y asigna una vacante.
      */
-    public function test_02_la_solicitud_queda_pendiente(): void
+    public function test_02_la_inscripcion_queda_confirmada_sin_aprobacion_individual(): void
     {
         $socio = $this->crearSocio();
         $this->service->solicitarInscripcion($socio, $this->grupoFuncional, $this->recepcionista);
 
         $inscripcion = Inscripcion::where('socio_id', $socio->id)->firstOrFail();
-        $this->assertTrue($inscripcion->estaPendiente());
-        $this->assertFalse($inscripcion->estaAprobada());
-        $this->assertNull($inscripcion->aprobado_at);
+        $this->assertTrue($inscripcion->estaAprobada());
+        $this->assertNotNull($inscripcion->aprobado_at);
         $this->assertNull($inscripcion->aprobado_por);
     }
 
     /**
-     * Test 3: La solicitud pendiente no ocupa cupo.
+     * Test 3: La inscripción directa ocupa una plaza inmediatamente.
      */
-    public function test_03_la_solicitud_pendiente_no_ocupa_cupo(): void
+    public function test_03_la_inscripcion_directa_ocupa_cupo(): void
     {
         $socio = $this->crearSocio();
         $this->service->solicitarInscripcion($socio, $this->grupoFuncional, $this->recepcionista);
 
         $this->grupoFuncional->refresh();
-        $this->assertEquals(0, $this->grupoFuncional->alumnosInscriptosCount());
-        $this->assertEquals(15, $this->grupoFuncional->vacantesDisponibles());
-        $this->assertEquals('0/15 – 15 vacantes', $this->grupoFuncional->texto_cupo);
+        $this->assertEquals(1, $this->grupoFuncional->alumnosInscriptosCount());
+        $this->assertEquals(14, $this->grupoFuncional->vacantesDisponibles());
+        $this->assertEquals('1/15 – 14 vacantes', $this->grupoFuncional->texto_cupo);
+    }
+
+    public function test_cada_grupo_tiene_cupo_independiente_y_los_dias_no_multiplican_plazas(): void
+    {
+        $grupoDosDias = $this->crearGrupo(
+            $this->disciplinaFuncional,
+            'Funcional dos días',
+            15,
+            [
+                ['dia_semana' => 'lunes', 'hora_inicio' => '08:30:00', 'hora_fin' => '09:30:00'],
+                ['dia_semana' => 'miercoles', 'hora_inicio' => '08:30:00', 'hora_fin' => '09:30:00'],
+            ]
+        );
+        $otroGrupo = $this->crearGrupo(
+            $this->disciplinaFuncional,
+            'Funcional segundo grupo',
+            15,
+            [['dia_semana' => 'martes', 'hora_inicio' => '10:00:00', 'hora_fin' => '11:00:00']]
+        );
+
+        for ($i = 0; $i < 15; $i++) {
+            $this->service->solicitarInscripcion(
+                $this->crearSocio(),
+                $grupoDosDias,
+                $this->recepcionista
+            );
+        }
+
+        $this->assertCount(2, $grupoDosDias->horarios);
+        $this->assertSame(15, $grupoDosDias->fresh()->alumnosInscriptosCount());
+        $this->assertSame(0, $grupoDosDias->fresh()->vacantesDisponibles());
+        $this->assertSame(0, $otroGrupo->fresh()->alumnosInscriptosCount());
+        $this->assertSame(15, $otroGrupo->fresh()->vacantesDisponibles());
+
+        $resultado = $this->service->solicitarInscripcion(
+            $this->crearSocio(),
+            $otroGrupo,
+            $this->recepcionista
+        );
+
+        $this->assertSame('inscripcion_confirmada', $resultado['tipo']);
+        $this->assertSame(1, $otroGrupo->fresh()->alumnosInscriptosCount());
+    }
+
+    public function test_inscripcion_confirmada_sin_pago_no_habilita_el_ingreso(): void
+    {
+        $socio = $this->crearSocio(['decision_medica' => 'no_requerido']);
+        $resultado = $this->service->solicitarInscripcion(
+            $socio,
+            $this->grupoFuncional,
+            $this->recepcionista
+        );
+
+        $habilitacion = app(HabilitacionSocioService::class)->evaluar($socio->fresh());
+
+        $this->assertSame(Inscripcion::ESTADO_APROBADA, $resultado['modelo']->fresh()->estado);
+        $this->assertFalse($habilitacion['habilitado']);
+        $this->assertStringContainsString('cobertura', $habilitacion['por_inscripcion'][0]['detalle']);
     }
 
     /**
-     * Test 4: La dueña aprueba la inscripción.
+     * Las altas nuevas no dependen de la aprobación individual de la dueña.
      */
-    public function test_04_la_duena_aprueba_inscripcion(): void
+    public function test_04_la_inscripcion_directa_no_asigna_aprobador_duena(): void
     {
         $socio = $this->crearSocio();
         $res = $this->service->solicitarInscripcion($socio, $this->grupoFuncional, $this->recepcionista);
 
         $inscripcion = $res['modelo'];
-        $aprobada = $this->service->aprobarInscripcion($inscripcion, $this->duena, 'Aprobada ok');
+        $confirmada = $this->service->aprobarInscripcion($inscripcion, $this->duena, 'Aprobada ok');
 
-        $this->assertTrue($aprobada->estaAprobada());
-        $this->assertEquals(Inscripcion::ESTADO_APROBADA, $aprobada->estado);
-        $this->assertEquals($this->duena->id, $aprobada->aprobado_por);
-        $this->assertNotNull($aprobada->aprobado_at);
+        $this->assertTrue($confirmada->estaAprobada());
+        $this->assertEquals(Inscripcion::ESTADO_APROBADA, $confirmada->estado);
+        $this->assertNull($confirmada->aprobado_por);
+        $this->assertNotNull($confirmada->aprobado_at);
     }
 
     /**
-     * Test 5: La aprobación ocupa efectivamente una plaza del grupo.
+     * Test 5: La confirmación directa ocupa efectivamente una plaza del grupo.
      */
-    public function test_05_la_aprobacion_ocupa_una_plaza(): void
+    public function test_05_la_confirmacion_directa_ocupa_una_plaza(): void
     {
         $socio = $this->crearSocio();
         $res = $this->service->solicitarInscripcion($socio, $this->grupoFuncional, $this->recepcionista);
-        $this->service->aprobarInscripcion($res['modelo'], $this->duena);
 
         $this->grupoFuncional->refresh();
         $this->assertEquals(1, $this->grupoFuncional->alumnosInscriptosCount());
@@ -326,20 +380,15 @@ class NucleoFuncionalInscripcionesCuposTest extends TestCase
 
         $socio16 = $this->crearSocio();
 
-        // Al solicitar, va directo a Lista de Espera por cupo colmado
-        $res16 = $this->service->solicitarInscripcion($socio16, $this->grupoFuncional, $this->recepcionista);
-        $this->assertEquals('lista_espera', $res16['tipo']);
+        try {
+            $this->service->solicitarInscripcion($socio16, $this->grupoFuncional, $this->recepcionista);
+            $this->fail('No debe aceptar una inscripción número 16.');
+        } catch (DomainException $e) {
+            $this->assertStringContainsString('está completo (15/15)', $e->getMessage());
+        }
 
-        // Si se intenta forzar una aprobación en un grupo colmado, se lanza DomainException
-        $inscripcionForzada = Inscripcion::create([
-            'socio_id' => $socio16->id,
-            'grupo_id' => $this->grupoFuncional->id,
-            'fecha_inscripcion' => now()->toDateString(),
-            'estado' => Inscripcion::ESTADO_PENDIENTE,
-        ]);
-
-        $this->expectException(DomainException::class);
-        $this->service->aprobarInscripcion($inscripcionForzada, $this->duena);
+        $this->assertDatabaseMissing('inscripciones', ['socio_id' => $socio16->id]);
+        $this->assertDatabaseMissing('listas_espera', ['socio_id' => $socio16->id]);
     }
 
     /**
@@ -354,22 +403,16 @@ class NucleoFuncionalInscripcionesCuposTest extends TestCase
             $this->service->aprobarInscripcion($res['modelo'], $this->duena);
         }
 
-        // Crear dos solicitudes pendientes para la última plaza
+        // La primera inscripción directa ocupa la última vacante y la segunda se rechaza.
         $socioA = $this->crearSocio();
         $socioB = $this->crearSocio();
 
-        $resA = $this->service->solicitarInscripcion($socioA, $this->grupoFuncional, $this->recepcionista);
-        $resB = $this->service->solicitarInscripcion($socioB, $this->grupoFuncional, $this->recepcionista);
-
-        // La primera aprobación ocupa la última vacante
-        $this->service->aprobarInscripcion($resA['modelo'], $this->duena);
-
-        // La segunda aprobación falla con excepción de cupo después de agotarse la última plaza.
+        $this->service->solicitarInscripcion($socioA, $this->grupoFuncional, $this->recepcionista);
         try {
-            $this->service->aprobarInscripcion($resB['modelo'], $this->duena);
-            $this->fail("Debió fallar por cupo agotado.");
+            $this->service->solicitarInscripcion($socioB, $this->grupoFuncional, $this->recepcionista);
+            $this->fail('La inscripción concurrente no debe exceder el cupo.');
         } catch (DomainException $e) {
-            $this->assertStringContainsString("cupo máximo", $e->getMessage());
+            $this->assertStringContainsString('está completo', $e->getMessage());
         }
 
         $this->grupoFuncional->refresh();
@@ -384,7 +427,7 @@ class NucleoFuncionalInscripcionesCuposTest extends TestCase
         $socio = $this->crearSocio();
         $this->service->solicitarInscripcion($socio, $this->grupoFuncional, $this->recepcionista);
 
-        // Reintentar sobre solicitud pendiente
+        // Reintentar sobre una inscripción confirmada
         $this->expectException(DomainException::class);
         $this->service->solicitarInscripcion($socio, $this->grupoFuncional, $this->recepcionista);
     }
@@ -449,13 +492,13 @@ class NucleoFuncionalInscripcionesCuposTest extends TestCase
         );
 
         $resConsecutivo = $this->service->solicitarInscripcion($socio, $grupoConsecutivo, $this->recepcionista);
-        $this->assertEquals('inscripcion_pendiente', $resConsecutivo['tipo']);
+        $this->assertEquals('inscripcion_confirmada', $resConsecutivo['tipo']);
     }
 
     /**
      * Test 13: Se registra lista de espera cuando el grupo está lleno.
      */
-    public function test_13_se_registra_lista_espera(): void
+    public function test_13_un_grupo_completo_rechaza_nuevas_inscripciones_sin_crear_lista_espera(): void
     {
         for ($i = 1; $i <= 15; $i++) {
             $s = $this->crearSocio();
@@ -464,21 +507,21 @@ class NucleoFuncionalInscripcionesCuposTest extends TestCase
         }
 
         $espera1 = $this->crearSocio();
-        $res = $this->service->solicitarInscripcion($espera1, $this->grupoFuncional, $this->recepcionista);
+        try {
+            $this->service->solicitarInscripcion($espera1, $this->grupoFuncional, $this->recepcionista);
+            $this->fail('El grupo completo debe rechazar nuevas inscripciones.');
+        } catch (DomainException $e) {
+            $this->assertStringContainsString('Seleccione otro grupo', $e->getMessage());
+        }
 
-        $this->assertEquals('lista_espera', $res['tipo']);
-        $this->assertDatabaseHas('listas_espera', [
-            'socio_id' => $espera1->id,
-            'grupo_id' => $this->grupoFuncional->id,
-            'posicion' => 1,
-            'estado' => ListaEspera::ESTADO_ESPERANDO,
-        ]);
+        $this->assertDatabaseMissing('listas_espera', ['socio_id' => $espera1->id]);
+        $this->assertDatabaseMissing('inscripciones', ['socio_id' => $espera1->id]);
     }
 
     /**
      * Test 14: No se duplica una posición activa en lista de espera y asigna orden FIFO.
      */
-    public function test_14_no_se_duplica_posicion_activa(): void
+    public function test_14_se_conservan_listas_de_espera_heredadas_sin_altas_automaticas(): void
     {
         // Llenar grupo
         for ($i = 1; $i <= 15; $i++) {
@@ -490,13 +533,25 @@ class NucleoFuncionalInscripcionesCuposTest extends TestCase
         $espera1 = $this->crearSocio();
         $espera2 = $this->crearSocio();
 
-        $this->service->solicitarInscripcion($espera1, $this->grupoFuncional, $this->recepcionista);
-        $this->service->solicitarInscripcion($espera2, $this->grupoFuncional, $this->recepcionista);
+        ListaEspera::create([
+            'socio_id' => $espera1->id,
+            'grupo_id' => $this->grupoFuncional->id,
+            'posicion' => 1,
+            'fecha_solicitud' => now(),
+            'estado' => ListaEspera::ESTADO_ESPERANDO,
+        ]);
+        ListaEspera::create([
+            'socio_id' => $espera2->id,
+            'grupo_id' => $this->grupoFuncional->id,
+            'posicion' => 2,
+            'fecha_solicitud' => now(),
+            'estado' => ListaEspera::ESTADO_ESPERANDO,
+        ]);
 
         $this->assertDatabaseHas('listas_espera', ['socio_id' => $espera1->id, 'posicion' => 1]);
         $this->assertDatabaseHas('listas_espera', ['socio_id' => $espera2->id, 'posicion' => 2]);
 
-        // Reintentar el mismo socio en espera debe ser rechazado
+        // Los registros preexistentes siguen intactos y no permiten otra inscripción paralela.
         try {
             $this->service->solicitarInscripcion($espera1, $this->grupoFuncional, $this->recepcionista);
             $this->fail("No debió permitir duplicar al socio en lista de espera.");
@@ -646,12 +701,12 @@ class NucleoFuncionalInscripcionesCuposTest extends TestCase
         $this->assertSame(0, $grupo->fresh()->vacantesDisponibles());
         $this->assertSame('Cupo completo: 15/15', $grupo->fresh()->texto_cupo);
 
-        $resultado = $this->service->solicitarInscripcion(
-            $this->crearSocio(),
-            $grupo,
-            $this->recepcionista
-        );
-        $this->assertSame('lista_espera', $resultado['tipo']);
+        try {
+            $this->service->solicitarInscripcion($this->crearSocio(), $grupo, $this->recepcionista);
+            $this->fail('Un grupo con 15 socios debe rechazar una nueva inscripción.');
+        } catch (DomainException $e) {
+            $this->assertStringContainsString('está completo', $e->getMessage());
+        }
     }
 
     /**
@@ -682,7 +737,7 @@ class NucleoFuncionalInscripcionesCuposTest extends TestCase
      */
     public function test_16_vacante_no_aprueba_automaticamente(): void
     {
-        // Llenar grupo a 15 y poner 1 en espera
+        // Llenar grupo a 15 y conservar una fila heredada de lista de espera
         $inscripciones = [];
         for ($i = 1; $i <= 15; $i++) {
             $s = $this->crearSocio();
@@ -691,7 +746,13 @@ class NucleoFuncionalInscripcionesCuposTest extends TestCase
         }
 
         $enEspera = $this->crearSocio();
-        $this->service->solicitarInscripcion($enEspera, $this->grupoFuncional, $this->recepcionista);
+        $registroEspera = ListaEspera::create([
+            'socio_id' => $enEspera->id,
+            'grupo_id' => $this->grupoFuncional->id,
+            'posicion' => 1,
+            'fecha_solicitud' => now(),
+            'estado' => ListaEspera::ESTADO_ESPERANDO,
+        ]);
 
         // Dar de baja una inscripción
         $this->service->registrarBaja($inscripciones[0], $this->duena, 'Baja voluntaria');
@@ -700,8 +761,7 @@ class NucleoFuncionalInscripcionesCuposTest extends TestCase
         $this->grupoFuncional->refresh();
         $this->assertEquals(14, $this->grupoFuncional->alumnosInscriptosCount());
 
-        $regEspera = ListaEspera::where('socio_id', $enEspera->id)->firstOrFail();
-        $this->assertEquals(ListaEspera::ESTADO_ESPERANDO, $regEspera->estado);
+        $this->assertEquals(ListaEspera::ESTADO_ESPERANDO, $registroEspera->fresh()->estado);
     }
 
     /**
@@ -777,10 +837,15 @@ class NucleoFuncionalInscripcionesCuposTest extends TestCase
     public function test_19_rechazo_conserva_historial(): void
     {
         $socio = $this->crearSocio();
-        $res = $this->service->solicitarInscripcion($socio, $this->grupoFuncional, $this->recepcionista);
+        $inscripcionPendienteHeredada = Inscripcion::create([
+            'socio_id' => $socio->id,
+            'grupo_id' => $this->grupoFuncional->id,
+            'fecha_inscripcion' => now()->toDateString(),
+            'estado' => Inscripcion::ESTADO_PENDIENTE,
+        ]);
 
         $inscripcion = $this->service->rechazarInscripcion(
-            $res['modelo'],
+            $inscripcionPendienteHeredada,
             $this->duena,
             'Falta presentar certificado de vacunación'
         );
@@ -807,7 +872,7 @@ class NucleoFuncionalInscripcionesCuposTest extends TestCase
             ->assertSee('Solo la dueña del gimnasio tiene permisos para aprobar inscripciones');
 
         $inscripcion->refresh();
-        $this->assertEquals(Inscripcion::ESTADO_PENDIENTE, $inscripcion->estado);
+        $this->assertEquals(Inscripcion::ESTADO_APROBADA, $inscripcion->estado);
 
         // Invitado no autenticado
         auth()->logout();
@@ -821,19 +886,16 @@ class NucleoFuncionalInscripcionesCuposTest extends TestCase
     {
         $socio = $this->crearSocio();
 
-        // 1. Solicitud
+        // 1. Confirmación directa
         $res = $this->service->solicitarInscripcion($socio, $this->grupoFuncional, $this->recepcionista);
         $this->assertDatabaseHas('auditorias', [
-            'accion' => 'solicitud_inscripcion',
+            'accion' => 'inscripcion_confirmada',
             'user_id' => $this->recepcionista->id,
         ]);
 
-        // 2. Aprobación
+        // Las altas normales no generan una decisión posterior de aprobación.
         $this->service->aprobarInscripcion($res['modelo'], $this->duena);
-        $this->assertDatabaseHas('auditorias', [
-            'accion' => 'aprobacion_inscripcion',
-            'user_id' => $this->duena->id,
-        ]);
+        $this->assertDatabaseMissing('auditorias', ['accion' => 'aprobacion_inscripcion']);
     }
 
     /**
