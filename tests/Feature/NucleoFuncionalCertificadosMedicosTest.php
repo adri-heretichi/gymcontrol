@@ -261,17 +261,28 @@ class NucleoFuncionalCertificadosMedicosTest extends TestCase
     {
         $socio = $this->crearSocio(['decision_medica' => 'requerido']);
 
-        $this->service->registrarCertificado(
+        $apto = $this->service->registrarCertificado(
             socio: $socio,
             fechaEmision: now()->subMonth()->toDateString(),
             fechaVencimiento: now()->addMonths(11)->toDateString(),
             operador: $this->recepcionista
         );
 
+        $pendiente = $this->service->evaluarRequisitoMedico($socio);
+        $this->assertFalse($pendiente['cumple']);
+        $this->assertEquals('F', $pendiente['caso']);
+
+        $this->actingAs($this->duena);
+        Livewire::test(\App\Livewire\AptosFisicos\EditarAptoFisico::class, ['aptoFisico' => $apto])
+            ->set('estado', AptoFisico::ESTADO_VIGENTE)
+            ->call('actualizar')
+            ->assertHasNoErrors();
+
         $eval = $this->service->evaluarRequisitoMedico($socio);
 
         $this->assertTrue($eval['cumple']);
         $this->assertEquals('D', $eval['caso']);
+        $this->assertSame(AptoFisico::ESTADO_VIGENTE, $apto->fresh()->estado);
         $this->assertTrue($socio->cumpleRequisitoMedico());
         $this->assertGreaterThan(0, $eval['dias_restantes']);
     }
@@ -405,7 +416,8 @@ class NucleoFuncionalCertificadosMedicosTest extends TestCase
 
         $this->assertNotNull($apto->id);
         $this->assertEquals($socio->id, $apto->socio_id);
-        $this->assertEquals('vigente', $apto->estado);
+        $this->assertEquals(AptoFisico::ESTADO_PENDIENTE_REVISION, $apto->estado);
+        $this->assertFalse($this->service->evaluarRequisitoMedico($socio)['cumple']);
         $this->assertNotNull($apto->archivo);
         Storage::disk('local')->assertExists($apto->archivo);
     }
@@ -621,12 +633,47 @@ class NucleoFuncionalCertificadosMedicosTest extends TestCase
             socio: $socio,
             fechaEmision: today()->subMonth()->toDateString(),
             fechaVencimiento: today()->toDateString(),
-            operador: $this->recepcionista
+            operador: $this->duena
         );
 
         $this->assertSame('vigente', $certificado->estado);
         $this->assertTrue($this->service->evaluarRequisitoMedico($socio)['cumple']);
         $this->assertTrue($socio->fresh()->aptoFisicoVigente());
+    }
+
+    public function test_reception_cannot_approve_a_pending_certificate(): void
+    {
+        $socio = $this->crearSocio(['decision_medica' => 'requerido']);
+        $apto = $this->service->registrarCertificado(
+            socio: $socio,
+            fechaEmision: today()->subDay()->toDateString(),
+            fechaVencimiento: today()->addYear()->toDateString(),
+            operador: $this->recepcionista
+        );
+
+        $this->actingAs($this->recepcionista);
+        $this->get(route('aptos-fisicos.edit', $apto))->assertForbidden();
+        $this->assertSame('F', $this->service->evaluarRequisitoMedico($socio)['caso']);
+    }
+
+    public function test_owner_rejection_does_not_satisfy_medical_requirement(): void
+    {
+        $socio = $this->crearSocio(['decision_medica' => 'requerido']);
+        $apto = $this->service->registrarCertificado(
+            socio: $socio,
+            fechaEmision: today()->subDay()->toDateString(),
+            fechaVencimiento: today()->addYear()->toDateString(),
+            operador: $this->recepcionista
+        );
+
+        $this->actingAs($this->duena);
+        Livewire::test(\App\Livewire\AptosFisicos\EditarAptoFisico::class, ['aptoFisico' => $apto])
+            ->set('estado', AptoFisico::ESTADO_RECHAZADO)
+            ->call('actualizar')
+            ->assertHasNoErrors();
+
+        $this->assertSame('G', $this->service->evaluarRequisitoMedico($socio)['caso']);
+        $this->assertFalse($socio->fresh()->cumpleRequisitoMedico());
     }
 
     public function test_usuario_sin_rol_no_puede_descargar_certificado(): void

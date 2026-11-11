@@ -146,17 +146,13 @@ class Socio extends Model
      */
     public function aptoFisicoVigente(): bool
     {
-        $ultimo = $this->aptosFisicos()->latest('fecha_emision')->latest('id')->first();
-        
-        if (!$ultimo) {
-            return false;
-        }
-        
-        if ($ultimo->fecha_vencimiento->copy()->startOfDay()->lt(Carbon::today())) {
-            return false;
-        }
+        $hoy = Carbon::now(config('app.timezone'))->toDateString();
 
-        return true;
+        return $this->aptosFisicos()
+            ->where('estado', AptoFisico::ESTADO_VIGENTE)
+            ->whereDate('fecha_emision', '<=', $hoy)
+            ->whereDate('fecha_vencimiento', '>=', $hoy)
+            ->exists();
     }
 
     /**
@@ -172,7 +168,9 @@ class Socio extends Model
                 ->where('estado_cobertura', PagoDetalle::COBERTURA_VIGENTE)
                 ->whereDate('fecha_inicio_cobertura', '<=', $fecha)
                 ->whereDate('fecha_fin_cobertura', '>=', $fecha)
-                ->whereHas('pago', fn ($pago) => $pago->where('estado', Pago::ESTADO_ACTIVO)))
+                ->whereHas('pago', fn ($pago) => $pago
+                    ->where('estado', Pago::ESTADO_ACTIVO)
+                    ->where('socio_id', $this->id)))
             ->exists();
     }
 

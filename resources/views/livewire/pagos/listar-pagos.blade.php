@@ -113,6 +113,9 @@
                                                 –
                                                 {{ \Carbon\Carbon::parse($det->fecha_fin_cobertura)->format('d/m/Y') }}
                                             </span>
+                                            <span class="font-semibold text-gray-700 ml-1">
+                                                · ${{ number_format($det->subtotal, 2, ',', '.') }}
+                                            </span>
                                             @php
                                                 $hoy = now()->toDateString();
                                                 $vigente = $pago->estaActivo()

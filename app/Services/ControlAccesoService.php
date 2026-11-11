@@ -464,12 +464,13 @@ class ControlAccesoService
         }
 
         if (!$evaluacionMedica['cumple']) {
-            $codigo = $evaluacionMedica['caso'] === 'E'
-                ? 'certificado_vencido'
-                : 'certificado_faltante';
-            $mensaje = $codigo === 'certificado_vencido'
-                ? 'El certificado médico obligatorio está vencido.'
-                : 'Se requiere un certificado médico vigente para esta actividad.';
+            [$codigo, $mensaje] = match ($evaluacionMedica['caso']) {
+                'E' => ['certificado_vencido', 'El certificado médico obligatorio está vencido.'],
+                'F' => ['certificado_pendiente_aprobacion', 'El certificado médico presentado está pendiente de aprobación de la dueña.'],
+                'G' => ['certificado_rechazado', 'El certificado médico presentado no fue aprobado.'],
+                'H' => ['certificado_faltante', 'El certificado médico todavía no está vigente.'],
+                default => ['certificado_faltante', 'Se requiere un certificado médico vigente para esta actividad.'],
+            };
 
             return $this->denegar($codigo, $mensaje, $socio, $actividad, $horario);
         }

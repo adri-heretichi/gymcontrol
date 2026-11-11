@@ -17,7 +17,7 @@ class AptoFisicoApiController extends Controller
         Gate::authorize('viewAny', AptoFisico::class);
         $validated = $request->validate([
             'socio_id' => ['sometimes', 'integer', 'exists:socios,id'],
-            'estado' => ['sometimes', 'in:vigente,vencido'],
+            'estado' => ['sometimes', 'in:pendiente_revision,vigente,vencido,rechazado'],
         ]);
 
         $aptos = AptoFisico::query()

@@ -23,6 +23,7 @@
                             <th class="px-4 py-3 text-left font-semibold text-gray-600">Disciplina / Grupo</th>
                             <th class="px-4 py-3 text-left font-semibold text-gray-600">Inscripción</th>
                             <th class="px-4 py-3 text-left font-semibold text-gray-600">Cobertura</th>
+                            <th class="px-4 py-3 text-right font-semibold text-gray-600">Importe abonado</th>
                             <th class="px-4 py-3 text-left font-semibold text-gray-600">Vence</th>
                             <th class="px-4 py-3 text-left font-semibold text-gray-600">Estado</th>
                             <th class="px-4 py-3 text-left font-semibold text-gray-600">Acción</th>
@@ -50,6 +51,9 @@
                                         <span class="text-gray-400 italic">Sin cobertura</span>
                                     @endif
                                 </td>
+                                <td class="px-4 py-3 text-right text-xs font-semibold text-gray-700 whitespace-nowrap">
+                                    {{ $cob['importe'] !== null ? '$' . number_format((float) $cob['importe'], 2, ',', '.') : '—' }}
+                                </td>
                                 <td class="px-4 py-3 text-xs text-gray-600">
                                     @if($cob['vigente'] && $cob['dias_restantes'] !== null)
                                         {{ $cob['dias_restantes'] }} día{{ $cob['dias_restantes'] != 1 ? 's' : '' }}
@@ -74,7 +78,7 @@
                                 </td>
                                 <td class="px-4 py-3">
                                     @can('create', \App\Models\Pago::class)
-                                        <a href="{{ route('pagos.create') }}?inscripcion={{ $inscripcionId }}"
+                                        <a href="{{ route('pagos.create', $socio->id) }}?inscripcion={{ $inscripcionId }}"
                                            class="text-xs text-blue-600 hover:underline">
                                             Cobrar
                                         </a>

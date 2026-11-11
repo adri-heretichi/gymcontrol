@@ -12,7 +12,7 @@
                 Registrar Apto Físico: <span class="text-indigo-600 dark:text-indigo-400">{{ $socio->nombre }} {{ $socio->apellido }}</span>
             </h2>
             <p class="text-sm text-slate-500 dark:text-slate-300 mt-1 font-semibold">
-                Suba el certificado médico firmado y registre su periodo de vigencia.
+                Registre el documento y su periodo de vigencia. Si lo carga recepción, quedará pendiente de aprobación de la dueña.
             </p>
         </div>
 

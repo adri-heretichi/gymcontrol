@@ -58,7 +58,7 @@
                             <th class="custom-table-th">DNI</th>
                             <th class="custom-table-th">Inscripciones</th>
                             <th class="custom-table-th">Estado administrativo</th>
-                            <th class="custom-table-th">Situación de acceso</th>
+                            <th class="custom-table-th">Habilitación por inscripción</th>
                             <th class="custom-table-th text-center">Acciones</th>
                         </tr>
                     </thead>
@@ -132,6 +132,9 @@
                                     </span>
                                     <p class="mt-1 max-w-xs text-xs text-slate-500 dark:text-slate-300">
                                         {{ $estadoAcceso['detalle'] }}
+                                    </p>
+                                    <p class="mt-1 max-w-xs text-[11px] text-slate-400 dark:text-slate-400">
+                                        El ingreso efectivo también requiere credencial activa, grupo habilitado y horario correcto.
                                     </p>
                                 </td>
                                 <!-- Acciones -->

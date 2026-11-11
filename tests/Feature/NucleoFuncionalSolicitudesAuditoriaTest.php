@@ -164,6 +164,25 @@ class NucleoFuncionalSolicitudesAuditoriaTest extends TestCase
         ]);
     }
 
+    public function test_duena_aprueba_excepcion_medica_sin_certificado(): void
+    {
+        $socio = $this->crearSocio(['decision_medica' => 'requerido']);
+        $solicitud = $this->crearSolicitudMedica($socio);
+
+        $resuelta = app(SolicitudService::class)->resolver(
+            $solicitud,
+            $this->duena,
+            Solicitud::ESTADO_APROBADA,
+            'Excepción médica aprobada por la dueña.',
+            'no_requerido'
+        );
+
+        $this->assertSame(Solicitud::ESTADO_APROBADA, $resuelta->estado);
+        $this->assertSame('no_requerido', $socio->fresh()->decision_medica);
+        $this->assertSame($this->duena->id, $socio->fresh()->decision_medica_por);
+        $this->assertTrue(app(CertificadoMedicoService::class)->evaluarRequisitoMedico($socio->fresh())['cumple']);
+    }
+
     public function test_solicitud_de_inscripcion_se_aprueba_una_sola_vez_y_aplica_cupo(): void
     {
         $socio = $this->crearSocio();

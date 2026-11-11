@@ -13,7 +13,7 @@ class ListarAptosFisicos extends Component
     // Propiedad para el buscador
     public $buscar = '';
 
-    // Filtro por estado ('', 'vigente', 'vencido')
+    // Filtro por estado médico
     public $filtroEstado = '';
 
     // Paginación tema Tailwind
@@ -65,6 +65,8 @@ class ListarAptosFisicos extends Component
                     $q->where('estado', 'vencido')
                       ->orWhere('fecha_vencimiento', '<', today());
                 });
+            } elseif (in_array($this->filtroEstado, ['pendiente_revision', 'rechazado'], true)) {
+                $query->where('estado', $this->filtroEstado);
             }
         }
 

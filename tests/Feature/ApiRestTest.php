@@ -249,6 +249,10 @@ class ApiRestTest extends TestCase
 
         $upload->assertJsonPath('data.tiene_archivo', true);
         $this->assertArrayNotHasKey('archivo', $upload->json('data'));
+        $this->assertSame(
+            AptoFisico::ESTADO_PENDIENTE_REVISION,
+            AptoFisico::query()->findOrFail($upload->json('data.id'))->estado
+        );
     }
 
     public function test_socio_api_never_exposes_legacy_or_active_credentials_or_medical_details()

@@ -43,8 +43,10 @@
                         class="form-input"
                     >
                         <option value="">Todos los certificados</option>
-                        <option value="vigente">Vigentes (Aprobados)</option>
+                        <option value="pendiente_revision">Pendientes de aprobación</option>
+                        <option value="vigente">Aprobados y vigentes</option>
                         <option value="vencido">Vencidos / Expirados</option>
+                        <option value="rechazado">Rechazados</option>
                     </select>
                 </div>
             </div>
@@ -65,7 +67,7 @@
                     <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
                         @forelse ($aptos as $apto)
                             @php
-                                $esVencido = $apto->fecha_vencimiento->isPast() || $apto->estado === 'vencido';
+                                $esVencido = $apto->fecha_vencimiento->lt(today()) || $apto->estado === 'vencido';
                             @endphp
                             <tr class="custom-table-row">
                                 <!-- Socio -->
@@ -94,9 +96,17 @@
                                 </td>
                                 <!-- Estado -->
                                 <td class="custom-table-td">
-                                    @if(!$esVencido)
+                                    @if($apto->estado === 'pendiente_revision')
+                                        <span class="px-2 py-1 bg-amber-100 text-amber-800 rounded-full text-xs font-bold">
+                                            Pendiente de aprobación
+                                        </span>
+                                    @elseif($apto->estado === 'rechazado')
+                                        <span class="badge-danger">
+                                            Rechazado
+                                        </span>
+                                    @elseif(!$esVencido && $apto->estado === 'vigente')
                                         <span class="badge-success">
-                                            Vigente
+                                            Aprobado y vigente
                                         </span>
                                     @else
                                         <span class="badge-danger animate-pulse">

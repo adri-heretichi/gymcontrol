@@ -12,6 +12,7 @@ use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 
 /**
  * PagoService – Servicio centralizado de pagos y coberturas.
@@ -45,7 +46,7 @@ class PagoService
      *
      * @param  Socio  $socio         Socio al que pertenece el pago.
      * @param  array  $detalles      Array de detalles. Cada elemento debe tener:
-     *                               - inscripcion_id (int|null)
+     *                               - inscripcion_id (int, approved or pending enrollment)
      *                               - concepto       (string)
      *                               - fecha_inicio   (string Y-m-d)
      *                               - fecha_fin      (string Y-m-d)
@@ -66,30 +67,22 @@ class PagoService
         ?string $referencia = null,
         ?string $fechaPago  = null
     ): Pago {
-        // Validaciones previas (fuera de transacción para fallo rápido)
+        Gate::forUser($operador)->authorize('create', Pago::class);
+
         $this->validarDetalles($detalles);
         $this->validarMedioPago($medioPago);
 
         $coberturasSolicitadas = [];
         foreach ($detalles as $det) {
-            if (!empty($det['inscripcion_id'])) {
-                $clave = implode('|', [
-                    (int) $det['inscripcion_id'],
-                    Carbon::parse($det['fecha_inicio'])->toDateString(),
-                    Carbon::parse($det['fecha_fin'])->toDateString(),
-                ]);
-                if (isset($coberturasSolicitadas[$clave])) {
-                    throw new \DomainException('El pago contiene dos detalles para la misma inscripción y período.');
-                }
-                $coberturasSolicitadas[$clave] = true;
-
-                $this->verificarSinDuplicacion(
-                    (int) $det['inscripcion_id'],
-                    $det['fecha_inicio'],
-                    $det['fecha_fin'],
-                    null
-                );
+            $clave = implode('|', [
+                (int) $det['inscripcion_id'],
+                Carbon::parse($det['fecha_inicio'])->toDateString(),
+                Carbon::parse($det['fecha_fin'])->toDateString(),
+            ]);
+            if (isset($coberturasSolicitadas[$clave])) {
+                throw new \DomainException('El pago contiene dos detalles para la misma inscripción y período.');
             }
+            $coberturasSolicitadas[$clave] = true;
         }
 
         $fechaPagoFinal = $fechaPago
@@ -97,11 +90,40 @@ class PagoService
             : Carbon::now(config('app.timezone'))->toDateString();
 
         $importeTotal = collect($detalles)->sum('subtotal');
+        $inscripcionIds = collect($detalles)->pluck('inscripcion_id')->map(fn ($id) => (int) $id)->unique()->sort()->values();
 
         return DB::transaction(function () use (
-            $socio, $detalles, $medioPago, $operador,
-            $referencia, $fechaPagoFinal, $importeTotal
+            $socio, $detalles, $medioPago, $operador, $referencia,
+            $fechaPagoFinal, $importeTotal, $inscripcionIds
         ) {
+            $inscripciones = Inscripcion::query()
+                ->whereIn('id', $inscripcionIds)
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get()
+                ->keyBy('id');
+
+            foreach ($detalles as $det) {
+                $inscripcion = $inscripciones->get((int) $det['inscripcion_id']);
+                if (!$inscripcion || (int) $inscripcion->socio_id !== (int) $socio->id) {
+                    throw new \InvalidArgumentException('La inscripción seleccionada no pertenece al socio del pago.');
+                }
+
+                if (!in_array($inscripcion->estado, [
+                    Inscripcion::ESTADO_APROBADA,
+                    Inscripcion::ESTADO_PENDIENTE,
+                ], true)) {
+                    throw new \InvalidArgumentException('No se puede asociar un pago a una inscripción rechazada o dada de baja.');
+                }
+
+                $this->verificarSinDuplicacion(
+                    $inscripcion->id,
+                    $det['fecha_inicio'],
+                    $det['fecha_fin'],
+                    null
+                );
+            }
+
             // Crear el pago principal
             $pago = Pago::create([
                 'socio_id'    => $socio->id,
@@ -116,8 +138,8 @@ class PagoService
             // Crear cada detalle de cobertura
             foreach ($detalles as $det) {
                 $pago->detalles()->create([
-                    'inscripcion_id'         => $det['inscripcion_id'] ?? null,
-                    'membresia_id'           => $det['membresia_id'] ?? null,
+                    'inscripcion_id'         => (int) $det['inscripcion_id'],
+                    'membresia_id'           => null,
                     'concepto'               => $det['concepto'],
                     'fecha_inicio_cobertura' => $det['fecha_inicio'],
                     'fecha_fin_cobertura'    => $det['fecha_fin'],
@@ -169,7 +191,9 @@ class PagoService
             : Carbon::now(config('app.timezone'))->toDateString();
 
         // Buscar la cobertura activa más reciente (pago no anulado)
-        $detalle = PagoDetalle::whereHas('pago', fn ($q) => $q->where('estado', Pago::ESTADO_ACTIVO))
+        $detalle = PagoDetalle::whereHas('pago', fn ($q) => $q
+                ->where('estado', Pago::ESTADO_ACTIVO)
+                ->where('socio_id', $inscripcion->socio_id))
             ->where('inscripcion_id', $inscripcion->id)
             ->where('estado_cobertura', PagoDetalle::COBERTURA_VIGENTE)
             ->vigenteEn($hoy)
@@ -184,13 +208,16 @@ class PagoService
                 'dias_restantes'       => $detalle->diasRestantes($hoy),
                 'estado'               => PagoDetalle::COBERTURA_VIGENTE,
                 'pago_id'              => $detalle->pago_id,
+                'importe'              => $detalle->subtotal,
                 'inscripcion_estado'   => $inscripcion->estado,
             ];
         }
 
         // Sin cobertura activa para la fecha dada
         // Buscamos el último período para saber si fue pagado alguna vez
-        $ultimoDetalle = PagoDetalle::whereHas('pago', fn ($q) => $q->where('estado', Pago::ESTADO_ACTIVO))
+        $ultimoDetalle = PagoDetalle::whereHas('pago', fn ($q) => $q
+                ->where('estado', Pago::ESTADO_ACTIVO)
+                ->where('socio_id', $inscripcion->socio_id))
             ->where('inscripcion_id', $inscripcion->id)
             ->orderByDesc('fecha_fin_cobertura')
             ->first();
@@ -204,6 +231,7 @@ class PagoService
             'dias_restantes'     => 0,
             'estado'             => $estado,
             'pago_id'            => $ultimoDetalle?->pago_id,
+            'importe'            => $ultimoDetalle?->subtotal,
             'inscripcion_estado' => $inscripcion->estado,
         ];
     }
@@ -238,7 +266,9 @@ class PagoService
      */
     public function obtenerProximaFechaInicio(Inscripcion $inscripcion): string
     {
-        $ultimoDetalle = PagoDetalle::whereHas('pago', fn ($q) => $q->where('estado', Pago::ESTADO_ACTIVO))
+        $ultimoDetalle = PagoDetalle::whereHas('pago', fn ($q) => $q
+                ->where('estado', Pago::ESTADO_ACTIVO)
+                ->where('socio_id', $inscripcion->socio_id))
             ->where('inscripcion_id', $inscripcion->id)
             ->orderByDesc('fecha_fin_cobertura')
             ->first();
@@ -262,6 +292,8 @@ class PagoService
      */
     public function obtenerRecaudacionGeneral(string $desde, string $hasta, User $duena): array
     {
+        Gate::forUser($duena)->authorize('verRecaudacion', Pago::class);
+
         $query = Pago::activos()
             ->whereBetween('fecha_pago', [$desde, $hasta])
             ->with(['socio', 'operador', 'detalles.inscripcion.grupo.disciplina']);
@@ -290,6 +322,8 @@ class PagoService
      */
     public function anularPago(Pago $pago, User $duena, string $motivo): Pago
     {
+        Gate::forUser($duena)->authorize('anular', $pago);
+
         if ($pago->estaAnulado()) {
             throw new \InvalidArgumentException('El pago ya está anulado.');
         }
@@ -366,6 +400,14 @@ class PagoService
         foreach ($detalles as $i => $det) {
             $idx = $i + 1;
 
+            if (empty($det['inscripcion_id']) || !filter_var($det['inscripcion_id'], FILTER_VALIDATE_INT)) {
+                throw new \InvalidArgumentException("El detalle #{$idx} debe estar asociado a una inscripción.");
+            }
+
+            if (!empty($det['membresia_id'])) {
+                throw new \InvalidArgumentException('Los pagos nuevos deben asociarse a una inscripción, no a una membresía general.');
+            }
+
             if (empty($det['concepto'])) {
                 throw new \InvalidArgumentException("El concepto del detalle #{$idx} es obligatorio.");
             }
@@ -426,7 +468,10 @@ class PagoService
         $fechaInicioStr = Carbon::parse($fechaInicio)->toDateString();
         $fechaFinStr    = Carbon::parse($fechaFin)->toDateString();
 
-        $query = PagoDetalle::whereHas('pago', fn ($q) => $q->where('estado', Pago::ESTADO_ACTIVO))
+        $inscripcion = Inscripcion::findOrFail($inscripcionId);
+        $query = PagoDetalle::whereHas('pago', fn ($q) => $q
+                ->where('estado', Pago::ESTADO_ACTIVO)
+                ->where('socio_id', $inscripcion->socio_id))
             ->where('inscripcion_id', $inscripcionId)
             ->whereDate('fecha_inicio_cobertura', $fechaInicioStr)
             ->whereDate('fecha_fin_cobertura', $fechaFinStr);

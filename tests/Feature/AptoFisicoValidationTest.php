@@ -87,7 +87,7 @@ class AptoFisicoValidationTest extends TestCase
         // Verificamos que se guardó en la base de datos
         $this->assertDatabaseHas('aptos_fisicos', [
             'socio_id' => $this->socio->id,
-            'estado' => 'vigente',
+            'estado' => AptoFisico::ESTADO_PENDIENTE_REVISION,
         ]);
 
         $apto = AptoFisico::first();

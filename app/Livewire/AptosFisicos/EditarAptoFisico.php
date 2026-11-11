@@ -41,7 +41,7 @@ class EditarAptoFisico extends Component
         return [
             'fecha_emision' => 'required|date',
             'fecha_vencimiento' => 'required|date|after_or_equal:fecha_emision',
-            'estado' => 'required|in:vigente,vencido',
+            'estado' => 'required|in:pendiente_revision,vigente,vencido,rechazado',
             'archivo_cargado' => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:4096', // Máx 4MB (opcional)
         ];
     }
@@ -69,6 +69,17 @@ class EditarAptoFisico extends Component
     {
         $this->authorize('update', $this->aptoFisico);
         $this->validate();
+
+        if (
+            $this->estado === AptoFisico::ESTADO_VIGENTE
+            && (
+                $this->fecha_emision > today()->toDateString()
+                || $this->fecha_vencimiento < today()->toDateString()
+            )
+        ) {
+            $this->addError('estado', 'Solo se puede aprobar un certificado ya emitido y todavía vigente.');
+            return;
+        }
 
         if ($this->archivo_cargado) {
             app(CertificadoMedicoService::class)->registrarCertificado(
@@ -100,7 +111,11 @@ class EditarAptoFisico extends Component
 
             Auditoria::registrar(
                 tipoEvento: 'medico',
-                accion: 'certificado_medico_actualizado',
+                accion: match ([$datosAntes['estado'], $datos['estado']]) {
+                    ['pendiente_revision', 'vigente'] => 'certificado_medico_aprobado',
+                    ['pendiente_revision', 'rechazado'] => 'certificado_medico_rechazado',
+                    default => 'certificado_medico_actualizado',
+                },
                 entidad: $this->aptoFisico,
                 datosAntes: $datosAntes,
                 datosDespues: [

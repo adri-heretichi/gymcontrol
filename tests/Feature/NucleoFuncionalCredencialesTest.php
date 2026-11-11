@@ -578,7 +578,7 @@ class NucleoFuncionalCredencialesTest extends TestCase
             socio: $socio,
             fechaEmision: today()->subMonth()->toDateString(),
             fechaVencimiento: today()->toDateString(),
-            operador: $this->recepcionista
+            operador: $this->duena
         );
 
         $this->assertTrue($this->service->evaluarRequisitosEmision($socio)['habilitado']);

@@ -285,6 +285,31 @@
                                 </div>
 
                                 <div>
+                                    <span class="block text-2xs font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500">Habilitación oficial por inscripción</span>
+                                    <span @class([
+                                        'inline-flex mt-1 rounded-full px-2.5 py-1 text-xs font-black',
+                                        'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' => $habilitacionSocio['habilitado'],
+                                        'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300' => !$habilitacionSocio['habilitado'],
+                                    ])>
+                                        {{ $habilitacionSocio['etiqueta'] }}
+                                    </span>
+                                    <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">{{ $habilitacionSocio['detalle'] }}</p>
+                                    @if($habilitacionSocio['por_inscripcion'])
+                                        <ul class="mt-2 space-y-1">
+                                            @foreach($habilitacionSocio['por_inscripcion'] as $inscripcion)
+                                                <li class="text-xs text-slate-600 dark:text-slate-300">
+                                                    <strong>{{ $inscripcion['disciplina'] }} — {{ $inscripcion['grupo'] }}:</strong>
+                                                    {{ $inscripcion['habilitado'] ? 'Habilitado' : $inscripcion['detalle'] }}
+                                                </li>
+                                            @endforeach
+                                        </ul>
+                                    @endif
+                                    <p class="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                                        El ingreso efectivo también valida credencial, horario y actividad seleccionada.
+                                    </p>
+                                </div>
+
+                                <div>
                                     <span class="block text-2xs font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500">Requisito Médico Administrativo</span>
                                     @php
                                         $eval = $evaluacionMedica ?: $socio->estadoRequisitoMedico();

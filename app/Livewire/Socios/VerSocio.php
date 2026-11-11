@@ -4,6 +4,7 @@ namespace App\Livewire\Socios;
 
 use App\Models\Socio;
 use App\Services\CredencialService;
+use App\Services\HabilitacionSocioService;
 use Carbon\Carbon;
 use InvalidArgumentException;
 use Livewire\Component;
@@ -213,7 +214,8 @@ class VerSocio extends Component
             ->paginate(10);
 
         return view('livewire.socios.ver-socio', [
-            'asistenciasPaginadas' => $asistenciasPaginadas
+            'asistenciasPaginadas' => $asistenciasPaginadas,
+            'habilitacionSocio' => app(HabilitacionSocioService::class)->evaluar($this->socio),
         ])->layout('layouts.app');
     }
 }

@@ -51,6 +51,8 @@ class CrearPago extends Component
 
     public function mount(?Socio $socio = null): void
     {
+        $this->authorize('create', Pago::class);
+
         $this->fecha_pago = Carbon::now(config('app.timezone'))->format('Y-m-d');
         $this->detalles   = [$this->detalleVacio()];
 
@@ -59,6 +61,12 @@ class CrearPago extends Component
             $this->socioPreseleccionado = $socio;
             $this->deshabilitarSocio    = true;
             $this->cargarInscripciones();
+
+            $inscripcionId = (int) request()->query('inscripcion', 0);
+            if ($inscripcionId && collect($this->inscripcionesDisponibles)->contains('id', $inscripcionId)) {
+                $this->detalles[0]['inscripcion_id'] = (string) $inscripcionId;
+                $this->actualizarFechasDetalle(0);
+            }
         }
     }
 
@@ -110,7 +118,10 @@ class CrearPago extends Component
             return;
         }
 
-        $inscripcion = Inscripcion::find($inscripcionId);
+        $inscripcion = Inscripcion::query()
+            ->where('socio_id', $this->socio_id)
+            ->whereIn('estado', [Inscripcion::ESTADO_APROBADA, Inscripcion::ESTADO_PENDIENTE])
+            ->find($inscripcionId);
         if (!$inscripcion) {
             return;
         }
@@ -132,6 +143,7 @@ class CrearPago extends Component
     /** Guarda el pago usando PagoService (transaccional). */
     public function guardar(): void
     {
+        $this->authorize('create', Pago::class);
         $this->errorGeneral = null;
 
         // Validación Livewire
@@ -159,7 +171,7 @@ class CrearPago extends Component
             $this->dispatch('pagoRegistrado');
             $this->redirect(route('pagos.index'), navigate: true);
 
-        } catch (\InvalidArgumentException | \RuntimeException $e) {
+        } catch (\InvalidArgumentException | \DomainException | \RuntimeException $e) {
             $this->errorGeneral = $e->getMessage();
         }
     }
@@ -235,7 +247,7 @@ class CrearPago extends Component
             $rules["detalles.{$i}.fecha_inicio"]   = 'required|date';
             $rules["detalles.{$i}.fecha_fin"]      = "required|date|after_or_equal:detalles.{$i}.fecha_inicio";
             $rules["detalles.{$i}.subtotal"]       = 'required|numeric|min:0';
-            $rules["detalles.{$i}.inscripcion_id"] = 'nullable|exists:inscripciones,id';
+            $rules["detalles.{$i}.inscripcion_id"] = 'required|integer|exists:inscripciones,id';
         }
 
         return $rules;

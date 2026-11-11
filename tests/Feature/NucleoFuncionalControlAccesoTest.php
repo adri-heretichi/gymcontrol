@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Asistencia;
+use App\Models\AptoFisico;
 use App\Models\Auditoria;
 use App\Models\Disciplina;
 use App\Models\Grupo;
@@ -241,6 +242,29 @@ class NucleoFuncionalControlAccesoTest extends TestCase
         $this->crearCertificado('2026-10-01');
         $vencido = $this->control->evaluarAcceso($this->socio->pin, 'pin', $this->grupo->id, $this->momento);
         $this->assertSame('certificado_vencido', $vencido['codigo']);
+    }
+
+    public function test_medical_document_pending_owner_approval_denies_access(): void
+    {
+        $this->socio->update(['decision_medica' => 'requerido']);
+        AptoFisico::create([
+            'socio_id' => $this->socio->id,
+            'archivo' => null,
+            'fecha_emision' => '2026-11-01',
+            'fecha_vencimiento' => '2027-11-01',
+            'estado' => AptoFisico::ESTADO_PENDIENTE_REVISION,
+        ]);
+
+        $resultado = $this->control->evaluarAcceso(
+            $this->socio->pin,
+            ControlAccesoService::METODO_PIN,
+            $this->grupo->id,
+            $this->momento
+        );
+
+        $this->assertFalse($resultado['autorizado']);
+        $this->assertSame('certificado_pendiente_aprobacion', $resultado['codigo']);
+        $this->assertStringContainsString('aprobación de la dueña', $resultado['mensaje']);
     }
 
     public function test_certificate_is_valid_on_its_expiration_date_and_no_requirement_is_silent(): void

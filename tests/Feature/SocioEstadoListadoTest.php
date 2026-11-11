@@ -54,7 +54,7 @@ class SocioEstadoListadoTest extends TestCase
             ->get('/socios')
             ->assertOk()
             ->assertSee('Estado administrativo')
-            ->assertSee('Situación de acceso')
+            ->assertSee('Habilitación por inscripción')
             ->assertSee('Activo')
             ->assertSee('Administrativamente inactivo')
             ->assertSee('Registro preliminar')
@@ -62,9 +62,9 @@ class SocioEstadoListadoTest extends TestCase
             ->assertSee('Pendiente de pago/cobertura')
             ->assertSee('Pendiente de decisión médica')
             ->assertSee('Documentación médica pendiente')
-            ->assertSee('Requisitos previos completos')
+            ->assertSee('Habilitado para 1 disciplina')
             ->assertSee('todavía no puede ingresar')
-            ->assertSee('credencial activa, grupo y horario');
+            ->assertSee('credencial activa, grupo habilitado y horario correcto');
 
         $this->assertSame('activo', $preliminar->fresh()->estado);
         $this->assertSame('inactivo', $inactivo->fresh()->estado);

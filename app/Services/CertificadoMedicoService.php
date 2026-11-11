@@ -71,8 +71,30 @@ class CertificadoMedicoService
             ];
         }
 
-        // Caso C, D, E: Requiere certificado
+        // Caso C-H: requiere una documentación aprobada y vigente.
         if ($decision === self::ESTADO_REQUERIDO) {
+            $certificadoVigente = $socio->aptosFisicos()
+                ->where('estado', AptoFisico::ESTADO_VIGENTE)
+                ->whereDate('fecha_emision', '<=', $hoy->toDateString())
+                ->whereDate('fecha_vencimiento', '>=', $hoy->toDateString())
+                ->latest('fecha_emision')
+                ->latest('id')
+                ->first();
+
+            if ($certificadoVigente) {
+                $vencimiento = Carbon::parse($certificadoVigente->fecha_vencimiento)->startOfDay();
+                $diasRestantes = (int) $hoy->diffInDays($vencimiento, false);
+
+                return [
+                    'cumple'         => true,
+                    'caso'           => 'D',
+                    'decision'       => self::ESTADO_REQUERIDO,
+                    'mensaje'        => "Certificado médico aprobado y vigente hasta el {$vencimiento->format('d/m/Y')}.",
+                    'certificado'    => $certificadoVigente,
+                    'dias_restantes' => max(0, $diasRestantes),
+                ];
+            }
+
             $ultimo = $this->obtenerUltimoCertificado($socio);
 
             // Caso C: Requiere certificado, pero no lo presentó
@@ -87,10 +109,32 @@ class CertificadoMedicoService
                 ];
             }
 
+            if ($ultimo->estado === AptoFisico::ESTADO_PENDIENTE_REVISION) {
+                return [
+                    'cumple'         => false,
+                    'caso'           => 'F',
+                    'decision'       => self::ESTADO_REQUERIDO,
+                    'mensaje'        => 'El certificado médico presentado está pendiente de aprobación de la dueña.',
+                    'certificado'    => $ultimo,
+                    'dias_restantes' => 0,
+                ];
+            }
+
+            if ($ultimo->estado === AptoFisico::ESTADO_RECHAZADO) {
+                return [
+                    'cumple'         => false,
+                    'caso'           => 'G',
+                    'decision'       => self::ESTADO_REQUERIDO,
+                    'mensaje'        => 'El certificado médico presentado no fue aprobado.',
+                    'certificado'    => $ultimo,
+                    'dias_restantes' => 0,
+                ];
+            }
+
             // Una fecha de vencimiento es válida durante todo ese día.
             $vencimiento = Carbon::parse($ultimo->fecha_vencimiento)->startOfDay();
 
-            if ($vencimiento->lt($hoy)) {
+            if ($ultimo->estado === AptoFisico::ESTADO_VENCIDO || $vencimiento->lt($hoy)) {
                 // Caso E: Requiere certificado y está vencido
                 return [
                     'cumple'         => false,
@@ -102,16 +146,24 @@ class CertificadoMedicoService
                 ];
             }
 
-            // Caso D: Requiere certificado y está vigente
-            $diasRestantes = (int) $hoy->diffInDays($vencimiento, false);
+            if ($ultimo->fecha_emision->startOfDay()->gt($hoy)) {
+                return [
+                    'cumple'         => false,
+                    'caso'           => 'H',
+                    'decision'       => self::ESTADO_REQUERIDO,
+                    'mensaje'        => 'El certificado médico todavía no está vigente.',
+                    'certificado'    => $ultimo,
+                    'dias_restantes' => 0,
+                ];
+            }
 
             return [
-                'cumple'         => true,
-                'caso'           => 'D',
+                'cumple'         => false,
+                'caso'           => 'G',
                 'decision'       => self::ESTADO_REQUERIDO,
-                'mensaje'        => "Certificado médico vigente hasta el {$vencimiento->format('d/m/Y')}.",
+                'mensaje'        => 'El certificado médico no está aprobado.',
                 'certificado'    => $ultimo,
-                'dias_restantes' => max(0, $diasRestantes),
+                'dias_restantes' => 0,
             ];
         }
 
@@ -214,7 +266,11 @@ class CertificadoMedicoService
         $vencimiento = Carbon::parse($fechaVencimiento)->startOfDay();
 
         $hoy = Carbon::now(config('app.timezone'))->startOfDay();
-        $estado = $vencimiento->lt($hoy) ? 'vencido' : 'vigente';
+        $estado = match (true) {
+            $vencimiento->lt($hoy) => AptoFisico::ESTADO_VENCIDO,
+            $operador->esDuena() => AptoFisico::ESTADO_VIGENTE,
+            default => AptoFisico::ESTADO_PENDIENTE_REVISION,
+        };
         $path = null;
 
         try {
