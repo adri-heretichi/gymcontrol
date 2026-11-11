@@ -250,6 +250,17 @@ class NucleoFuncionalControlAccesoTest extends TestCase
             $this->momento
         );
         $this->assertTrue($habilitadoTrasPago['autorizado']);
+
+        $entradaTrasPago = $this->control->registrarIngreso(
+            $socioSinCobertura->pin,
+            ControlAccesoService::METODO_PIN,
+            $this->grupo->id,
+            $this->recepcionista->id,
+            $this->momento,
+            'pin_recepcion'
+        );
+        $this->assertTrue($entradaTrasPago['autorizado']);
+        $this->assertSame('pin_recepcion', $entradaTrasPago['asistencia']->metodo_acceso);
     }
 
     public function test_pending_medical_decision_and_required_missing_or_expired_certificate_are_denied(): void
@@ -346,6 +357,9 @@ class NucleoFuncionalControlAccesoTest extends TestCase
         $martes = $this->momento->copy()->addDay();
         $diaIncorrecto = $this->control->evaluarAcceso($this->socio->pin, 'pin', $this->grupo->id, $martes);
         $this->assertSame('fuera_de_horario', $diaIncorrecto['codigo']);
+        $this->assertSame('Funcional tarde', $diaIncorrecto['actividad']['grupo']);
+        $this->assertSame('lunes', $diaIncorrecto['horario']['dia']);
+        $this->assertSame('18:00', $diaIncorrecto['horario']['hora_inicio']);
 
         $fueraDeHora = $this->control->evaluarAcceso(
             $this->socio->pin,
@@ -358,6 +372,47 @@ class NucleoFuncionalControlAccesoTest extends TestCase
         $this->grupo->update(['estado' => 'inactivo']);
         $inactivo = $this->control->evaluarAcceso($this->socio->pin, 'pin', $this->grupo->id, $this->momento);
         $this->assertSame('grupo_inactivo', $inactivo['codigo']);
+    }
+
+    public function test_full_group_does_not_block_members_already_enrolled(): void
+    {
+        for ($index = 0; $index < 14; $index++) {
+            $socio = $this->crearSocio([
+                'pin' => str_pad((string) (200000 + $index), 6, '0', STR_PAD_LEFT),
+                'qr_token' => str_pad(dechex($index + 100), 64, '0', STR_PAD_LEFT),
+                'estado_credencial' => CredencialService::ESTADO_ACTIVO,
+                'decision_medica' => 'no_requerido',
+            ]);
+            $this->crearInscripcion($socio, $this->grupo);
+        }
+
+        $this->assertSame(15, $this->grupo->inscripciones()->where('estado', Inscripcion::ESTADO_APROBADA)->count());
+        $resultado = $this->control->evaluarAcceso(
+            $this->socio->pin,
+            ControlAccesoService::METODO_PIN,
+            $this->grupo->id,
+            $this->momento
+        );
+
+        $this->assertTrue($resultado['autorizado']);
+    }
+
+    public function test_different_discipline_selection_returns_only_members_own_class_details(): void
+    {
+        $otraDisciplina = $this->crearDisciplina('Kickboxing');
+        $otroGrupo = $this->crearGrupo($otraDisciplina, 'Kickboxing tarde');
+
+        $resultado = $this->control->evaluarAcceso(
+            $this->socio->pin,
+            ControlAccesoService::METODO_PIN,
+            $otroGrupo->id,
+            $this->momento
+        );
+
+        $this->assertSame('inscripcion_inexistente', $resultado['codigo']);
+        $this->assertSame('Funcional tarde', $resultado['actividad']['grupo']);
+        $this->assertSame('lunes', $resultado['horario']['dia']);
+        $this->assertDatabaseCount('asistencias', 0);
     }
 
     public function test_ambiguous_activity_requires_explicit_group_selection(): void
@@ -426,6 +481,27 @@ class NucleoFuncionalControlAccesoTest extends TestCase
         $this->assertDatabaseCount('auditorias', 0);
     }
 
+    public function test_qr_get_does_not_register_an_entry_or_close_an_existing_permanence(): void
+    {
+        $entrada = $this->control->registrarIngreso(
+            $this->socio->pin,
+            ControlAccesoService::METODO_PIN,
+            $this->grupo->id,
+            null,
+            $this->momento
+        );
+        $this->assertTrue($entrada['autorizado']);
+        $auditCount = Auditoria::count();
+
+        $this->get(route('terminal.scan', $this->socio->qr_token))
+            ->assertForbidden()
+            ->assertSee('Registrar salida');
+
+        $this->assertNull($entrada['asistencia']->fresh()->hora_salida);
+        $this->assertSame($auditCount, Auditoria::count());
+        $this->assertSame(1, Asistencia::where('socio_id', $this->socio->id)->count());
+    }
+
     public function test_new_qr_post_records_entry_through_the_shared_engine(): void
     {
         $this->get(route('terminal.scan', $this->socio->qr_token))
@@ -459,6 +535,53 @@ class NucleoFuncionalControlAccesoTest extends TestCase
         $this->assertSame(1, Asistencia::where('socio_id', $this->socio->id)->count());
     }
 
+    public function test_revoked_qr_can_only_close_an_existing_permanence(): void
+    {
+        $entrada = $this->control->registrarIngreso(
+            $this->socio->pin,
+            ControlAccesoService::METODO_PIN,
+            $this->grupo->id,
+            null,
+            $this->momento
+        );
+        $tokenRevocado = $this->socio->qr_token;
+        app(CredencialService::class)->revocarCredenciales($this->socio, $this->duena, 'QR extraviado');
+
+        $this->get(route('terminal.scan', $tokenRevocado))
+            ->assertForbidden()
+            ->assertSee('Registrar salida')
+            ->assertSee('ACCESO DENEGADO');
+        $this->assertNull($entrada['asistencia']->fresh()->hora_salida);
+
+        Carbon::setTestNow($this->momento->copy()->addMinute());
+        $this->post(route('terminal.scan.salida'), ['identificador' => $tokenRevocado])
+            ->assertOk()
+            ->assertSee('Salida registrada');
+
+        $this->assertNotNull($entrada['asistencia']->fresh()->hora_salida);
+        $this->assertSame(1, Asistencia::where('socio_id', $this->socio->id)->count());
+    }
+
+    public function test_qr_with_expired_payment_is_denied_without_creating_attendance(): void
+    {
+        $this->cobertura->update([
+            'fecha_inicio_cobertura' => '2026-10-01',
+            'fecha_fin_cobertura' => '2026-11-08',
+        ]);
+
+        $this->get(route('terminal.scan', $this->socio->qr_token))
+            ->assertForbidden()
+            ->assertSee('Cuota vencida. Regularizar en recepción.');
+        $response = $this->post(route('terminal.scan.ingreso'), [
+            'identificador' => $this->socio->qr_token,
+            'grupo_id' => $this->grupo->id,
+        ]);
+        $response->assertForbidden()
+            ->assertSee('Cuota vencida. Regularizar en recepción.');
+
+        $this->assertDatabaseCount('asistencias', 0);
+    }
+
     public function test_terminal_accepts_only_six_digit_pin_and_shows_minimal_access_details(): void
     {
         Http::fake();
@@ -480,6 +603,57 @@ class NucleoFuncionalControlAccesoTest extends TestCase
             ->assertDontSee('Escanear QR');
 
         $this->assertSame(1, Asistencia::where('socio_id', $this->socio->id)->count());
+    }
+
+    public function test_terminal_keypad_preserves_leading_zeroes_and_rejects_wrong_six_digit_pin(): void
+    {
+        Http::fake();
+        $this->socio->update(['pin' => '000123']);
+
+        $component = Livewire::test(\App\Livewire\TerminalAcceso::class);
+        foreach (str_split('000123') as $digit) {
+            $component->call('appendDigit', $digit);
+        }
+        $component->assertSet('pin', '000123')
+            ->assertSee('Teclado numérico del PIN')
+            ->call('procesar')
+            ->assertSet('estadoAcceso', 'exito');
+
+        $this->control->registrarSalida(
+            $this->socio,
+            null,
+            $this->momento->copy()->addMinute()
+        );
+        $resultado = $this->control->registrarIngreso(
+            '999999',
+            ControlAccesoService::METODO_PIN,
+            $this->grupo->id,
+            null,
+            $this->momento->copy()->addMinutes(2)
+        );
+        $this->assertFalse($resultado['autorizado']);
+        $this->assertSame('credencial_invalida', $resultado['codigo']);
+        $this->assertDatabaseHas('auditorias', [
+            'tipo_evento' => 'acceso',
+            'accion' => 'acceso_denegado',
+        ]);
+        $this->assertStringNotContainsString('999999', json_encode(
+            Auditoria::where('tipo_evento', 'acceso')->latest('id')->firstOrFail()->datos_despues
+        ));
+    }
+
+    public function test_reception_can_see_recent_denial_reason_without_pin_or_medical_details(): void
+    {
+        $this->socio->update(['decision_medica' => 'requerido']);
+        $this->actingAs($this->recepcionista);
+
+        Livewire::test(\App\Livewire\ControlAcceso::class)
+            ->set('identificador', $this->socio->pin)
+            ->call('confirmarIngreso')
+            ->assertSee('Últimos eventos de acceso')
+            ->assertSee('No habilitado. Consultar con la dueña.')
+            ->assertDontSee('certificado médico')
+            ->assertDontSee($this->socio->pin);
     }
 
     public function test_reception_previews_then_confirms_pin_entry_and_can_select_a_group(): void

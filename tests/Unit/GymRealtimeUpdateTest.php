@@ -54,7 +54,7 @@ class GymRealtimeUpdateTest extends TestCase
 
         $payload = $event->broadcastWith();
         $this->assertSame('denied', $payload['result']);
-        $this->assertSame('Acceso denegado.', $payload['message']);
+        $this->assertSame('No habilitado. Consultar con la dueña.', $payload['message']);
         $this->assertSame('qr_movil', $payload['source']);
         $this->assertStringNotContainsString('certificado', json_encode($payload));
         $this->assertStringNotContainsString('123456', json_encode($payload));

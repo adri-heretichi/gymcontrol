@@ -3,6 +3,8 @@
 namespace App\Livewire;
 
 use App\Models\Asistencia;
+use App\Models\Auditoria;
+use App\Models\Socio;
 use App\Services\ControlAccesoService;
 use Illuminate\Support\Facades\Gate;
 use Livewire\Attributes\On;
@@ -117,9 +119,41 @@ class ControlAcceso extends Component
             ->orderByDesc('hora_ingreso')
             ->limit(12)
             ->get();
+        $ultimosEventosAcceso = Auditoria::query()
+            ->where('tipo_evento', 'acceso')
+            ->latest('created_at')
+            ->limit(12)
+            ->with(['auditable' => fn ($query) => $query->select(['id', 'nombre', 'apellido'])])
+            ->get(['id', 'accion', 'auditable_type', 'auditable_id', 'datos_despues', 'created_at'])
+            ->map(function (Auditoria $evento) {
+                $datos = $evento->datos_despues ?? [];
+                $codigo = (string) ($datos['resultado'] ?? '');
+                $metodo = (string) ($datos['metodo'] ?? '');
+                $operacion = $metodo === 'salida' ? 'Salida' : (
+                    $evento->accion === 'acceso_autorizado' ? 'Autorizado' : 'Denegado'
+                );
+
+                return [
+                    'socio' => $evento->auditable instanceof Socio
+                        ? trim($evento->auditable->nombre . ' ' . $evento->auditable->apellido)
+                        : 'Credencial no identificada',
+                    'momento' => $evento->created_at,
+                    'operacion' => $operacion,
+                    'metodo' => match ($metodo) {
+                        'pin' => 'PIN',
+                        'qr' => 'QR',
+                        'salida' => 'Salida',
+                        default => 'Acceso',
+                    },
+                    'motivo' => $evento->accion === 'acceso_autorizado'
+                        ? 'Acceso autorizado.'
+                        : ControlAccesoService::mensajeOperativo($codigo),
+                ];
+            });
 
         return view('livewire.control-acceso', [
             'ultimosMovimientos' => $ultimosMovimientos,
+            'ultimosEventosAcceso' => $ultimosEventosAcceso,
         ])->layout('layouts.app');
     }
 

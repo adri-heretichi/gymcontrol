@@ -60,12 +60,12 @@ Usar en la rama integrada y con datos locales de prueba. Preparar socios, discip
 - **Pasos:** Intentar el ingreso indicando el grupo, si se solicita.
 - **Resultado esperado:** Acceso denegado con mensaje que identifica que no corresponde la actividad, disciplina o día/horario; no se registra el ingreso.
 
-### GF-09 — Inscripción pendiente
+### GF-09 — Inscripción directa por recepción
 - **Módulo:** Inscripciones y control de acceso
-- **Actor:** Socio y dueña
-- **Precondiciones:** Socio con solicitud de inscripción pendiente y horario actual.
-- **Pasos:** Intentar ingresar antes de la aprobación; luego aprobar la inscripción como dueña y repetir con cobertura vigente.
-- **Resultado esperado:** Antes de aprobar, el acceso se deniega por inscripción pendiente. Solo tras aprobación y cumplimiento del resto de requisitos puede autorizarse.
+- **Actor:** Recepcionista y socio
+- **Precondiciones:** Socio registrado; grupo activo con vacante y horario vigente.
+- **Pasos:** Desde recepción, inscribir al socio directamente en el grupo; completar el pago/cobertura; presentar su credencial en el horario correspondiente. Repetir con un grupo sin vacantes.
+- **Resultado esperado:** La inscripción con vacante queda confirmada por recepción sin aprobación posterior de la dueña y habilita el acceso cuando se cumplen los demás requisitos. Sin vacante no se confirma ni habilita el ingreso; ninguna inscripción pendiente autoriza el acceso.
 
 ### GF-10 — Grupo lleno y lista de espera
 - **Módulo:** Grupos e inscripciones
@@ -85,22 +85,22 @@ Usar en la rama integrada y con datos locales de prueba. Preparar socios, discip
 - **Módulo:** Terminal y control de acceso
 - **Actor:** Socio
 - **Precondiciones:** Credencial activa y todos los requisitos de actividad, horario, cobertura y decisión médica cumplidos.
-- **Pasos:** Abrir `/terminal`; ingresar el PIN.
-- **Resultado esperado:** Terminal Fénix muestra autorización y actividad correspondiente; se crea una única permanencia abierta.
+- **Pasos:** Abrir `/terminal`; ingresar el PIN con el teclado físico y con el teclado numérico en pantalla, incluyendo un PIN que comience en cero. Después generar un intento denegado y revisar los últimos eventos en Control de Acceso como recepción.
+- **Resultado esperado:** La terminal conserva los seis dígitos, muestra el resultado y la actividad correspondiente y crea una única permanencia abierta. El panel de recepción muestra intentos recientes con motivos operativos, sin PIN, token QR ni detalles médicos.
 
 ### GF-13 — Acceso por QR móvil
 - **Módulo:** Credenciales QR
 - **Actor:** Socio
 - **Precondiciones:** Socio con QR activo y requisitos de acceso cumplidos; teléfono con cámara y red local accesible.
-- **Pasos:** Abrir el QR móvil desde la ficha autorizada; escanearlo con el dispositivo o lector previsto.
-- **Resultado esperado:** El QR abre el flujo de escaneo registrado y permite autorizar solo bajo las mismas reglas que el PIN; token no se filtra en auditoría ni en mensajes públicos.
+- **Pasos:** Abrir el enlace QR móvil desde la ficha autorizada. Verificar que la página GET solo evalúa y no crea asistencia ni auditoría; después confirmar explícitamente el ingreso mediante el formulario POST. Confirmar la salida desde su acción POST.
+- **Resultado esperado:** El enlace QR abre la pantalla móvil existente, sin depender de un lector o una aplicación que aún no estén implementados. Solo el POST explícito registra entrada/salida; se aplican las mismas reglas actuales que al PIN y el token no se filtra en auditoría, eventos ni mensajes operativos.
 
 ### GF-14 — Salida y cierre de permanencia
 - **Módulo:** Control de acceso y asistencias
 - **Actor:** Socio
 - **Precondiciones:** Socio con ingreso autorizado y permanencia abierta.
-- **Pasos:** Presentar nuevamente la credencial para registrar la salida; revisar el historial.
-- **Resultado esperado:** Se cierra la permanencia con fecha, hora y método de salida correctos; no queda otra permanencia abierta duplicada.
+- **Pasos:** Presentar nuevamente la credencial para registrar la salida; revisar el historial. Repetir con pago vencido y, en un caso separado, con credencial revocada explícitamente.
+- **Resultado esperado:** Se cierra la permanencia con fecha, hora y método de salida correctos, incluso si venció el pago o se revocó la credencial después del ingreso; no queda otra permanencia abierta duplicada ni se reactiva la credencial revocada.
 
 ### GF-15 — Asistencia a clase
 - **Módulo:** Asistencias de clase
@@ -147,9 +147,9 @@ Usar en la rama integrada y con datos locales de prueba. Preparar socios, discip
 ### GF-21 — Notificaciones en tiempo real
 - **Módulo:** Reverb y dashboard
 - **Actor:** Dueña y recepción
-- **Precondiciones:** Laravel y Reverb activos; abrir dashboard en dos sesiones/navegadores autenticados según rol.
+- **Precondiciones:** Laravel, Reverb y el worker de cola de broadcasting activos; abrir dashboard en dos sesiones/navegadores autenticados según rol.
 - **Pasos:** Generar un evento operativo de prueba; observar ambos paneles y la conexión WebSocket en las herramientas de desarrollo del navegador.
-- **Resultado esperado:** La conexión se establece y las sesiones autorizadas reciben/actualizan los datos permitidos. No se filtran datos sensibles entre roles.
+- **Resultado esperado:** La conexión WebSocket se establece y el worker procesa el evento; las sesiones autorizadas reciben/actualizan los datos permitidos. No se filtran datos sensibles entre roles. Si Reverb o el worker no están activos, marcar el caso bloqueado; las pruebas automatizadas no sustituyen esta verificación E2E.
 
 ### GF-22 — Navbar, marca y responsive
 - **Módulo:** Interfaz

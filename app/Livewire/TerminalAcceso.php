@@ -118,6 +118,37 @@ class TerminalAcceso extends Component
         $this->grupoSeleccionado = null;
     }
 
+    public function appendDigit(string $digit): void
+    {
+        if (!preg_match('/^\d$/', $digit)) {
+            $this->addError('pin', 'El teclado solo admite números.');
+            return;
+        }
+
+        if (!preg_match('/^\d{0,6}$/', $this->pin)) {
+            $this->pin = '';
+        }
+
+        if (strlen($this->pin) >= 6) {
+            return;
+        }
+
+        $this->pin .= $digit;
+        $this->resetErrorBag('pin');
+    }
+
+    public function removeLastDigit(): void
+    {
+        $this->pin = substr($this->pin, 0, -1);
+        $this->resetErrorBag('pin');
+    }
+
+    public function clearPin(): void
+    {
+        $this->pin = '';
+        $this->resetErrorBag('pin');
+    }
+
     /**
      * Procesa el PIN ingresado o leído por el escáner USB.
      */

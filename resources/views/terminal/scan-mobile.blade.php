@@ -49,6 +49,20 @@
                 <div class="rounded-2xl border border-rose-700 bg-rose-950/60 p-5" role="alert" aria-live="assertive">
                     <h2 class="text-xl font-black text-white">ACCESO DENEGADO</h2>
                     <p class="mt-2 text-sm font-semibold text-rose-100">{{ $resultado['mensaje'] }}</p>
+                    @if($resultado['actividad'] && !empty($resultado['actividad']['disciplina']))
+                        <p class="mt-3 font-bold text-white">
+                            Clase habilitada: {{ $resultado['actividad']['disciplina'] }}
+                            @if(!empty($resultado['actividad']['grupo']))
+                                — {{ $resultado['actividad']['grupo'] }}
+                            @endif
+                        </p>
+                    @endif
+                    @if($resultado['horario'])
+                        <p class="mt-1 text-sm text-rose-100">
+                            {{ ucfirst($resultado['horario']['dia']) }},
+                            {{ $resultado['horario']['hora_inicio'] }}–{{ $resultado['horario']['hora_fin'] }}
+                        </p>
+                    @endif
                 </div>
             @endif
 

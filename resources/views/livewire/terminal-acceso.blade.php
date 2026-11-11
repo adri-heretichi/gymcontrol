@@ -104,6 +104,16 @@
                     <div class="mt-4 p-4 bg-black/10 rounded-2xl border border-white/10 max-w-lg mx-auto">
                         <p class="text-base font-bold text-rose-100 leading-relaxed">{{ $motivoRechazo }}</p>
                     </div>
+                    @if($actividadAcceso && !empty($actividadAcceso['disciplina']))
+                        <p class="mt-4 text-sm font-bold text-white">
+                            Clase habilitada: {{ $actividadAcceso['disciplina'] }}{{ !empty($actividadAcceso['grupo']) ? ' — ' . $actividadAcceso['grupo'] : '' }}
+                        </p>
+                    @endif
+                    @if($horarioAcceso)
+                        <p class="text-sm text-rose-100">
+                            {{ ucfirst($horarioAcceso['dia']) }}, {{ $horarioAcceso['hora_inicio'] }}–{{ $horarioAcceso['hora_fin'] }}
+                        </p>
+                    @endif
                     @if($opcionesActividad)
                         <form wire:submit.prevent="procesar" class="mx-auto mt-5 max-w-md space-y-3 text-left">
                             <label for="grupo-seleccionado" class="block text-sm font-bold text-white">Seleccioná el grupo y volvé a ingresar el PIN</label>
@@ -114,6 +124,14 @@
                                 @endforeach
                             </select>
                             <input type="password" wire:model="pin" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="off" aria-label="PIN de seis números" class="w-full rounded-xl border-slate-600 bg-slate-900 text-center text-2xl font-black tracking-[0.3em] text-white">
+                            <div class="mx-auto grid max-w-sm grid-cols-3 gap-2" role="group" aria-label="Teclado numérico del PIN">
+                                @foreach(['1', '2', '3', '4', '5', '6', '7', '8', '9'] as $digit)
+                                    <button type="button" wire:click="appendDigit('{{ $digit }}')" class="rounded-xl border border-slate-700 bg-slate-900 py-2 text-lg font-black text-white">{{ $digit }}</button>
+                                @endforeach
+                                <button type="button" wire:click="removeLastDigit" class="rounded-xl border border-slate-700 bg-slate-900 py-2 text-xs font-bold text-slate-200">Borrar</button>
+                                <button type="button" wire:click="appendDigit('0')" class="rounded-xl border border-slate-700 bg-slate-900 py-2 text-lg font-black text-white">0</button>
+                                <button type="button" wire:click="clearPin" class="rounded-xl border border-slate-700 bg-slate-900 py-2 text-xs font-bold text-slate-200">Limpiar</button>
+                            </div>
                             <button type="submit" wire:loading.attr="disabled" class="w-full rounded-xl bg-indigo-600 px-5 py-3 font-black text-white disabled:opacity-50">Registrar ingreso</button>
                         </form>
                     @endif
@@ -153,6 +171,22 @@
                             class="w-full text-center py-5 border-2 border-slate-800 bg-slate-950/80 rounded-2xl text-3xl font-black tracking-widest text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 shadow-inner"
                         />
                         @error('pin') <p class="text-sm font-bold text-rose-300">{{ $message }}</p> @enderror
+                        <div class="mx-auto grid max-w-sm grid-cols-3 gap-2" role="group" aria-label="Teclado numérico del PIN">
+                            @foreach(['1', '2', '3', '4', '5', '6', '7', '8', '9'] as $digit)
+                                <button type="button" wire:click="appendDigit('{{ $digit }}')" wire:loading.attr="disabled"
+                                        class="rounded-xl border border-slate-700 bg-slate-900 py-3 text-xl font-black text-white hover:bg-slate-800 disabled:opacity-50"
+                                        aria-label="Ingresar {{ $digit }}">{{ $digit }}</button>
+                            @endforeach
+                            <button type="button" wire:click="removeLastDigit" wire:loading.attr="disabled"
+                                    class="rounded-xl border border-slate-700 bg-slate-900 py-3 text-sm font-bold text-slate-200 hover:bg-slate-800"
+                                    aria-label="Borrar último dígito">Borrar</button>
+                            <button type="button" wire:click="appendDigit('0')" wire:loading.attr="disabled"
+                                    class="rounded-xl border border-slate-700 bg-slate-900 py-3 text-xl font-black text-white hover:bg-slate-800"
+                                    aria-label="Ingresar 0">0</button>
+                            <button type="button" wire:click="clearPin" wire:loading.attr="disabled"
+                                    class="rounded-xl border border-slate-700 bg-slate-900 py-3 text-sm font-bold text-slate-200 hover:bg-slate-800"
+                                    aria-label="Limpiar PIN">Limpiar</button>
+                        </div>
                         <button type="submit" wire:loading.attr="disabled" class="w-full rounded-xl bg-indigo-600 px-6 py-3 font-black text-white disabled:opacity-50">
                             <span wire:loading.remove wire:target="procesar">Registrar ingreso</span>
                             <span wire:loading wire:target="procesar">Validando...</span>
@@ -201,7 +235,6 @@
         @endif
 
     </div>
-
     <!-- Pie de página de la terminal -->
     <div class="text-center z-10 text-[9px] font-extrabold tracking-widest text-slate-600 uppercase border-t border-slate-900 pt-6">
         &copy; {{ date('Y') }} Gimnasio Fénix · Sistema GymControl
