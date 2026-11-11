@@ -270,15 +270,17 @@ class PagoService
                 ->where('estado', Pago::ESTADO_ACTIVO)
                 ->where('socio_id', $inscripcion->socio_id))
             ->where('inscripcion_id', $inscripcion->id)
+            ->where('estado_cobertura', PagoDetalle::COBERTURA_VIGENTE)
             ->orderByDesc('fecha_fin_cobertura')
             ->first();
 
-        if ($ultimoDetalle && $ultimoDetalle->fecha_fin_cobertura->isFuture()) {
+        $hoy = Carbon::now(config('app.timezone'))->startOfDay();
+        if ($ultimoDetalle && $ultimoDetalle->fecha_fin_cobertura->gte($hoy)) {
             // Renovación anticipada: comienza el día siguiente al vencimiento actual
             return $ultimoDetalle->fecha_fin_cobertura->copy()->addDay()->toDateString();
         }
 
-        return Carbon::now(config('app.timezone'))->toDateString();
+        return $hoy->toDateString();
     }
 
     // ─── 3. Recaudación ────────────────────────────────────────────────────────

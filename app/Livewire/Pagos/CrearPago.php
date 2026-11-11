@@ -32,6 +32,7 @@ class CrearPago extends Component
 {
     // ── Datos del pago ──────────────────────────────────────────────────────────
     public ?int   $socio_id       = null;
+    public string $buscarSocio    = '';
     public string $fecha_pago     = '';
     public string $metodo_pago    = 'efectivo';
     public string $referencia     = '';
@@ -60,6 +61,7 @@ class CrearPago extends Component
             $this->socio_id             = $socio->id;
             $this->socioPreseleccionado = $socio;
             $this->deshabilitarSocio    = true;
+            $this->buscarSocio          = "{$socio->apellido}, {$socio->nombre} (DNI {$socio->dni})";
             $this->cargarInscripciones();
 
             $inscripcionId = (int) request()->query('inscripcion', 0);
@@ -79,9 +81,33 @@ class CrearPago extends Component
         $this->errorGeneral = null;
     }
 
-    public function updatedDetalles(): void
+    public function seleccionarSocio(int $id): void
+    {
+        $socio = Socio::findOrFail($id);
+        $this->socio_id = $socio->id;
+        $this->buscarSocio = "{$socio->apellido}, {$socio->nombre} (DNI {$socio->dni})";
+        $this->cargarInscripciones();
+        $this->detalles = [$this->detalleVacio()];
+        $this->errorGeneral = null;
+    }
+
+    public function limpiarSocio(): void
+    {
+        $this->socio_id = null;
+        $this->buscarSocio = '';
+        $this->inscripcionesDisponibles = [];
+        $this->detalles = [$this->detalleVacio()];
+        $this->errorGeneral = null;
+    }
+
+    public function updatedDetalles($value, ?string $key = null): void
     {
         $this->errorGeneral = null;
+
+        if ($key && str_ends_with($key, '.inscripcion_id')) {
+            $index = (int) explode('.', $key)[0];
+            $this->actualizarFechasDetalle($index);
+        }
     }
 
     // ── Métodos públicos ────────────────────────────────────────────────────────
@@ -119,6 +145,7 @@ class CrearPago extends Component
         }
 
         $inscripcion = Inscripcion::query()
+            ->with('grupo.disciplina')
             ->where('socio_id', $this->socio_id)
             ->whereIn('estado', [Inscripcion::ESTADO_APROBADA, Inscripcion::ESTADO_PENDIENTE])
             ->find($inscripcionId);
@@ -133,6 +160,9 @@ class CrearPago extends Component
 
         $this->detalles[$index]['fecha_inicio'] = $inicio;
         $this->detalles[$index]['fecha_fin']    = $finSugerido;
+        $this->detalles[$index]['subtotal'] = $inscripcion->grupo?->disciplina?->precio ?? '';
+        $disciplina = $inscripcion->grupo?->disciplina?->nombre ?? 'Membresía';
+        $this->detalles[$index]['concepto'] = 'Cuota ' . Carbon::parse($inicio)->format('m/Y') . ' - ' . $disciplina;
 
         // Mostrar cobertura actual de esta inscripción
         $service = app(PagoService::class);
@@ -146,6 +176,25 @@ class CrearPago extends Component
         $this->authorize('create', Pago::class);
         $this->errorGeneral = null;
 
+        if ($this->socio_id && count($this->detalles)) {
+            $ids = collect($this->detalles)
+                ->pluck('inscripcion_id')
+                ->filter(fn ($id) => filter_var($id, FILTER_VALIDATE_INT))
+                ->map(fn ($id) => (int) $id)
+                ->unique();
+            $inscripcionesSinPrecio = Inscripcion::query()
+                ->with('grupo.disciplina')
+                ->where('socio_id', $this->socio_id)
+                ->whereIn('id', $ids)
+                ->get()
+                ->first(fn (Inscripcion $inscripcion) => $inscripcion->grupo?->disciplina?->precio === null);
+
+            if ($inscripcionesSinPrecio) {
+                $this->errorGeneral = "La membresía '{$inscripcionesSinPrecio->grupo?->disciplina?->nombre}' no tiene precio configurado. Defina el precio desde Membresías antes de registrar el pago.";
+                return;
+            }
+        }
+
         // Validación Livewire
         $this->validate($this->rules(), $this->messages());
 
@@ -153,6 +202,20 @@ class CrearPago extends Component
         $operador = auth()->user();
 
         try {
+            $inscripcionIds = collect($this->detalles)
+                ->pluck('inscripcion_id')
+                ->filter()
+                ->map(fn ($id) => (int) $id)
+                ->unique();
+            $inscripciones = Inscripcion::with('grupo.disciplina')
+                ->where('socio_id', $socio->id)
+                ->whereIn('id', $inscripcionIds)
+                ->get();
+
+            if ($inscripciones->count() !== $inscripcionIds->count()) {
+                throw new \InvalidArgumentException('Cada detalle debe corresponder a una inscripción del socio seleccionado.');
+            }
+
             $service = app(PagoService::class);
             $pago = $service->registrarPago(
                 socio: $socio,
@@ -182,11 +245,25 @@ class CrearPago extends Component
     {
         $socios = [];
         if (!$this->deshabilitarSocio) {
-            $socios = Socio::orderBy('apellido')->orderBy('nombre')->get();
+            $termino = trim($this->buscarSocio);
+            if (!$this->socio_id && mb_strlen($termino) >= 2) {
+                $socios = Socio::query()
+                    ->where('estado', 'activo')
+                    ->where(function ($query) use ($termino) {
+                        $query->where('nombre', 'like', "%{$termino}%")
+                            ->orWhere('apellido', 'like', "%{$termino}%")
+                            ->orWhere('dni', 'like', "%{$termino}%");
+                    })
+                    ->orderBy('apellido')
+                    ->orderBy('nombre')
+                    ->limit(8)
+                    ->get();
+            }
         }
 
         return view('livewire.pagos.crear-pago', [
             'socios'       => $socios,
+            'socioSeleccionado' => $this->socio_id ? Socio::find($this->socio_id) : null,
             'mediosPago'   => Pago::MEDIOS_PAGO,
             'importeTotal' => $this->importeTotal,
         ])->layout('layouts.app');
@@ -225,6 +302,7 @@ class CrearPago extends Component
                 'id'         => $insc->id,
                 'label'      => ($insc->grupo?->disciplina?->nombre ?? 'Sin disciplina')
                     . ' – ' . ($insc->grupo?->nombre ?? ''),
+                'precio' => $insc->grupo?->disciplina?->precio,
                 'estado_inscripcion' => $insc->estado,
                 'cobertura_vigente'  => $cobertura['vigente'],
                 'fecha_fin'          => $cobertura['fecha_fin'],

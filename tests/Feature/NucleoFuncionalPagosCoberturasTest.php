@@ -11,6 +11,8 @@ use App\Models\Pago;
 use App\Models\PagoDetalle;
 use App\Models\Socio;
 use App\Models\User;
+use App\Livewire\Pagos\CrearPago;
+use App\Livewire\Socios\VerSocio;
 use App\Services\InscripcionService;
 use App\Services\HabilitacionSocioService;
 use App\Services\PagoService;
@@ -57,6 +59,8 @@ class NucleoFuncionalPagosCoberturasTest extends TestCase
         // Disciplinas y grupos
         $this->disciplina1 = Disciplina::create(['nombre' => 'Kickboxing Test', 'activa' => true]);
         $this->disciplina2 = Disciplina::create(['nombre' => 'Funcional Test', 'activa' => true]);
+        $this->disciplina1->update(['precio' => 35000]);
+        $this->disciplina2->update(['precio' => 40000]);
 
         $this->grupo1 = Grupo::create([
             'disciplina_id' => $this->disciplina1->id,
@@ -72,6 +76,12 @@ class NucleoFuncionalPagosCoberturasTest extends TestCase
             'nivel'         => 'todos',
             'activo'        => true,
         ]);
+    }
+
+    protected function tearDown(): void
+    {
+        Carbon::setTestNow();
+        parent::tearDown();
     }
 
     // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -170,6 +180,68 @@ class NucleoFuncionalPagosCoberturasTest extends TestCase
             'estado'   => Pago::ESTADO_ACTIVO,
             'importe'  => 35000,
         ]);
+    }
+
+    public function test_formulario_busca_socio_y_precarga_precio_y_cobertura_de_la_disciplina(): void
+    {
+        $socio = $this->crearSocio();
+        $inscripcion = $this->inscribirAprobado($socio, $this->grupo1);
+        $this->actingAs($this->recepcionista);
+
+        $componente = Livewire::test(CrearPago::class)
+            ->set('buscarSocio', $socio->dni)
+            ->assertSee($socio->dni)
+            ->call('seleccionarSocio', $socio->id)
+            ->set('detalles.0.inscripcion_id', $inscripcion->id)
+            ->assertSet('detalles.0.subtotal', '35000.00')
+            ->assertSet('detalles.0.fecha_inicio', now(config('app.timezone'))->toDateString())
+            ->assertSet('detalles.0.fecha_fin', now(config('app.timezone'))->endOfMonth()->toDateString())
+            ->assertSee('Kickboxing Test');
+
+        $componente->call('guardar')->assertRedirect(route('pagos.index'));
+
+        $detalle = PagoDetalle::where('inscripcion_id', $inscripcion->id)->firstOrFail();
+        $this->assertSame(now(config('app.timezone'))->toDateString(), $detalle->fecha_inicio_cobertura->toDateString());
+        $this->assertSame(now(config('app.timezone'))->endOfMonth()->toDateString(), $detalle->fecha_fin_cobertura->toDateString());
+        $this->assertEquals(35000, $detalle->subtotal);
+    }
+
+    public function test_formulario_impide_cobrar_si_la_disciplina_no_tiene_precio_configurado(): void
+    {
+        $this->disciplina1->update(['precio' => null]);
+        $socio = $this->crearSocio();
+        $inscripcion = $this->inscribirAprobado($socio, $this->grupo1);
+        $this->actingAs($this->recepcionista);
+
+        Livewire::test(CrearPago::class, ['socio' => $socio])
+            ->set('detalles.0.inscripcion_id', $inscripcion->id)
+            ->assertSee('Esta membresía no tiene precio configurado')
+            ->call('guardar')
+            ->assertSet('errorGeneral', "La membresía 'Kickboxing Test' no tiene precio configurado. Defina el precio desde Membresías antes de registrar el pago.")
+            ->assertHasNoErrors();
+
+        $this->assertDatabaseCount('pagos', 0);
+    }
+
+    public function test_renovacion_cuya_cobertura_vence_hoy_comienza_al_dia_siguiente(): void
+    {
+        $fecha = Carbon::now(config('app.timezone'))->startOfDay();
+        Carbon::setTestNow($fecha->copy()->setTime(12, 0));
+        $socio = $this->crearSocio();
+        $inscripcion = $this->inscribirAprobado($socio, $this->grupo1);
+        $this->registrarPagoSimple(
+            $socio,
+            $inscripcion,
+            $fecha->copy()->subMonth()->startOfMonth()->toDateString(),
+            $fecha->toDateString()
+        );
+
+        $this->assertSame(
+            $fecha->copy()->addDay()->toDateString(),
+            $this->pagoService->obtenerProximaFechaInicio($inscripcion)
+        );
+
+        Carbon::setTestNow();
     }
 
     /** 02 – Pago asociado a una inscripción */
@@ -342,6 +414,10 @@ class NucleoFuncionalPagosCoberturasTest extends TestCase
             ->assertSee('Importe abonado')
             ->assertSee('$35.000,00')
             ->assertSee(route('pagos.create', $socio->id));
+        Livewire::test(VerSocio::class, ['socio' => $socio])
+            ->assertSee('Estado de cuota por membresía')
+            ->assertSee('Al día')
+            ->assertSee('Pendiente de pago');
     }
 
     /** 05 – Cuota vigente */

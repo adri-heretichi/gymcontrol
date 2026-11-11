@@ -384,6 +384,42 @@
                             </tbody>
                         </table>
                     </div>
+
+                    <div class="mt-6 border-t border-slate-100 pt-5 dark:border-slate-700">
+                        <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+                            <h4 class="text-sm font-black uppercase tracking-wide text-slate-800 dark:text-slate-200">Estado de cuota por membresía</h4>
+                            <a href="{{ route('pagos.coberturas-socio', $socio) }}" class="text-xs font-bold text-orange-600 hover:underline">
+                                Ver detalle de coberturas
+                            </a>
+                        </div>
+                        @forelse($coberturasPorInscripcion as $cobertura)
+                            <div class="flex flex-col gap-2 border-b border-slate-100 py-3 last:border-0 sm:flex-row sm:items-center sm:justify-between dark:border-slate-700">
+                                <div>
+                                    <span class="text-sm font-bold text-slate-900 dark:text-white">{{ $cobertura['disciplina'] }}</span>
+                                    <span class="text-xs text-slate-500 dark:text-slate-400"> — {{ $cobertura['grupo'] }}</span>
+                                    <span class="ml-2 text-xs text-slate-500 dark:text-slate-400">Inscripción: {{ ucfirst($cobertura['inscripcion_estado']) }}</span>
+                                </div>
+                                <div class="flex items-center gap-3">
+                                    <span class="text-xs text-slate-600 dark:text-slate-300">
+                                        @if($cobertura['fecha_fin'])
+                                            ${{ number_format((float) $cobertura['importe'], 2, ',', '.') }} · cobertura hasta {{ \Carbon\Carbon::parse($cobertura['fecha_fin'])->format('d/m/Y') }}
+                                        @else
+                                            Sin pagos asociados
+                                        @endif
+                                    </span>
+                                    @if($cobertura['vigente'])
+                                        <span class="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-black text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">Al día</span>
+                                    @elseif($cobertura['estado'] === 'vencida')
+                                        <span class="rounded-full bg-rose-100 px-2.5 py-1 text-xs font-black text-rose-800 dark:bg-rose-950 dark:text-rose-300">Vencida</span>
+                                    @else
+                                        <span class="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-black text-amber-800 dark:bg-amber-950 dark:text-amber-300">Pendiente de pago</span>
+                                    @endif
+                                </div>
+                            </div>
+                        @empty
+                            <p class="text-sm text-slate-500 dark:text-slate-400">No hay inscripciones activas para consultar cuotas.</p>
+                        @endforelse
+                    </div>
                 </div>
 
                 <!-- Panel de Gestión de Decisión Médica Individual (Fase 6) -->

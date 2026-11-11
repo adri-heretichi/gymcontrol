@@ -16,6 +16,7 @@ use App\Models\Socio;
 use App\Models\User;
 use App\Services\ControlAccesoService;
 use App\Services\CredencialService;
+use App\Services\PagoService;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -227,6 +228,28 @@ class NucleoFuncionalControlAccesoTest extends TestCase
         $this->crearInscripcion($socioSinCobertura, $this->grupo);
         $sinPago = $this->control->evaluarAcceso($socioSinCobertura->pin, 'pin', $this->grupo->id, $this->momento);
         $this->assertSame('sin_cobertura', $sinPago['codigo']);
+
+        app(PagoService::class)->registrarPago(
+            $socioSinCobertura,
+            [[
+                'inscripcion_id' => $socioSinCobertura->inscripciones()->firstOrFail()->id,
+                'concepto' => 'Cuota del día',
+                'fecha_inicio' => $this->momento->toDateString(),
+                'fecha_fin' => $this->momento->copy()->endOfMonth()->toDateString(),
+                'subtotal' => 30000,
+            ]],
+            'efectivo',
+            $this->recepcionista,
+            fechaPago: $this->momento->toDateString()
+        );
+
+        $habilitadoTrasPago = $this->control->evaluarAcceso(
+            $socioSinCobertura->pin,
+            'pin',
+            $this->grupo->id,
+            $this->momento
+        );
+        $this->assertTrue($habilitadoTrasPago['autorizado']);
     }
 
     public function test_pending_medical_decision_and_required_missing_or_expired_certificate_are_denied(): void

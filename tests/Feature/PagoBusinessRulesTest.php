@@ -183,6 +183,7 @@ class PagoBusinessRulesTest extends TestCase
         $disciplina = Disciplina::create([
             'nombre' => "Disciplina prueba {$numero}",
             'estado' => 'activa',
+            'precio' => 7500,
         ]);
         $grupo = Grupo::create([
             'disciplina_id' => $disciplina->id,
