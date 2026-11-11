@@ -2,9 +2,12 @@
 
 namespace Tests\Feature;
 
+use App\Livewire\Socios\ListarSocios;
+use App\Livewire\Socios\VerSocio;
 use App\Models\Auditoria;
 use App\Models\Disciplina;
 use App\Models\Grupo;
+use App\Models\GrupoHorario;
 use App\Models\Inscripcion;
 use App\Models\Membresia;
 use App\Models\Pago;
@@ -12,6 +15,7 @@ use App\Models\PagoDetalle;
 use App\Models\Socio;
 use App\Models\User;
 use App\Services\CredencialService;
+use App\Services\ControlAccesoService;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
@@ -95,6 +99,21 @@ class NucleoFuncionalCredencialesTest extends TestCase
             'nombre' => "Grupo {$numero}",
             'cupo_maximo' => 10,
             'estado' => 'activo',
+        ]);
+        $dia = [
+            1 => 'lunes',
+            2 => 'martes',
+            3 => 'miercoles',
+            4 => 'jueves',
+            5 => 'viernes',
+            6 => 'sabado',
+            7 => 'domingo',
+        ][(int) today()->format('N')];
+        GrupoHorario::create([
+            'grupo_id' => $grupo->id,
+            'dia_semana' => $dia,
+            'hora_inicio' => '08:00:00',
+            'hora_fin' => '09:00:00',
         ]);
 
         return Inscripcion::create([
@@ -203,6 +222,34 @@ class NucleoFuncionalCredencialesTest extends TestCase
         $this->service->emitirPrimeraVez($socio, $this->duena);
     }
 
+    public function test_rechazo_con_certificado_requerido_faltante(): void
+    {
+        $socio = $this->crearSocio(['decision_medica' => 'requerido']);
+        $this->crearInscripcionConCoberturaVigente($socio);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('certificado médico vigente');
+
+        $this->service->emitirPrimeraVez($socio, $this->duena);
+    }
+
+    public function test_decision_no_requerido_definida_por_duena_permite_emitir(): void
+    {
+        $socio = $this->crearSocio(['decision_medica' => 'pendiente']);
+        $this->crearInscripcionConCoberturaVigente($socio);
+
+        app(\App\Services\CertificadoMedicoService::class)->definirDecision(
+            $socio,
+            \App\Services\CertificadoMedicoService::ESTADO_NO_REQUERIDO,
+            $this->duena
+        );
+
+        $credenciales = $this->service->emitirPrimeraVez($socio, $this->duena);
+
+        $this->assertMatchesRegularExpression('/^\d{6}$/', $credenciales['pin']);
+        $this->assertSame(CredencialService::ESTADO_ACTIVO, $socio->fresh()->estado_credencial);
+    }
+
     // ─── Test 5: No re-emitir si ya tiene credenciales emitidas ─────────────────
 
     public function test_no_reemitir_si_ya_tiene_credenciales(): void
@@ -232,6 +279,7 @@ class NucleoFuncionalCredencialesTest extends TestCase
         $this->crearInscripcionConCoberturaVigente($segundoSocio);
         $segundoResultado = $this->service->emitirPrimeraVez($segundoSocio, $this->duena);
         $this->assertNotSame($pin, $segundoResultado['pin']);
+        $this->assertNotSame($resultado['qr_token'], $segundoResultado['qr_token']);
     }
 
     // ─── Test 7: QR token es único y criptográficamente seguro (64 chars) ───────
@@ -287,44 +335,224 @@ class NucleoFuncionalCredencialesTest extends TestCase
             ->assertHeader('Content-Type', 'image/svg+xml');
     }
 
+    public function test_pin_conserva_ceros_iniciales_y_solo_la_duena_ve_el_pin(): void
+    {
+        $this->socio->update([
+            'estado_credencial' => CredencialService::ESTADO_ACTIVO,
+            'pin' => '000123',
+            'qr_token' => str_repeat('d', 64),
+            'credenciales_emitidas_at' => now(),
+        ]);
+        $this->socio->refresh();
+        $this->assertSame('000123', $this->socio->pin);
+
+        $this->actingAs($this->duena);
+        $grupo = $this->socio->inscripciones()->first()->grupo;
+        Livewire::test(VerSocio::class, ['socio' => $this->socio])
+            ->assertSee('000123')
+            ->assertSee('Emitida:')
+            ->assertSee($grupo->nombre)
+            ->assertSee($grupo->disciplina->nombre);
+
+        $this->actingAs($this->recepcionista);
+        Livewire::test(VerSocio::class, ['socio' => $this->socio])
+            ->assertDontSee('000123')
+            ->assertSee('QR de acceso');
+        $this->get(route('socios.qr', $this->socio))->assertOk();
+    }
+
+    public function test_listado_general_no_expone_pin_ni_token_qr(): void
+    {
+        $pin = '000124';
+        $qrToken = str_repeat('e', 64);
+        $this->socio->update([
+            'estado_credencial' => CredencialService::ESTADO_ACTIVO,
+            'pin' => $pin,
+            'qr_token' => $qrToken,
+        ]);
+
+        $this->actingAs($this->duena);
+        Livewire::test(ListarSocios::class)
+            ->assertDontSee($pin)
+            ->assertDontSee($qrToken);
+
+        $this->assertStringNotContainsString($pin, json_encode($this->socio->fresh()));
+        $this->assertStringNotContainsString($qrToken, json_encode($this->socio->fresh()));
+    }
+
+    public function test_usuario_sin_permiso_no_accede_al_qr_ni_a_la_tarjeta_por_url_directa(): void
+    {
+        $visitante = User::create([
+            'name' => 'Usuario sin rol operativo',
+            'rol' => 'visitante',
+            'email' => 'visitante@test.com',
+            'password' => 'password',
+        ]);
+        $this->socio->update([
+            'estado_credencial' => CredencialService::ESTADO_ACTIVO,
+            'pin' => '000125',
+            'qr_token' => str_repeat('f', 64),
+        ]);
+
+        $this->actingAs($visitante);
+        $this->get(route('socios.qr', $this->socio))->assertForbidden();
+        $this->get(route('socios.tarjeta-pdf', $this->socio))->assertForbidden();
+        Livewire::test(VerSocio::class, ['socio' => $this->socio])->assertForbidden();
+    }
+
     // ─── Test 9: Vencimiento de cuota NO revoca credenciales automáticamente ────
 
     public function test_vencimiento_cuota_no_revoca_credenciales(): void
     {
-        // Emitir primero
-        $this->service->emitirPrimeraVez($this->socio, $this->duena);
+        $credenciales = $this->service->emitirPrimeraVez($this->socio, $this->duena);
         $this->socio->refresh();
         $this->assertEquals(CredencialService::ESTADO_EMITIDA, $this->socio->estado_credencial);
 
-        // Expirar cobertura manualmente
-        PagoDetalle::where('inscripcion_id', $this->socio->inscripciones()->first()->id)
+        $inscripcion = $this->socio->inscripciones()->first();
+        PagoDetalle::where('inscripcion_id', $inscripcion->id)
             ->update([
                 'estado_cobertura'    => PagoDetalle::COBERTURA_SUSPENDIDA,
                 'fecha_fin_cobertura' => now()->subDays(5),
             ]);
 
-        // Las credenciales deben seguir emitidas (no hay revocación automática)
         $this->socio->refresh();
         $this->assertEquals(CredencialService::ESTADO_EMITIDA, $this->socio->estado_credencial);
-        $this->assertNotNull($this->socio->pin);
-        $this->assertNotNull($this->socio->qr_token);
+        $this->assertSame($credenciales['pin'], $this->socio->pin);
+        $this->assertSame($credenciales['qr_token'], $this->socio->qr_token);
+
+        $resultado = app(ControlAccesoService::class)->evaluarAcceso(
+            $credenciales['pin'],
+            ControlAccesoService::METODO_PIN,
+            $inscripcion->grupo_id,
+            Carbon::today()->setTime(8, 30)
+        );
+        $this->assertFalse($resultado['autorizado']);
+        $this->assertSame('cuota_vencida', $resultado['codigo']);
     }
 
     // ─── Test 10: Cambio médico a requerido NO revoca credenciales ──────────────
 
     public function test_cambio_medico_a_requerido_no_revoca_credenciales(): void
     {
-        $this->service->emitirPrimeraVez($this->socio, $this->duena);
+        $credenciales = $this->service->emitirPrimeraVez($this->socio, $this->duena);
         $this->socio->refresh();
         $this->assertEquals(CredencialService::ESTADO_EMITIDA, $this->socio->estado_credencial);
 
-        // Cambiar decisión médica
+        app(\App\Services\CertificadoMedicoService::class)->definirDecision(
+            $this->socio,
+            \App\Services\CertificadoMedicoService::ESTADO_REQUERIDO,
+            $this->duena
+        );
+        $this->socio->refresh();
+
+        $this->assertEquals(CredencialService::ESTADO_EMITIDA, $this->socio->estado_credencial);
+        $this->assertSame($credenciales['pin'], $this->socio->pin);
+        $this->assertSame($credenciales['qr_token'], $this->socio->qr_token);
+
+        $resultado = app(ControlAccesoService::class)->evaluarAcceso(
+            $credenciales['pin'],
+            ControlAccesoService::METODO_PIN,
+            $this->socio->inscripciones()->first()->grupo_id,
+            Carbon::today()->setTime(8, 30)
+        );
+        $this->assertFalse($resultado['autorizado']);
+        $this->assertSame('certificado_faltante', $resultado['codigo']);
+    }
+
+    public function test_cambio_de_grupo_no_regenera_credenciales(): void
+    {
+        $credenciales = $this->service->emitirPrimeraVez($this->socio, $this->duena);
+        $inscripcion = $this->socio->inscripciones()->first();
+        $grupoNuevo = Grupo::create([
+            'disciplina_id' => $inscripcion->grupo->disciplina_id,
+            'nombre' => 'Grupo reasignado',
+            'cupo_maximo' => 10,
+            'estado' => 'activo',
+        ]);
+
+        $inscripcion->update(['grupo_id' => $grupoNuevo->id]);
+        $this->socio->refresh();
+
+        $this->assertSame(CredencialService::ESTADO_EMITIDA, $this->socio->estado_credencial);
+        $this->assertSame($credenciales['pin'], $this->socio->pin);
+        $this->assertSame($credenciales['qr_token'], $this->socio->qr_token);
+    }
+
+    public function test_certificado_vencido_no_elimina_ni_regenera_credenciales(): void
+    {
         $this->socio->update(['decision_medica' => 'requerido']);
+        app(\App\Services\CertificadoMedicoService::class)->registrarCertificado(
+            socio: $this->socio,
+            fechaEmision: today()->subMonth()->toDateString(),
+            fechaVencimiento: today()->toDateString(),
+            operador: $this->duena
+        );
+        $credenciales = $this->service->emitirPrimeraVez($this->socio, $this->duena);
+
+        Carbon::setTestNow(today()->addDay()->startOfDay());
         $this->socio->refresh();
 
-        // Credenciales siguen emitidas
-        $this->assertEquals(CredencialService::ESTADO_EMITIDA, $this->socio->estado_credencial);
-        $this->assertNotNull($this->socio->pin);
+        $this->assertSame(CredencialService::ESTADO_EMITIDA, $this->socio->estado_credencial);
+        $this->assertSame($credenciales['pin'], $this->socio->pin);
+        $this->assertSame($credenciales['qr_token'], $this->socio->qr_token);
+    }
+
+    public function test_renovar_cuota_conserva_las_credenciales_emitidas(): void
+    {
+        $credenciales = $this->service->emitirPrimeraVez($this->socio, $this->duena);
+        $inscripcion = $this->socio->inscripciones()->first();
+        PagoDetalle::where('inscripcion_id', $inscripcion->id)->update([
+            'estado_cobertura' => PagoDetalle::COBERTURA_SUSPENDIDA,
+            'fecha_fin_cobertura' => today()->subDay()->toDateString(),
+        ]);
+        $this->crearCoberturaVigente(
+            $inscripcion,
+            today()->toDateString(),
+            today()->addMonth()->toDateString()
+        );
+
+        $this->socio->refresh();
+
+        $this->assertSame($credenciales['pin'], $this->socio->pin);
+        $this->assertSame($credenciales['qr_token'], $this->socio->qr_token);
+        $this->assertSame(CredencialService::ESTADO_EMITIDA, $this->socio->estado_credencial);
+    }
+
+    public function test_emision_no_depende_de_membresias_antiguas(): void
+    {
+        $this->membresia->update(['nombre' => 'Básica']);
+
+        $credenciales = $this->service->emitirPrimeraVez($this->socio, $this->duena);
+
+        $this->assertMatchesRegularExpression('/^\d{6}$/', $credenciales['pin']);
+        $this->assertNotEmpty($credenciales['qr_token']);
+    }
+
+    public function test_emision_no_depende_del_horario_actual_de_clase(): void
+    {
+        Carbon::setTestNow(today()->setTime(3, 0));
+
+        $credenciales = $this->service->emitirPrimeraVez($this->socio, $this->duena);
+
+        $this->assertMatchesRegularExpression('/^\d{6}$/', $credenciales['pin']);
+        $this->assertNotEmpty($credenciales['qr_token']);
+    }
+
+    public function test_emision_requiere_grupo_y_disciplina_habilitados(): void
+    {
+        $inscripcion = $this->socio->inscripciones()->first();
+        $inscripcion->grupo->update(['estado' => 'inactivo']);
+
+        $resultado = $this->service->evaluarRequisitosEmision($this->socio);
+        $this->assertFalse($resultado['habilitado']);
+        $this->assertSame('grupo_no_habilitado', $resultado['codigo']);
+
+        $inscripcion->grupo->update(['estado' => 'activo']);
+        $inscripcion->grupo->disciplina->update(['estado' => 'inactiva']);
+
+        $resultado = $this->service->evaluarRequisitosEmision($this->socio);
+        $this->assertFalse($resultado['habilitado']);
+        $this->assertSame('grupo_no_habilitado', $resultado['codigo']);
     }
 
     // ─── Test 11: Reposición autorizada por dueña (con auditoría) ───────────────
@@ -335,44 +563,67 @@ class NucleoFuncionalCredencialesTest extends TestCase
         $this->service->emitirPrimeraVez($this->socio, $this->duena);
         $this->socio->refresh();
         $pinOriginal = $this->socio->pin;
+        $qrOriginal = $this->socio->qr_token;
 
         // Reponer
         $resultado = $this->service->reponerCredenciales(
             $this->socio,
             $this->duena,
-            'Socio perdió tarjeta'
+            "Socio perdió tarjeta: {$pinOriginal} {$qrOriginal}"
         );
         $this->socio->refresh();
 
         $this->assertEquals(CredencialService::ESTADO_EMITIDA, $this->socio->estado_credencial);
         $this->assertNotEquals($pinOriginal, $this->socio->pin, 'El PIN debe cambiar al reponer.');
+        $this->assertNotEquals($qrOriginal, $this->socio->qr_token);
 
-        // Verificar auditoría
         $this->assertDatabaseHas('auditorias', [
             'accion'   => 'credencial_repuesta',
             'user_id'  => $this->duena->id,
         ]);
+        $auditoria = Auditoria::where('accion', 'credencial_repuesta')->firstOrFail();
+        $datosAuditoria = json_encode([$auditoria->datos_antes, $auditoria->datos_despues]);
+        $this->assertStringNotContainsString($pinOriginal, $datosAuditoria);
+        $this->assertStringNotContainsString($qrOriginal, $datosAuditoria);
     }
 
     // ─── Test 12: Revocación documentada ────────────────────────────────────────
 
     public function test_revocacion_documentada(): void
     {
-        $tokenHeredado = $this->socio->token;
-        $this->service->emitirPrimeraVez($this->socio, $this->duena);
+        $credenciales = $this->service->emitirPrimeraVez($this->socio, $this->duena);
 
-        $this->service->revocarCredenciales($this->socio, $this->duena, 'Conducta inapropiada');
+        $this->service->revocarCredenciales(
+            $this->socio,
+            $this->duena,
+            "Revocación confirmada {$credenciales['pin']} {$credenciales['qr_token']}"
+        );
         $this->socio->refresh();
 
         $this->assertEquals(CredencialService::ESTADO_REVOCADA, $this->socio->estado_credencial);
         $this->assertNull($this->socio->pin);
         $this->assertNull($this->socio->qr_token);
-        $this->assertEquals('Conducta inapropiada', $this->socio->motivo_revocacion);
+        $this->assertStringNotContainsString($credenciales['pin'], $this->socio->motivo_revocacion);
+        $this->assertStringNotContainsString($credenciales['qr_token'], $this->socio->motivo_revocacion);
         $this->assertNotNull($this->socio->credenciales_revocadas_at);
 
-        $this->get(route('terminal.scan', $tokenHeredado))
-            ->assertForbidden()
-            ->assertSee('La credencial no es válida para el acceso actual.');
+        $auditoriaRevocacion = Auditoria::where('accion', 'credencial_revocada')->firstOrFail();
+        $datosRevocacion = json_encode([$auditoriaRevocacion->datos_antes, $auditoriaRevocacion->datos_despues]);
+        $this->assertStringNotContainsString($credenciales['pin'], $datosRevocacion);
+        $this->assertStringNotContainsString($credenciales['qr_token'], $datosRevocacion);
+
+        foreach ([
+            [$credenciales['pin'], ControlAccesoService::METODO_PIN],
+            [$credenciales['qr_token'], ControlAccesoService::METODO_QR],
+        ] as [$identificador, $metodo]) {
+            $resultado = app(ControlAccesoService::class)
+                ->evaluarAcceso($identificador, $metodo);
+            $this->assertFalse($resultado['autorizado']);
+            $this->assertSame('credencial_revocada', $resultado['codigo']);
+        }
+
+        $this->crearCoberturaVigente($this->socio->inscripciones()->first());
+        $this->assertSame(CredencialService::ESTADO_REVOCADO, $this->socio->fresh()->estado_credencial);
         $this->assertDatabaseMissing('asistencias', ['socio_id' => $this->socio->id]);
     }
 
@@ -380,6 +631,8 @@ class NucleoFuncionalCredencialesTest extends TestCase
 
     public function test_auditoria_de_emision_registrada(): void
     {
+        $observacionClinica = 'dato-clinico-no-auditable-7782';
+        $this->socio->update(['decision_medica_obs' => $observacionClinica]);
         $secretos = $this->service->emitirPrimeraVez($this->socio, $this->duena);
 
         $this->assertDatabaseHas('auditorias', [
@@ -391,6 +644,7 @@ class NucleoFuncionalCredencialesTest extends TestCase
         $datos = json_encode([$auditoria->datos_antes, $auditoria->datos_despues]);
         $this->assertStringNotContainsString($secretos['pin'], $datos);
         $this->assertStringNotContainsString($secretos['qr_token'], $datos);
+        $this->assertStringNotContainsString($observacionClinica, json_encode(Auditoria::all()));
     }
 
     // ─── Test 14: No re-emitir QR/PIN al aprobar inscripción ────────────────────
@@ -582,5 +836,7 @@ class NucleoFuncionalCredencialesTest extends TestCase
         );
 
         $this->assertTrue($this->service->evaluarRequisitosEmision($socio)['habilitado']);
+        $credenciales = $this->service->emitirPrimeraVez($socio, $this->duena);
+        $this->assertMatchesRegularExpression('/^\d{6}$/', $credenciales['pin']);
     }
 }

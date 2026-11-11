@@ -82,7 +82,9 @@ Route::middleware(['auth'])->group(function () {
 
     // Código QR y Tarjeta PDF (Parte 2 y 3)
     Route::get('socios/{socio}/qr', [\App\Http\Controllers\QrController::class, 'show'])->name('socios.qr');
-    Route::get('socios/{socio}/tarjeta-pdf', [\App\Http\Controllers\ReporteController::class, 'tarjeta'])->name('socios.tarjeta-pdf');
+    Route::get('socios/{socio}/tarjeta-pdf', [\App\Http\Controllers\ReporteController::class, 'tarjeta'])
+        ->middleware('can:view,socio')
+        ->name('socios.tarjeta-pdf');
 });
 
 // Terminal Pública de Acceso (Parte 4)

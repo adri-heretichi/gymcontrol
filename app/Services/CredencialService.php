@@ -39,6 +39,7 @@ class CredencialService
         }
 
         $inscripciones = $socio->inscripciones()
+            ->with(['grupo.disciplina'])
             ->where('estado', Inscripcion::ESTADO_APROBADA)
             ->get();
 
@@ -50,7 +51,19 @@ class CredencialService
             ];
         }
 
-        $tieneCoberturaVigente = $inscripciones->contains(
+        $inscripcionesValidas = $inscripciones->filter(
+            fn (Inscripcion $inscripcion) => $inscripcion->grupo?->estaHabilitado() ?? false
+        );
+
+        if ($inscripcionesValidas->isEmpty()) {
+            return [
+                'habilitado' => false,
+                'motivo' => 'El socio no tiene inscripción aprobada en un grupo habilitado.',
+                'codigo' => 'grupo_no_habilitado',
+            ];
+        }
+
+        $tieneCoberturaVigente = $inscripcionesValidas->contains(
             fn (Inscripcion $inscripcion) => $this->pagoService
                 ->consultarCoberturaInscripcion($inscripcion)['vigente']
         );
@@ -108,7 +121,7 @@ class CredencialService
             }
 
             $pin = $this->generarPin($socio);
-            $qrToken = $this->generarQrTokenUnico();
+            $qrToken = $this->generarQrTokenUnico($socio);
             $fechaEmision = now();
 
             $socio->update([
@@ -156,8 +169,9 @@ class CredencialService
             }
 
             $estadoAnterior = $socio->estado_credencial;
+            $motivoAuditoria = $this->sanitizarMotivo($motivo, $socio);
             $pin = $this->generarPin($socio);
-            $qrToken = $this->generarQrTokenUnico();
+            $qrToken = $this->generarQrTokenUnico($socio);
             $fechaEmision = now();
 
             $socio->update([
@@ -178,7 +192,7 @@ class CredencialService
                 datosAntes: ['estado_credencial' => $estadoAnterior],
                 datosDespues: [
                     'estado_credencial' => self::ESTADO_ACTIVO,
-                    'motivo' => $this->sanitizarMotivo($motivo, $socio),
+                    'motivo' => $motivoAuditoria,
                 ],
                 userId: $duena->id,
             );
@@ -209,6 +223,7 @@ class CredencialService
             $qrTokenRevocadoHash = $socio->qr_token === null
                 ? null
                 : hash_hmac('sha256', $socio->qr_token, (string) config('app.key'));
+            $motivoSanitizado = $this->sanitizarMotivo($motivo, $socio);
 
             $socio->update([
                 'estado_credencial' => self::ESTADO_REVOCADO,
@@ -217,7 +232,7 @@ class CredencialService
                 'pin_revocado_hash' => $pinRevocadoHash,
                 'qr_token_revocado_hash' => $qrTokenRevocadoHash,
                 'credenciales_revocadas_at' => $fechaRevocacion,
-                'motivo_revocacion' => $motivo,
+                'motivo_revocacion' => $motivoSanitizado,
             ]);
 
             Auditoria::registrar(
@@ -228,7 +243,7 @@ class CredencialService
                 datosDespues: [
                     'estado_credencial' => self::ESTADO_REVOCADO,
                     'credenciales_revocadas_at' => $fechaRevocacion,
-                    'motivo_revocacion' => $this->sanitizarMotivo($motivo, $socio),
+                    'motivo_revocacion' => $motivoSanitizado,
                 ],
                 userId: $duena->id,
             );
@@ -241,9 +256,10 @@ class CredencialService
     public function generarPin(Socio $socio): string
     {
         for ($intentos = 0; $intentos < 100; $intentos++) {
-            $pin = (string) random_int(100000, 999999);
+            $pin = sprintf('%06d', random_int(0, 999999));
 
             if ($pin !== $socio->pin
+                && !$this->coincideFingerprintRevocado($pin, $socio->pin_revocado_hash)
                 && !$this->esSecuencial($pin)
                 && !Socio::query()->where('pin', $pin)->exists()) {
                 return $pin;
@@ -261,13 +277,25 @@ class CredencialService
         return bin2hex(random_bytes(32));
     }
 
-    private function generarQrTokenUnico(): string
+    private function generarQrTokenUnico(Socio $socio): string
     {
         do {
             $token = $this->generarQrToken();
-        } while (Socio::query()->where('qr_token', $token)->exists());
+        } while (
+            $this->coincideFingerprintRevocado($token, $socio->qr_token_revocado_hash)
+            || Socio::query()->where('qr_token', $token)->exists()
+        );
 
         return $token;
+    }
+
+    private function coincideFingerprintRevocado(string $credencial, ?string $fingerprint): bool
+    {
+        return $fingerprint !== null
+            && hash_equals(
+                $fingerprint,
+                hash_hmac('sha256', $credencial, (string) config('app.key'))
+            );
     }
 
     private function autorizarDueña(User $duena, Socio $socio): void

@@ -554,10 +554,7 @@ class ControlAccesoService
 
     private function grupoHabilitado(?Grupo $grupo): bool
     {
-        return $grupo !== null
-            && $grupo->estado === 'activo'
-            && $grupo->disciplina !== null
-            && $grupo->disciplina->estado === 'activa';
+        return $grupo?->estaHabilitado() ?? false;
     }
 
     private function horarioActual(?Grupo $grupo, Carbon $momento): ?array

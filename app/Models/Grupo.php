@@ -34,6 +34,13 @@ class Grupo extends Model
         return $this->belongsTo(Disciplina::class, 'disciplina_id');
     }
 
+    public function estaHabilitado(): bool
+    {
+        return $this->estado === 'activo'
+            && $this->disciplina !== null
+            && $this->disciplina->estado === 'activa';
+    }
+
     /**
      * Relación de Uno a Muchos: Días y horarios del grupo.
      */

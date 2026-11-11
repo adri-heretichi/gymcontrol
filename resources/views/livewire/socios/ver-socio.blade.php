@@ -157,6 +157,11 @@
                                         {{ strtoupper(str_replace('_', ' ', $socio->estado_credencial ?? 'sin_emitir')) }}
                                     </span>
                                 @endif
+                                @if($socio->credenciales_emitidas_at)
+                                    <span class="block mt-2 text-center text-xs text-slate-400">
+                                        Emitida: {{ $socio->credenciales_emitidas_at->format('d/m/Y H:i') }}
+                                    </span>
+                                @endif
                             </div>
                         </div>
                     </div>
