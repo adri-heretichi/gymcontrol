@@ -1,142 +1,144 @@
-<div class="py-12 bg-slate-50 dark:bg-slate-900 min-h-screen">
-    <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
-        
-        <!-- Mensajes Flash de Retroalimentación -->
+<div class="min-h-screen bg-slate-50 py-10 dark:bg-slate-900">
+    <div class="mx-auto max-w-7xl space-y-8 px-4 sm:px-6 lg:px-8">
+        <header class="flex flex-col gap-3 border-b border-orange-200 pb-6 sm:flex-row sm:items-end sm:justify-between dark:border-slate-700">
+            <div>
+                <p class="text-sm font-black uppercase tracking-[0.2em] text-orange-600">GymControl + Fénix</p>
+                <h1 class="mt-1 text-3xl font-black text-slate-950 dark:text-white">Membresías</h1>
+                <p class="mt-2 max-w-3xl text-sm text-slate-600 dark:text-slate-300">
+                    Cada membresía representa una disciplina existente. Los grupos, horarios y vacantes se administran desde el mismo catálogo.
+                </p>
+            </div>
+        </header>
+
         @if (session()->has('message'))
-            <div class="mb-6 p-4 bg-emerald-50 dark:bg-emerald-950/30 border-l-4 border-emerald-500 text-emerald-700 dark:text-emerald-300 rounded-r-xl font-bold text-sm shadow-md animate-pulse">
+            <div role="status" class="rounded-xl border-l-4 border-emerald-500 bg-emerald-50 p-4 text-sm font-bold text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-200">
                 {{ session('message') }}
             </div>
         @endif
-        @if (session()->has('error'))
-            <div class="mb-6 p-4 bg-rose-50 dark:bg-rose-950/30 border-l-4 border-rose-500 text-rose-700 dark:text-rose-300 rounded-r-xl font-bold text-sm shadow-md">
-                {{ session('error') }}
-            </div>
-        @endif
 
-        <div class="main-card">
-            <!-- Encabezado y Botón de Alta Superior -->
-            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between pb-6 border-b border-slate-200 dark:border-slate-800 gap-4 mb-6">
-                <div>
-                    <h2 class="text-3xl font-black text-slate-900 dark:text-white tracking-tight">Planes de Membresía</h2>
-                    <p class="text-sm text-slate-500 dark:text-slate-300 mt-1 font-semibold">Configuración de planes de acceso, costos y límites de horas</p>
-                </div>
-                @if(auth()->check() && auth()->user()->rol === 'admin')
-                <div class="flex-shrink-0">
-                    <a href="{{ route('membresias.create') }}" class="btn-primary">
-                        <svg class="w-4 h-4 mr-2 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h.01M9 21h6a2 2 0 002-2V5a2 2 0 00-2-2H9a2 2 0 00-2 2v14a2 2 0 002 2zm3-3h.01M9 17h.01M9 13h.01M12 13h.01M15 13h.01M9 9h.01M12 9h.01M15 9h.01"></path>
-                        </svg>
-                        Crear Plan
-                    </a>
-                </div>
-                @endif
+        @if ($membresias->isEmpty())
+            <div class="main-card text-center">
+                <h2 class="text-lg font-black text-slate-900 dark:text-white">No hay disciplinas Fénix disponibles</h2>
+                <p class="mt-2 text-sm text-slate-600 dark:text-slate-300">
+                    Las disciplinas se administran desde el catálogo existente. No se crean planes duplicados en esta pantalla.
+                </p>
             </div>
-
-            <!-- Barra de Búsqueda y Resultados -->
-            <div class="filters-container !shadow-none !p-0 !border-0 mb-6">
-                <div class="max-w-md flex flex-col gap-1">
-                    <label for="buscar" class="form-label">Buscar planes</label>
-                    <input 
-                        wire:model.live="buscar" 
-                        type="text" 
-                        id="buscar"
-                        placeholder="Buscar por nombre de membresía..." 
-                        class="form-input"
-                    />
-                    <span class="text-xs text-slate-400 dark:text-slate-300 pl-1 mt-1 font-semibold">
-                        Se encontraron {{ $membresias->total() }} planes.
-                    </span>
-                </div>
-            </div>
-
-            <!-- Tabla de Membresías -->
-            <div class="table-container">
-                <table class="custom-table">
-                    <thead>
-                        <tr class="custom-table-head">
-                            <th class="custom-table-th">Nombre del Plan</th>
-                            <th class="custom-table-th">Precio</th>
-                            <th class="custom-table-th">Límite de Horas</th>
-                            <th class="custom-table-th">Estado</th>
-                            @if(auth()->check() && auth()->user()->rol === 'admin')
-                                <th class="custom-table-th text-center">Acciones</th>
+        @else
+            <section aria-label="Planes del gimnasio" class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                @foreach ($membresias as $membresia)
+                    <a
+                        href="{{ route('membresias.index', ['disciplina' => $membresia->id]) }}"
+                        wire:navigate
+                        @class([
+                            'rounded-2xl border-2 p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md',
+                            'border-orange-500 bg-slate-950 text-white' => (int) $membresia->id === (int) ($membresiaSeleccionada?->id),
+                            'border-slate-200 bg-white text-slate-950 dark:border-slate-700 dark:bg-slate-800 dark:text-white' => (int) $membresia->id !== (int) ($membresiaSeleccionada?->id),
+                        ])
+                    >
+                        <span class="text-xs font-black uppercase tracking-widest text-orange-500">Disciplina</span>
+                        <h2 class="mt-2 text-xl font-black">{{ $membresia->nombre }}</h2>
+                        <p class="mt-3 text-sm font-semibold">
+                            @if ($membresia->precio !== null)
+                                ${{ number_format((float) $membresia->precio, 2, ',', '.') }}
+                        @else
+                                Precio pendiente de definición
                             @endif
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
-                        @forelse ($membresias as $membresia)
-                            <tr class="custom-table-row">
-                                <!-- Nombre -->
-                                <td class="custom-table-td font-bold text-slate-900 dark:text-white">
-                                    {{ $membresia->nombre }}
-                                </td>
-                                <!-- Precio -->
-                                <td class="custom-table-td font-semibold text-slate-800 dark:text-slate-200">
-                                    ${{ number_format($membresia->precio, 2, ',', '.') }}
-                                </td>
-                                <!-- Horas Mensuales -->
-                                <td class="custom-table-td text-slate-700 dark:text-slate-300">
-                                    @if($membresia->horas_mensuales)
-                                        {{ $membresia->horas_mensuales }} hs / mes
-                                    @else
-                                        <span class="badge-info !text-[9px] !px-1.5 !py-0.5">Ilimitado</span>
-                                    @endif
-                                </td>
-                                <!-- Estado -->
-                                <td class="custom-table-td">
-                                    @if($membresia->estado === 'activo')
-                                        <span class="badge-success">
-                                            Activo
-                                        </span>
-                                    @else
-                                        <span class="badge-danger">
-                                            Inactivo
-                                        </span>
-                                    @endif
-                                </td>
-                                <!-- Acciones (Admin only) -->
-                                @if(auth()->check() && auth()->user()->rol === 'admin')
-                                    <td class="custom-table-td text-center flex justify-center gap-2">
-                                        <!-- Editar -->
-                                        <a href="{{ route('membresias.edit', $membresia->id) }}" class="btn-action-edit" wire:navigate>
-                                            Editar
-                                        </a>
-                                        <!-- Activar / Desactivar -->
-                                        @if($membresia->estado === 'activo')
-                                            <button 
-                                                wire:click="alternarEstado({{ $membresia->id }})" 
-                                                wire:confirm="¿Estás seguro de que deseas DESACTIVAR el plan de membresía '{{ $membresia->nombre }}'? Esto no alterará a los socios ya asociados, pero no se podrá asignar a nuevos socios."
-                                                class="btn-action-danger"
-                                            >
-                                                Desactivar
-                                            </button>
-                                        @else
-                                            <button 
-                                                wire:click="alternarEstado({{ $membresia->id }})" 
-                                                wire:confirm="¿Estás seguro de que deseas ACTIVAR el plan de membresía '{{ $membresia->nombre }}'?"
-                                                class="btn-action-success"
-                                            >
-                                                Activar
-                                            </button>
-                                        @endif
-                                    </td>
-                                @endif
-                            </tr>
-                        @empty
-                            <tr>
-                                <td colspan="5" class="custom-table-td text-center text-slate-400 dark:text-slate-500 italic">
-                                    No se encontraron planes de membresía.
-                                </td>
-                            </tr>
-                        @endforelse
-                    </tbody>
-                </table>
-            </div>
+                        </p>
+                        <p class="mt-1 text-xs opacity-75">{{ $membresia->grupos->count() }} grupos</p>
+                    </a>
+                @endforeach
+            </section>
 
-            <!-- Paginación -->
-            <div class="mt-6">
-                {{ $membresias->links() }}
-            </div>
-        </div>
+            @if ($membresiaSeleccionada)
+                <section class="main-card space-y-6">
+                    <div class="flex flex-col gap-4 border-b border-slate-200 pb-5 sm:flex-row sm:items-start sm:justify-between dark:border-slate-700">
+                        <div>
+                            <p class="text-xs font-black uppercase tracking-widest text-orange-600">Membresía / disciplina</p>
+                            <h2 class="mt-1 text-2xl font-black text-slate-950 dark:text-white">{{ $membresiaSeleccionada->nombre }}</h2>
+                            <p class="mt-2 text-sm text-slate-600 dark:text-slate-300">
+                                Precio:
+                                @if ($membresiaSeleccionada->precio !== null)
+                                    <strong>${{ number_format((float) $membresiaSeleccionada->precio, 2, ',', '.') }}</strong>
+                                @else
+                                    <strong>Sin definir</strong>
+                                @endif
+                            </p>
+                        </div>
+
+                        @if (auth()->user()->rol === 'admin')
+                            <div class="flex flex-wrap gap-2">
+                                <a
+                                    href="{{ route('disciplinas.edit', ['disciplina' => $membresiaSeleccionada->id, 'origen' => 'membresias']) }}"
+                                    class="btn-secondary"
+                                    wire:navigate
+                                >Editar membresía</a>
+                                <a
+                                    href="{{ route('grupos.create', ['disciplina_id' => $membresiaSeleccionada->id, 'origen' => 'membresias']) }}"
+                                    class="btn-primary"
+                                    wire:navigate
+                                >Crear grupo</a>
+                            </div>
+                        @endif
+                    </div>
+
+                    @if ($membresiaSeleccionada->grupos->isEmpty())
+                        <p class="rounded-xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-600 dark:border-slate-600 dark:text-slate-300">
+                            Todavía no hay grupos configurados para esta disciplina.
+                        </p>
+                    @else
+                        <div class="grid gap-4 lg:grid-cols-2">
+                            @foreach ($membresiaSeleccionada->grupos as $grupo)
+                                @php
+                                    $confirmados = (int) $grupo->alumnos_confirmados_count;
+                                    $limite = $grupo->limiteCupo();
+                                    $vacantes = max(0, $limite - $confirmados);
+                                @endphp
+                                <article class="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-800">
+                                    <div class="flex flex-wrap items-start justify-between gap-3">
+                                        <div>
+                                            <h3 class="text-lg font-black text-slate-950 dark:text-white">{{ $grupo->nombre }}</h3>
+                                            <p class="mt-1 text-sm text-slate-600 dark:text-slate-300">{{ $grupo->disciplina->nombre }}</p>
+                                        </div>
+                                        @if ($grupo->estado !== 'activo')
+                                            <span class="rounded-full bg-slate-200 px-3 py-1 text-xs font-black text-slate-700 dark:bg-slate-700 dark:text-slate-200">Inactivo</span>
+                                        @elseif ($vacantes === 0)
+                                            <span class="rounded-full bg-rose-100 px-3 py-1 text-xs font-black text-rose-700 dark:bg-rose-950/40 dark:text-rose-200">Completo</span>
+                                        @else
+                                            <span class="rounded-full bg-emerald-100 px-3 py-1 text-xs font-black text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-200">Inscripción abierta</span>
+                                        @endif
+                                    </div>
+
+                                    <div class="mt-4">
+                                        <p class="text-xs font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">Días y horarios</p>
+                                        @forelse ($grupo->horarios as $horario)
+                                            <p class="mt-1 text-sm font-semibold text-slate-800 dark:text-slate-200">
+                                                {{ $horario->dia_semana_label }}, {{ substr($horario->hora_inicio, 0, 5) }}–{{ substr($horario->hora_fin, 0, 5) }}
+                                            </p>
+                                        @empty
+                                            <p class="mt-1 text-sm text-amber-700 dark:text-amber-300">Sin horarios configurados</p>
+                                        @endforelse
+                                    </div>
+
+                                    <div class="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-slate-100 pt-4 text-sm dark:border-slate-700">
+                                        <span class="font-bold text-slate-800 dark:text-slate-200">Alumnos: {{ $confirmados }}/{{ $limite }}</span>
+                                        <span class="font-bold text-slate-600 dark:text-slate-300">Vacantes: {{ $vacantes }}</span>
+                                    </div>
+
+                                    @if (auth()->user()->rol === 'admin')
+                                        <div class="mt-4">
+                                            <a
+                                                href="{{ route('grupos.edit', ['grupo' => $grupo->id, 'origen' => 'membresias']) }}"
+                                                class="btn-action-edit"
+                                                wire:navigate
+                                            >Editar grupo</a>
+                                        </div>
+                                    @endif
+                                </article>
+                            @endforeach
+                        </div>
+                    @endif
+                </section>
+            @endif
+        @endif
     </div>
 </div>

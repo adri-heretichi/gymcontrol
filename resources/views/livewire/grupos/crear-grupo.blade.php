@@ -7,7 +7,7 @@
                     <h2 class="text-2xl font-black text-slate-900 dark:text-white tracking-tight">Nuevo Grupo de Clase</h2>
                     <p class="text-sm text-slate-500 dark:text-slate-400 mt-1 font-semibold">Configuración de disciplina, cupos (hasta 15 alumnos) y cronograma de horarios</p>
                 </div>
-                <a href="{{ route('grupos.index') }}" class="btn-secondary" wire:navigate>
+                <a href="{{ $volverAMembresias ? route('membresias.index', ['disciplina' => $disciplina_id]) : route('grupos.index') }}" class="btn-secondary" wire:navigate>
                     Volver
                 </a>
             </div>
@@ -105,7 +105,7 @@
                         <div>
                             <h3 class="text-base font-black text-slate-900 dark:text-white">Días y Horarios de Clase</h3>
                             <p class="text-xs text-slate-500 dark:text-slate-400">
-                                Turnos de apertura: Mañana (08:00 a 12:00) y Tarde/Noche (15:00 a 22:00).
+                                Lunes a viernes: mañana (08:00 a 12:00) y tarde (15:00 a 20:00).
                             </p>
                         </div>
                         <button

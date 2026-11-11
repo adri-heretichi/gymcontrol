@@ -7,7 +7,7 @@
                     <h2 class="text-2xl font-black text-slate-900 dark:text-white tracking-tight">Editar Disciplina</h2>
                     <p class="text-sm text-slate-500 dark:text-slate-400 mt-1 font-semibold">Modificar datos de '{{ $disciplina->nombre }}'</p>
                 </div>
-                <a href="{{ route('disciplinas.index') }}" class="btn-secondary" wire:navigate>
+                <a href="{{ $volverAMembresias ? route('membresias.index', ['disciplina' => $disciplina->id]) : route('disciplinas.index') }}" class="btn-secondary" wire:navigate>
                     Volver
                 </a>
             </div>
@@ -42,6 +42,25 @@
                     @enderror
                 </div>
 
+                <!-- Precio opcional por disciplina -->
+                <div>
+                    <label for="precio" class="form-label">Precio de la membresía (Opcional)</label>
+                    <input
+                        type="number"
+                        id="precio"
+                        wire:model="precio"
+                        min="0"
+                        max="999999.99"
+                        step="0.01"
+                        class="form-input @error('precio') border-rose-500 @enderror"
+                        placeholder="Sin definir"
+                    />
+                    <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">No se asignó ningún importe automáticamente.</p>
+                    @error('precio')
+                        <span class="text-rose-500 text-xs font-bold mt-1 block">{{ $message }}</span>
+                    @enderror
+                </div>
+
                 <!-- Estado -->
                 <div>
                     <label for="estado" class="form-label">Estado *</label>
@@ -60,7 +79,7 @@
 
                 <!-- Botones de Acción -->
                 <div class="pt-6 border-t border-slate-200 dark:border-slate-800 flex justify-end gap-3">
-                    <a href="{{ route('disciplinas.index') }}" class="btn-secondary" wire:navigate>
+                    <a href="{{ $volverAMembresias ? route('membresias.index', ['disciplina' => $disciplina->id]) : route('disciplinas.index') }}" class="btn-secondary" wire:navigate>
                         Cancelar
                     </a>
                     <button type="submit" class="btn-primary">

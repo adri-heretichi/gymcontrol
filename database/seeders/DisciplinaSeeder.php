@@ -12,35 +12,19 @@ class DisciplinaSeeder extends Seeder
      */
     public function run(): void
     {
-        $disciplinas = [
-            [
-                'nombre' => 'Krav Maga Kids',
-                'descripcion' => 'Defensa personal y desarrollo psicomotriz para niños',
-                'estado' => 'activo',
-            ],
-            [
-                'nombre' => 'Kapap Krav Maga',
-                'descripcion' => 'Sistema de combate y defensa personal táctica',
-                'estado' => 'activo',
-            ],
-            [
-                'nombre' => 'Kickboxing Muay Thai',
-                'descripcion' => 'Entrenamiento técnico de deportes de contacto y acondicionamiento físico',
-                'estado' => 'activo',
-            ],
-            [
-                'nombre' => 'Funcional',
-                'descripcion' => 'Entrenamiento funcional de fuerza, resistencia y movilidad',
-                'estado' => 'activo',
-            ],
+        $descripciones = [
+            'Krav Maga Kids' => 'Defensa personal y desarrollo psicomotriz para niños',
+            'Kapap Krav Maga' => 'Sistema de combate y defensa personal táctica',
+            'Kickboxing Muay Thai' => 'Entrenamiento técnico de deportes de contacto y acondicionamiento físico',
+            'Funcional' => 'Entrenamiento funcional de fuerza, resistencia y movilidad',
         ];
 
-        foreach ($disciplinas as $d) {
+        foreach (Disciplina::PLANES_FENIX as $nombre) {
             Disciplina::updateOrCreate(
-                ['nombre' => $d['nombre']],
+                ['nombre' => $nombre],
                 [
-                    'descripcion' => $d['descripcion'],
-                    'estado' => $d['estado'],
+                    'descripcion' => $descripciones[$nombre],
+                    'estado' => 'activo',
                 ]
             );
         }

@@ -65,7 +65,7 @@ class SocioPermissionsTest extends TestCase
         $this->get('/socios')->assertStatus(200);
         $this->get('/dashboard')->assertSee('Auditoría');
         $this->get('/socios/' . $this->socio->id)->assertStatus(200);
-        $this->get('/socios/crear')->assertStatus(200)->assertDontSee('Membresía');
+        $this->get('/socios/crear')->assertStatus(200)->assertSee('Membresías');
         $this->get('/socios/' . $this->socio->id . '/editar')->assertStatus(200);
     }
 

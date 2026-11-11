@@ -558,15 +558,26 @@ class NucleoFuncionalDisciplinasGruposTest extends TestCase
             ->call('guardar')
             ->assertHasErrors(['horarios']);
 
-        // Fuera de horario nocturno (después de las 22:00)
+        // Fuera del turno tarde (después de las 20:00)
         Livewire::test(CrearGrupo::class)
             ->set('disciplina_id', $this->disciplinaBase->id)
-            ->set('nombre', 'Trasnochadores')
+            ->set('nombre', 'Fuera del turno tarde')
             ->set('horarios', [
-                ['dia_semana' => 'lunes', 'hora_inicio' => '21:30', 'hora_fin' => '22:30'],
+                ['dia_semana' => 'lunes', 'hora_inicio' => '20:00', 'hora_fin' => '20:30'],
             ])
             ->call('guardar')
             ->assertHasErrors(['horarios']);
+
+        foreach (['sabado', 'domingo'] as $diaNoHabil) {
+            Livewire::test(CrearGrupo::class)
+                ->set('disciplina_id', $this->disciplinaBase->id)
+                ->set('nombre', 'Grupo fin de semana')
+                ->set('horarios', [
+                    ['dia_semana' => $diaNoHabil, 'hora_inicio' => '09:00', 'hora_fin' => '10:00'],
+                ])
+                ->call('guardar')
+                ->assertHasErrors(['horarios.0.dia_semana']);
+        }
 
         // Cruzando el receso del mediodía (11:30 a 13:00)
         Livewire::test(CrearGrupo::class)

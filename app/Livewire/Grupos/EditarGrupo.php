@@ -20,6 +20,7 @@ class EditarGrupo extends Component
     public $estado = 'activo';
 
     public $horarios = [];
+    public bool $volverAMembresias = false;
 
     public function mount(Grupo $grupo)
     {
@@ -28,6 +29,7 @@ class EditarGrupo extends Component
         }
 
         $this->grupo = $grupo->load('horarios');
+        $this->volverAMembresias = request()->query('origen') === 'membresias';
         $this->disciplina_id = $grupo->disciplina_id;
         $this->nombre = $grupo->nombre;
         $this->profesor = $grupo->profesor;
@@ -78,7 +80,7 @@ class EditarGrupo extends Component
             'cupo_maximo' => 'required|integer|min:1|max:15',
             'estado' => 'required|in:activo,inactivo',
             'horarios' => 'required|array|min:1',
-            'horarios.*.dia_semana' => 'required|string|in:lunes,martes,miercoles,jueves,viernes,sabado,domingo',
+            'horarios.*.dia_semana' => 'required|string|in:' . implode(',', array_keys(HorarioGimnasioService::DIAS_SEMANA)),
             'horarios.*.hora_inicio' => 'required|date_format:H:i',
             'horarios.*.hora_fin' => 'required|date_format:H:i',
         ];
@@ -209,6 +211,10 @@ class EditarGrupo extends Component
         }
 
         session()->flash('message', "Grupo '{$this->grupo->nombre}' actualizado exitosamente.");
+        if ($this->volverAMembresias) {
+            return redirect()->route('membresias.index', ['disciplina' => $this->disciplina_id]);
+        }
+
         return redirect()->route('grupos.index');
     }
 

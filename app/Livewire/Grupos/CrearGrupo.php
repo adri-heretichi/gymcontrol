@@ -19,6 +19,7 @@ class CrearGrupo extends Component
     public $estado = 'activo';
 
     public $horarios = [];
+    public bool $volverAMembresias = false;
 
     public function mount()
     {
@@ -27,6 +28,11 @@ class CrearGrupo extends Component
         }
 
         $this->profesor = \App\Models\User::nombreProfesora();
+        $this->volverAMembresias = request()->query('origen') === 'membresias';
+        $disciplinaId = request()->query('disciplina_id');
+        if ($disciplinaId && Disciplina::whereKey($disciplinaId)->where('estado', 'activo')->exists()) {
+            $this->disciplina_id = (string) $disciplinaId;
+        }
 
         $this->horarios = [$this->horarioVacio()];
     }
@@ -62,7 +68,7 @@ class CrearGrupo extends Component
             'cupo_maximo' => 'required|integer|min:1|max:15',
             'estado' => 'required|in:activo,inactivo',
             'horarios' => 'required|array|min:1',
-            'horarios.*.dia_semana' => 'required|string|in:lunes,martes,miercoles,jueves,viernes,sabado,domingo',
+            'horarios.*.dia_semana' => 'required|string|in:' . implode(',', array_keys(HorarioGimnasioService::DIAS_SEMANA)),
             'horarios.*.hora_inicio' => 'required|date_format:H:i',
             'horarios.*.hora_fin' => 'required|date_format:H:i',
         ];
@@ -166,6 +172,10 @@ class CrearGrupo extends Component
         });
 
         session()->flash('message', "Grupo '{$this->nombre}' creado exitosamente con cupo de {$this->cupo_maximo} alumnos.");
+        if ($this->volverAMembresias) {
+            return redirect()->route('membresias.index', ['disciplina' => $this->disciplina_id]);
+        }
+
         return redirect()->route('grupos.index');
     }
 

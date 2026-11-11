@@ -36,6 +36,9 @@ new class extends Component
                     <x-nav-link class="whitespace-nowrap px-1" :href="route('socios.index')" :active="request()->routeIs('socios.*')" wire:navigate>
                         Socios
                     </x-nav-link>
+                    <x-nav-link class="whitespace-nowrap px-1" :href="route('membresias.index')" :active="request()->routeIs('membresias.*')" wire:navigate>
+                        Membresías
+                    </x-nav-link>
                     <x-nav-link class="whitespace-nowrap px-1" :href="route('disciplinas.index')" :active="request()->routeIs('disciplinas.*')" wire:navigate>
                         Disciplinas
                     </x-nav-link>
@@ -121,6 +124,9 @@ new class extends Component
             </x-responsive-nav-link>
             <x-responsive-nav-link :href="route('socios.index')" :active="request()->routeIs('socios.*')" wire:navigate>
                 Socios
+            </x-responsive-nav-link>
+            <x-responsive-nav-link :href="route('membresias.index')" :active="request()->routeIs('membresias.*')" wire:navigate>
+                Membresías
             </x-responsive-nav-link>
             <x-responsive-nav-link :href="route('disciplinas.index')" :active="request()->routeIs('disciplinas.*')" wire:navigate>
                 Disciplinas

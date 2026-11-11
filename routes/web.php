@@ -6,6 +6,7 @@ use App\Livewire\Socios\ListarSocios;
 use App\Livewire\Socios\CrearSocio;
 use App\Livewire\Socios\EditarSocio;
 use App\Livewire\Socios\VerSocio;
+use App\Livewire\Membresias\ListarMembresias;
 
 Route::view('/', 'welcome');
 
@@ -13,6 +14,7 @@ Route::view('/', 'welcome');
 Route::middleware(['auth'])->group(function () {
     // Dashboard principal usando el nuevo componente Livewire
     Route::get('dashboard', \App\Livewire\Dashboard::class)->name('dashboard');
+    Route::get('membresias', ListarMembresias::class)->name('membresias.index');
     
     // Perfil del operador
     Route::view('profile', 'profile')->name('profile');
