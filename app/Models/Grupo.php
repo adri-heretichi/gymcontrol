@@ -38,7 +38,7 @@ class Grupo extends Model
     {
         return $this->estado === 'activo'
             && $this->disciplina !== null
-            && $this->disciplina->estado === 'activa';
+            && in_array($this->disciplina->estado, ['activo', 'activa'], true);
     }
 
     /**

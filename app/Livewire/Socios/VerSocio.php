@@ -214,6 +214,10 @@ class VerSocio extends Component
             ->orderByDesc('fecha')
             ->orderByDesc('hora_ingreso')
             ->paginate(10);
+        $inscripcionesSocio = $this->socio->inscripciones()
+            ->with(['grupo.disciplina', 'grupo.horarios'])
+            ->orderByDesc('fecha_inscripcion')
+            ->get();
 
         $habilitacionSocio = app(HabilitacionSocioService::class)->evaluar($this->socio);
         if (!auth()->user()->esDuena()) {
@@ -234,6 +238,7 @@ class VerSocio extends Component
 
         return view('livewire.socios.ver-socio', [
             'asistenciasPaginadas' => $asistenciasPaginadas,
+            'inscripcionesSocio' => $inscripcionesSocio,
             'habilitacionSocio' => $habilitacionSocio,
             'coberturasPorInscripcion' => app(PagoService::class)
                 ->consultarCoberturasSocio($this->socio),

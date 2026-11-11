@@ -290,6 +290,33 @@
                                 </div>
 
                                 <div>
+                                    <span class="block text-2xs font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                                        Grupos y horarios
+                                    </span>
+                                    @forelse($inscripcionesSocio as $inscripcion)
+                                        <div class="mt-2 rounded-lg border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-800">
+                                            <p class="text-sm font-bold text-slate-800 dark:text-slate-100">
+                                                {{ $inscripcion->grupo?->disciplina?->nombre ?? 'Disciplina' }}
+                                                — {{ $inscripcion->grupo?->nombre ?? 'Grupo' }}
+                                                <span class="ml-1 text-xs font-semibold text-slate-500 dark:text-slate-400">
+                                                    ({{ ucfirst($inscripcion->estado) }})
+                                                </span>
+                                            </p>
+                                            @forelse($inscripcion->grupo?->horarios ?? [] as $horario)
+                                                <p class="mt-1 text-xs text-slate-600 dark:text-slate-300">
+                                                    {{ $horario->dia_semana_label }},
+                                                    {{ substr($horario->hora_inicio, 0, 5) }}–{{ substr($horario->hora_fin, 0, 5) }}
+                                                </p>
+                                            @empty
+                                                <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">Sin horarios asignados.</p>
+                                            @endforelse
+                                        </div>
+                                    @empty
+                                        <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">No hay inscripciones registradas.</p>
+                                    @endforelse
+                                </div>
+
+                                <div>
                                     <span class="block text-2xs font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500">Habilitación oficial por inscripción</span>
                                     <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">La inscripción y la habilitación son estados distintos. Confirmar un grupo no reemplaza los requisitos de pago ni médicos.</p>
                                     <span @class([

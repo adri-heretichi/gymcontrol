@@ -157,3 +157,161 @@ Usar en la rama integrada y con datos locales de prueba. Preparar socios, discip
 - **Precondiciones:** Sesión iniciada; Chrome con viewport de escritorio, tablet y móvil.
 - **Pasos:** Revisar el navbar a 1440 px, 1024 px, 768 px y 390 px; abrir/cerrar menú responsive; recorrer todos los enlaces; revisar login, backoffice, terminal, ficha y credencial QR.
 - **Resultado esperado:** Todos los ítems, incluida Auditoría, quedan dentro del contenedor blanco; no hay desbordamiento horizontal; el menú móvil es utilizable. Backoffice muestra identidad dual GymControl + Fénix, terminal/credenciales priorizan el logo Fénix, y naranja/negro/blanco son la paleta principal con dorado como acento legible.
+
+## Preparación de demostración Fénix
+
+Estos casos requieren los datos ficticios creados por `FenixDemostracionSeeder`, únicamente después de aplicar por el procedimiento aprobado las migraciones pendientes y configurar los cuatro precios. El seeder no forma parte de `DatabaseSeeder` y no se ejecutó en esta etapa. Todos los correos de prueba terminan en `@gymcontrol.test`; no usar personas ni documentos reales.
+
+### A. Pruebas de la dueña
+
+#### GF-23 — Certificado aprobado y vigente
+- **Módulo:** Aptos Físicos y credenciales
+- **Actor:** Dueña y socio
+- **Socio ficticio de prueba:** `fenix-demo-016@gymcontrol.test`
+- **Precondiciones:** Inscripción confirmada en Krav Maga Kids, cobertura vigente, decisión `requerido` y documento explícitamente ficticio guardado en almacenamiento privado.
+- **Pasos:** Abrir la ficha, consultar el apto físico y verificar estado y vencimiento; luego comprobar el estado de la credencial.
+- **Resultado esperado:** El documento se consulta únicamente desde el panel protegido de la dueña; el apto está aprobado/vigente y el PIN/QR se emitieron mediante el servicio existente.
+
+#### GF-24 — Cambio de decisión después de emitir credenciales
+- **Módulo:** Decisión médica individual
+- **Actor:** Dueña
+- **Socio ficticio de prueba:** `fenix-demo-050@gymcontrol.test`
+- **Precondiciones:** PIN y QR emitidos cuando la decisión era `no_requerido`; inscripción y pago vigentes.
+- **Pasos:** Cambiar la decisión a `requerido` sin cargar un certificado; consultar la ficha y probar el acceso.
+- **Resultado esperado:** El acceso se deniega por requisito médico pendiente; la decisión queda auditada y las credenciales emitidas se conservan sin regenerarse.
+
+#### GF-25 — Revocación explícita de credenciales
+- **Módulo:** PIN y QR
+- **Actor:** Dueña
+- **Socio ficticio de prueba:** `fenix-demo-052@gymcontrol.test`
+- **Precondiciones:** El socio recibió credenciales legítimas y luego la dueña las revocó; la cobertura de demostración está vencida.
+- **Pasos:** Consultar la ficha y estado revocado; registrar una renovación desde recepción y volver a revisar el estado.
+- **Resultado esperado:** La revocación permanece; el pago no reactiva ni vuelve a emitir PIN/QR. La revocación queda auditada sin guardar los valores de las credenciales.
+
+### B. Pruebas de recepción
+
+#### GF-26 — Cobro y reintento de acceso
+- **Módulo:** Pagos por inscripción
+- **Actor:** Recepcionista
+- **Socio ficticio de prueba:** `fenix-demo-051@gymcontrol.test`
+- **Precondiciones:** Credencial activa, certificado no requerido y cobertura vencida.
+- **Pasos:** Registrar en recepción una cuota para la inscripción de Funcional; presentar el mismo PIN durante el horario del grupo.
+- **Resultado esperado:** El pago genera cobertura de esa inscripción; el socio puede ingresar inmediatamente si los demás requisitos se mantienen. El PIN y el QR son los mismos.
+
+#### GF-27 — Rechazo de aspirante número 16
+- **Módulo:** Inscripciones y cupos
+- **Actor:** Recepcionista
+- **Socio ficticio de prueba:** `fenix-demo-016@gymcontrol.test`
+- **Precondiciones:** Krav Maga Kids Grupo A tiene 15 inscripciones confirmadas; el socio ya ocupa una plaza en Grupo B.
+- **Pasos:** Intentar inscribirlo también en Grupo A desde recepción.
+- **Resultado esperado:** La operación informa que el grupo está completo; no crea una inscripción confirmada adicional y el total de inscripciones demo permanece en 66.
+
+### C. Pruebas de terminal PIN
+
+#### GF-28 — Acceso sin certificado requerido
+- **Módulo:** Terminal PIN
+- **Actor:** Socio
+- **Socio ficticio de prueba:** `fenix-demo-001@gymcontrol.test`
+- **Precondiciones:** Inscripción confirmada, cobertura vigente, decisión `no_requerido` y credenciales activas.
+- **Pasos:** Abrir `/terminal`; ingresar el PIN usando el teclado físico y el teclado numérico en pantalla.
+- **Resultado esperado:** Acceso permitido en el horario; se registra una sola permanencia y el mensaje no hace referencia a una condición médica.
+
+#### GF-29 — Integrante de grupo completo puede ingresar
+- **Módulo:** Terminal PIN y cupos
+- **Actor:** Socio
+- **Socio ficticio de prueba:** `fenix-demo-004@gymcontrol.test`
+- **Precondiciones:** Krav Maga Kids Grupo A está completo con sus 15 integrantes; este socio tiene cobertura y credencial vigentes.
+- **Pasos:** Presentar el PIN durante el horario del grupo.
+- **Resultado esperado:** El ingreso se autoriza; el cupo completo no bloquea a integrantes ya inscritos.
+
+#### GF-30 — Disciplina ajena y horario incorrecto
+- **Módulo:** Terminal PIN y horarios
+- **Actor:** Socio
+- **Socio ficticio de prueba:** `fenix-demo-019@gymcontrol.test`
+- **Precondiciones:** Inscripción vigente en Kapap Krav Maga Grupo A.
+- **Pasos:** Intentar acceso a Kickboxing Muay Thai Grupo A y, por separado, a Kapap fuera del horario asignado.
+- **Resultado esperado:** El primer intento se deniega por falta de inscripción en la disciplina elegida; el segundo, por horario. No se registra asistencia.
+
+### D. Pruebas de QR móvil
+
+#### GF-31 — Evaluación y confirmación explícita por QR
+- **Módulo:** QR móvil
+- **Actor:** Socio
+- **Socio ficticio de prueba:** `fenix-demo-001@gymcontrol.test`
+- **Precondiciones:** QR activo, cobertura vigente e inscripción confirmada.
+- **Pasos:** Abrir el QR desde la ficha autorizada; comprobar que el GET no registra movimientos; confirmar entrada y luego salida mediante sus acciones POST.
+- **Resultado esperado:** Solo los POST explícitos registran entrada/salida. GET no escribe asistencia ni auditoría; el historial no expone el token QR. No se presupone una app lectora adicional.
+
+### E. Pruebas de pagos, certificados y vencimientos
+
+#### GF-32 — Certificado requerido pero faltante
+- **Módulo:** Aptos Físicos y emisión
+- **Actor:** Dueña
+- **Socio ficticio de prueba:** `fenix-demo-002@gymcontrol.test`
+- **Precondiciones:** Inscripción y cobertura vigentes; decisión `requerido`; no existe apto físico.
+- **Pasos:** Revisar el estado médico e intentar emitir credenciales.
+- **Resultado esperado:** La evaluación médica no se cumple; no se emite PIN ni QR y recepción no ve información clínica.
+
+#### GF-33 — Certificado vencido
+- **Módulo:** Aptos Físicos y emisión
+- **Actor:** Dueña
+- **Socio ficticio de prueba:** `fenix-demo-017@gymcontrol.test`
+- **Precondiciones:** Inscripción y cobertura vigentes; decisión `requerido`; existe únicamente un certificado ficticio vencido.
+- **Pasos:** Revisar el vencimiento e intentar emitir credenciales.
+- **Resultado esperado:** El requisito médico bloquea la emisión; el certificado y su documento siguen accesibles solo mediante las rutas privadas autorizadas.
+
+#### GF-34 — Certificado vigente, cobertura vencida
+- **Módulo:** Pagos, Aptos Físicos y acceso
+- **Actor:** Dueña y socio
+- **Socio ficticio de prueba:** `fenix-demo-032@gymcontrol.test`
+- **Precondiciones:** Certificado aprobado/vigente y credenciales emitidas legítimamente; luego venció la cobertura.
+- **Pasos:** Presentar el PIN durante el horario de Kapap Krav Maga Grupo B.
+- **Resultado esperado:** Acceso denegado por cobertura vencida. Las credenciales se conservan y no se borran ni regeneran.
+
+#### GF-35 — Decisión médica pendiente
+- **Módulo:** Decisión médica y emisión
+- **Actor:** Dueña
+- **Socio ficticio de prueba:** `fenix-demo-034@gymcontrol.test`
+- **Precondiciones:** Inscripción y cobertura vigentes; decisión `pendiente`.
+- **Pasos:** Consultar la ficha e intentar emitir credenciales.
+- **Resultado esperado:** Pendiente no equivale a exención; no se emiten credenciales hasta que la dueña determine la condición.
+
+#### GF-36 — Vencimiento posterior a emisión legítima
+- **Módulo:** Coberturas y terminal
+- **Actor:** Socio
+- **Socio ficticio de prueba:** `fenix-demo-049@gymcontrol.test`
+- **Precondiciones:** PIN/QR emitidos con requisitos satisfechos; cobertura luego vencida.
+- **Pasos:** Intentar acceso y revisar la ficha.
+- **Resultado esperado:** Acceso denegado por cobertura; PIN y QR permanecen asociados al socio.
+
+#### GF-37 — Renovación tras cambio médico
+- **Módulo:** Decisión médica, pagos y credenciales
+- **Actor:** Dueña y recepción
+- **Socio ficticio de prueba:** `fenix-demo-050@gymcontrol.test`
+- **Precondiciones:** Credenciales emitidas con decisión no requerida; la dueña la cambió a requerida y no se presentó certificado.
+- **Pasos:** Registrar una renovación en recepción y volver a presentar la credencial.
+- **Resultado esperado:** La cobertura queda vigente, pero el ingreso continúa denegado por el requisito médico; el PIN/QR no se modifican.
+
+### F. Pruebas de cupos y grupos
+
+#### GF-38 — Distribución de grupos de demostración
+- **Módulo:** Disciplinas, grupos e inscripciones
+- **Actor:** Dueña y recepción
+- **Socio ficticio de prueba:** `fenix-demo-001@gymcontrol.test` y los socios demo del 001 al 066
+- **Precondiciones:** Seeder de demostración ejecutado en el destino autorizado con precios configurados.
+- **Pasos:** Consultar los ocho grupos y sus horarios en Disciplinas, Inscripciones y ficha del socio.
+- **Resultado esperado:** Krav Maga Kids: A 15/B 1; Kapap Krav Maga: A 15/B 2; Kickboxing Muay Thai: A 15/B 1; Funcional: A 15/B 2. Son 66 inscripciones confirmadas; ningún grupo supera 15. Los horarios son lunes a jueves, de 08:00 a 10:00, en dos bloques consecutivos por día, sin superposición y dentro del horario oficial.
+
+### G. Pruebas de auditoría y notificaciones en tiempo real
+
+#### GF-39 — Idempotencia, privacidad y Reverb
+- **Módulo:** Auditoría, seeders y notificaciones
+- **Actor:** Dueña
+- **Socio ficticio de prueba:** Socios demo 001–066
+- **Precondiciones:** Datos cargados en un destino local autorizado; Reverb y el worker de cola disponibles para la parte en tiempo real.
+- **Pasos:** Revisar auditorías de decisiones, certificados, pagos, emisión/revocación y accesos; comprobar que los operadores originales no cambiaron; procesar un evento operativo en dos sesiones autenticadas. La repetición del seeder se verifica en SQLite aislado, no contra MySQL en esta etapa.
+- **Resultado esperado:** No aparecen PIN, tokens QR, documentos ni datos clínicos en auditorías/eventos. Dueña y recepción reciben solo los eventos autorizados. Si WebSocket o worker no están activos, marcar Reverb bloqueado; las pruebas automatizadas no sustituyen la comprobación E2E.
+
+### Configuración pendiente antes de cargar la demostración
+
+No se fijaron precios comerciales. Antes de ejecutar, proporcionar importes explícitos en `FENIX_DEMO_PRICE_KRAV_MAGA_KIDS`, `FENIX_DEMO_PRICE_KAPAP_KRAV_MAGA`, `FENIX_DEMO_PRICE_KICKBOXING_MUAY_THAI` y `FENIX_DEMO_PRICE_FUNCIONAL`. Si falta alguno, el seeder debe detenerse antes de escribir datos. La migración de `disciplinas.precio` también debe estar aplicada por el procedimiento aprobado.
