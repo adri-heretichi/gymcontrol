@@ -38,6 +38,10 @@ class ControlAccesoApiController extends Controller
                 metodoSalida: $datos['metodo'] === 'qr' ? 'qr_movil' : 'pin_recepcion'
             );
 
+        if ($request->user()->esRecepcionista()) {
+            $resultado = $controlAcceso->ocultarDetalleMedico($resultado);
+        }
+
         return response()->json([
             'success' => $resultado['autorizado'],
             'data' => [

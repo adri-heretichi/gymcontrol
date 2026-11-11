@@ -97,6 +97,8 @@ class CrearAptoFisico extends Component
 
     public function render()
     {
+        $this->authorize('create', \App\Models\AptoFisico::class);
+
         return view('livewire.aptos-fisicos.crear-apto-fisico')
             ->layout('layouts.app');
     }

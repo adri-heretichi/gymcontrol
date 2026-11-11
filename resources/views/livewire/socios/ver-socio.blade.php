@@ -310,27 +310,32 @@
                                     </p>
                                 </div>
 
-                                <div>
-                                    <span class="block text-2xs font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500">Requisito Médico Administrativo</span>
-                                    @php
-                                        $eval = $evaluacionMedica ?: $socio->estadoRequisitoMedico();
-                                    @endphp
-                                    <div class="mt-1 flex flex-wrap items-center gap-2">
-                                        @if($eval['cumple'])
-                                            <span class="px-2.5 py-1 text-xs font-black bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-400 rounded-md border border-emerald-300">
-                                                CUMPLIDO (Caso {{ $eval['caso'] }})
-                                            </span>
-                                        @else
-                                            <span class="px-2.5 py-1 text-xs font-black bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-400 rounded-md border border-rose-300 animate-pulse">
-                                                NO CUMPLIDO (Caso {{ $eval['caso'] }})
-                                            </span>
-                                        @endif
-                                        <span class="text-xs text-slate-500 dark:text-slate-400 font-medium">
-                                            Decisión: <strong>{{ strtoupper(str_replace('_', ' ', $socio->decision_medica ?? 'pendiente')) }}</strong>
+                                @if(auth()->user()->esDuena())
+                                    <div>
+                                        <span class="block text-2xs font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                                            Requisito Médico Administrativo
                                         </span>
+                                        @php
+                                            $eval = $evaluacionMedica ?: $socio->estadoRequisitoMedico();
+                                        @endphp
+                                        <div class="mt-1 flex flex-wrap items-center gap-2">
+                                            @if($eval['cumple'])
+                                                <span class="px-2.5 py-1 text-xs font-black bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-400 rounded-md border border-emerald-300">CUMPLIDO (Caso {{ $eval['caso'] }})</span>
+                                            @else
+                                                <span class="px-2.5 py-1 text-xs font-black bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-400 rounded-md border border-rose-300 animate-pulse">NO CUMPLIDO (Caso {{ $eval['caso'] }})</span>
+                                            @endif
+                                            <span class="text-xs text-slate-500 dark:text-slate-400 font-medium">
+                                                Decisión: <strong>{{ strtoupper(str_replace('_', ' ', $socio->decision_medica ?? 'pendiente')) }}</strong>
+                                            </span>
+                                        </div>
+                                        <p class="text-xs text-slate-500 dark:text-slate-400 mt-1 italic">{{ $eval['mensaje'] }}</p>
                                     </div>
-                                    <p class="text-xs text-slate-500 dark:text-slate-400 mt-1 italic">{{ $eval['mensaje'] }}</p>
-                                </div>
+                                @else
+                                    <div>
+                                        <span class="block text-2xs font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500">Estado operativo</span>
+                                        <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">El estado de habilitación se informa sin detalles administrativos.</p>
+                                    </div>
+                                @endif
 
                                 <div>
                                     <span class="block text-2xs font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500">Permanencia Promedio</span>
@@ -427,11 +432,13 @@
                     <div class="flex items-center justify-between border-b border-slate-100 dark:border-slate-700 pb-4 mb-4">
                         <div class="flex items-center gap-2">
                             <h3 class="text-lg font-black text-slate-900 dark:text-white uppercase tracking-wider">
-                                Situación Médica Administrativa
+                                {{ auth()->user()->esDuena() ? 'Situación Médica Administrativa' : 'Estado operativo' }}
                             </h3>
-                            <span class="text-2xs font-extrabold bg-indigo-50 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300 px-2.5 py-1 rounded-md border border-indigo-200">
-                                Fase 6
-                            </span>
+                            @if(auth()->user()->esDuena())
+                                <span class="text-2xs font-extrabold bg-indigo-50 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300 px-2.5 py-1 rounded-md border border-indigo-200">
+                                    Fase 6
+                                </span>
+                            @endif
                         </div>
                     </div>
 
@@ -485,40 +492,22 @@
                         <div class="space-y-4">
                             <div class="p-4 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3">
                                 <div>
-                                    <span class="block text-2xs font-extrabold uppercase text-slate-400">Estado de Decisión de la Dueña</span>
-                                    <span class="text-base font-black text-slate-800 dark:text-slate-200">
-                                        {{ strtoupper(str_replace('_', ' ', $socio->decision_medica ?? 'pendiente')) }}
-                                    </span>
-                                    @if($socio->decision_medica_obs)
-                                        <p class="text-xs text-slate-500 mt-0.5">Nota: {{ $socio->decision_medica_obs }}</p>
-                                    @endif
-                                </div>
-                                <div class="text-xs text-slate-500 text-right">
-                                    Recepcionista: Solo consulta y registro de documentación.
+                                    <span class="block text-2xs font-extrabold uppercase text-slate-400">Estado de trámite</span>
+                                    <span class="text-sm font-bold text-slate-800 dark:text-slate-200">Consultar con la dueña para continuar.</span>
                                 </div>
                             </div>
 
-                            <!-- Notificar a la Dueña -->
-                            <form wire:submit.prevent="enviarSolicitudRevisionMedica" class="pt-2 border-t border-slate-100 dark:border-slate-700">
-                                <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1">
-                                    Informar o Solicitar Revisión a la Dueña
-                                </label>
-                                <div class="flex gap-2">
-                                    <input type="text" wire:model="nota_solicitud_medica"
-                                           placeholder="Ej: El socio trajo certificado nuevo emitido hoy para revisión..."
-                                           class="flex-1 text-sm rounded-lg border-slate-300 dark:border-slate-700 dark:bg-slate-900 text-slate-900 dark:text-white">
-                                    <button type="submit" class="btn-secondary whitespace-nowrap">
-                                        Enviar Notificación
-                                    </button>
-                                </div>
-                                @error('nota_solicitud_medica')
-                                    <p class="text-xs text-rose-500 mt-1 font-semibold">{{ $message }}</p>
-                                @enderror
-                            </form>
+                            <div class="pt-2 border-t border-slate-100 dark:border-slate-700">
+                                <p class="mb-2 text-xs text-slate-500">Recepción no puede consultar ni registrar documentación médica.</p>
+                                <button type="button" wire:click="enviarSolicitudRevisionMedica" class="btn-secondary">
+                                    Solicitar revisión administrativa
+                                </button>
+                            </div>
                         </div>
                     @endcan
                 </div>
 
+                @if(auth()->user()->esDuena())
                 <!-- Historial de Aptos Físicos -->
                 <div class="bg-white dark:bg-slate-800 shadow-xl rounded-3xl border border-slate-100 dark:border-slate-800 p-8">
                     <div class="flex items-center justify-between border-b border-slate-100 dark:border-slate-700 pb-4 mb-4">
@@ -588,6 +577,7 @@
                         </table>
                     </div>
                 </div>
+                @endif
 
                 <!-- Historial de Asistencias (Accesos) -->
                 <div class="bg-white dark:bg-slate-800 shadow-xl rounded-3xl border border-slate-100 dark:border-slate-800 p-8">

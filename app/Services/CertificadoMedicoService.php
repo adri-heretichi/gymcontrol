@@ -240,8 +240,8 @@ class CertificadoMedicoService
     }
 
     /**
-     * Registra un certificado médico presentado por el socio.
-     * Tanto la Dueña como la Recepcionista pueden registrar la documentación física o digital.
+     * Registra un certificado médico presentado por el socio. Solo la dueña puede
+     * cargar documentación médica desde el panel administrativo.
      */
     public function registrarCertificado(
         Socio $socio,
@@ -266,11 +266,9 @@ class CertificadoMedicoService
         $vencimiento = Carbon::parse($fechaVencimiento)->startOfDay();
 
         $hoy = Carbon::now(config('app.timezone'))->startOfDay();
-        $estado = match (true) {
-            $vencimiento->lt($hoy) => AptoFisico::ESTADO_VENCIDO,
-            $operador->esDuena() => AptoFisico::ESTADO_VIGENTE,
-            default => AptoFisico::ESTADO_PENDIENTE_REVISION,
-        };
+        $estado = $vencimiento->lt($hoy)
+            ? AptoFisico::ESTADO_VENCIDO
+            : AptoFisico::ESTADO_VIGENTE;
         $path = null;
 
         try {
@@ -326,21 +324,16 @@ class CertificadoMedicoService
      */
     public function informarRevisionADuena(
         Socio $socio,
-        User $recepcionista,
-        string $descripcion
+        User $recepcionista
     ): Solicitud {
         Gate::forUser($recepcionista)->authorize('create', Solicitud::class);
-        $descripcion = trim($descripcion);
-        if ($descripcion === '' || mb_strlen($descripcion) > 1000) {
-            throw new \InvalidArgumentException('La solicitud debe incluir un motivo administrativo de hasta 1000 caracteres.');
-        }
 
-        return DB::transaction(function () use ($socio, $recepcionista, $descripcion) {
+        return DB::transaction(function () use ($socio, $recepcionista) {
             $solicitud = Solicitud::create([
                 'socio_id'       => $socio->id,
                 'solicitante_id' => $recepcionista->id,
                 'tipo'           => Solicitud::TIPO_EXCEPCION_MEDICA,
-                'descripcion'    => $descripcion,
+                'descripcion'    => 'Revisión administrativa solicitada a la dueña.',
                 'estado'         => Solicitud::ESTADO_PENDIENTE,
             ]);
 

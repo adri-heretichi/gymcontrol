@@ -76,11 +76,19 @@ class ListarSocios extends Component
             ->orderBy($this->ordenarPor, $this->ordenarDireccion)
             ->paginate(10);
 
-        $habilitaciones = $socios->getCollection()->mapWithKeys(
-            fn (Socio $socio) => [
-                $socio->id => app(HabilitacionSocioService::class)->evaluar($socio),
-            ]
-        );
+        $esDuena = auth()->user()->esDuena();
+        $habilitaciones = $socios->getCollection()->mapWithKeys(function (Socio $socio) use ($esDuena) {
+            $estado = app(HabilitacionSocioService::class)->evaluar($socio);
+            if (!$esDuena) {
+                $estado['etiqueta'] = $estado['habilitado'] ? 'Habilitado' : 'No habilitado';
+                $estado['detalle'] = $estado['habilitado']
+                    ? 'Requisitos operativos completos.'
+                    : 'Consultar con la dueña para continuar.';
+                $estado['por_inscripcion'] = [];
+            }
+
+            return [$socio->id => $estado];
+        });
 
         return view('livewire.socios.listar-socios', [
             'socios' => $socios,

@@ -31,9 +31,6 @@ Route::middleware(['auth'])->group(function () {
         Route::get('operadores/crear', \App\Livewire\Operadores\CrearOperador::class)->name('operadores.create');
         Route::get('operadores/{user}/editar', \App\Livewire\Operadores\EditarOperador::class)->name('operadores.edit');
 
-        // CRUD de Aptos Físicos: Escritura (Solo Administradores)
-        Route::get('aptos-fisicos/{aptoFisico}/editar', \App\Livewire\AptosFisicos\EditarAptoFisico::class)->name('aptos-fisicos.edit');
-
         // CRUD de Disciplinas y Grupos: Escritura (Solo Dueña / Administradora)
         Route::get('disciplinas/crear', \App\Livewire\Disciplinas\CrearDisciplina::class)->name('disciplinas.create');
         Route::get('disciplinas/{disciplina}/editar', \App\Livewire\Disciplinas\EditarDisciplina::class)->name('disciplinas.edit');
@@ -54,10 +51,13 @@ Route::middleware(['auth'])->group(function () {
     Route::get('inscripciones', \App\Livewire\Inscripciones\ListarInscripciones::class)->name('inscripciones.index');
     Route::get('inscripciones/crear', \App\Livewire\Inscripciones\CrearInscripcion::class)->name('inscripciones.create');
 
-    // CRUD de Aptos Físicos: Lectura y Carga (Accesible por ambos roles)
-    Route::get('aptos-fisicos', \App\Livewire\AptosFisicos\ListarAptosFisicos::class)->name('aptos-fisicos.index');
-    Route::get('socios/{socio}/aptos-fisicos/crear', \App\Livewire\AptosFisicos\CrearAptoFisico::class)->name('aptos-fisicos.create');
-    Route::get('aptos-fisicos/{aptoFisico}/descargar', [\App\Http\Controllers\AptoFisicoController::class, 'descargar'])->name('aptos-fisicos.download');
+    // Acceso médico completo (lectura, carga, edición y descarga) exclusivo de la dueña.
+    Route::middleware(['can:viewAny,App\\Models\\AptoFisico'])->group(function () {
+        Route::get('aptos-fisicos', \App\Livewire\AptosFisicos\ListarAptosFisicos::class)->name('aptos-fisicos.index');
+        Route::get('socios/{socio}/aptos-fisicos/crear', \App\Livewire\AptosFisicos\CrearAptoFisico::class)->name('aptos-fisicos.create');
+        Route::get('aptos-fisicos/{aptoFisico}/editar', \App\Livewire\AptosFisicos\EditarAptoFisico::class)->name('aptos-fisicos.edit');
+        Route::get('aptos-fisicos/{aptoFisico}/descargar', [\App\Http\Controllers\AptoFisicoController::class, 'descargar'])->name('aptos-fisicos.download');
+    });
 
     // CRUD de Pagos: Lectura y Carga (Accesible por ambos roles) – Fase 5
     Route::get('pagos', \App\Livewire\Pagos\ListarPagos::class)->name('pagos.index');

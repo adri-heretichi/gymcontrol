@@ -37,7 +37,7 @@ Usar en la rama integrada y con datos locales de prueba. Preparar socios, discip
 - **Actor:** Dueña y socio
 - **Precondiciones:** Inscripción aprobada, horario y cobertura vigentes; decisión médica de certificado requerido; no hay certificado vigente; credencial activa.
 - **Pasos:** Presentar PIN o QR en la terminal.
-- **Resultado esperado:** Acceso denegado con motivo claro de certificado obligatorio faltante o vencido; no se crea una asistencia de ingreso.
+- **Resultado esperado:** Acceso denegado sin exponer el motivo médico en la terminal, QR móvil o panel de recepción; la dueña puede consultar el detalle en la ficha administrativa. No se crea una asistencia de ingreso.
 
 ### GF-06 — Excepción médica aprobada por la dueña
 - **Módulo:** Decisión médica y solicitudes
@@ -134,8 +134,8 @@ Usar en la rama integrada y con datos locales de prueba. Preparar socios, discip
 - **Módulo:** Panel operativo
 - **Actor:** Recepcionista
 - **Precondiciones:** Sesión de recepcionista.
-- **Pasos:** Recorrer Socios, Disciplinas, Grupos, Inscripciones, Pagos/Coberturas, Control de acceso, Historial y Solicitudes; probar operaciones permitidas y una acción exclusiva de administración.
-- **Resultado esperado:** Las tareas asignadas a recepción funcionan; las decisiones y operaciones exclusivas de la dueña se deniegan correctamente. No aparece el módulo principal Membresías.
+- **Pasos:** Recorrer Socios, Disciplinas, Grupos, Inscripciones, Pagos/Coberturas, Control de acceso, Historial y Solicitudes; intentar abrir/listar/cargar/editar/descargar Aptos Físicos por URL directa y API.
+- **Resultado esperado:** Las tareas asignadas a recepción funcionan; se muestra únicamente un estado operativo mínimo y las decisiones/documentos médicos exclusivos de la dueña se deniegan correctamente. No aparece el módulo principal Membresías.
 
 ### GF-20 — Reportes PDF
 - **Módulo:** Reportes

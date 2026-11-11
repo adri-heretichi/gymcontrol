@@ -261,12 +261,12 @@ class NucleoFuncionalCertificadosMedicosTest extends TestCase
     {
         $socio = $this->crearSocio(['decision_medica' => 'requerido']);
 
-        $apto = $this->service->registrarCertificado(
-            socio: $socio,
-            fechaEmision: now()->subMonth()->toDateString(),
-            fechaVencimiento: now()->addMonths(11)->toDateString(),
-            operador: $this->recepcionista
-        );
+        $apto = AptoFisico::create([
+            'socio_id' => $socio->id,
+            'fecha_emision' => now()->subMonth()->toDateString(),
+            'fecha_vencimiento' => now()->addMonths(11)->toDateString(),
+            'estado' => AptoFisico::ESTADO_PENDIENTE_REVISION,
+        ]);
 
         $pendiente = $this->service->evaluarRequisitoMedico($socio);
         $this->assertFalse($pendiente['cumple']);
@@ -296,7 +296,7 @@ class NucleoFuncionalCertificadosMedicosTest extends TestCase
             socio: $socio,
             fechaEmision: now()->subYears(2)->toDateString(),
             fechaVencimiento: now()->subMonth()->toDateString(),
-            operador: $this->recepcionista
+            operador: $this->duena
         );
 
         $eval = $this->service->evaluarRequisitoMedico($socio);
@@ -337,7 +337,7 @@ class NucleoFuncionalCertificadosMedicosTest extends TestCase
             socio: $socio,
             fechaEmision: now()->subMonths(6)->toDateString(),
             fechaVencimiento: now()->addMonths(6)->toDateString(),
-            operador: $this->recepcionista
+            operador: $this->duena
         );
 
         // Dueña cambia a no requerido
@@ -396,30 +396,30 @@ class NucleoFuncionalCertificadosMedicosTest extends TestCase
         $this->assertEquals('qr_token_original_fijo_456', $socio->qr_token, 'El QR token no debe regenerarse');
     }
 
-    /** 16 – Registro administrativo de documentación por recepción */
-    public function test_16_registro_administrativo_por_recepcion(): void
+    /** 16 – Solo la dueña puede registrar documentación médica */
+    public function test_16_recepcion_no_puede_registrar_documentacion_medica(): void
     {
         $socio = $this->crearSocio(['decision_medica' => 'requerido']);
 
         $this->actingAs($this->recepcionista);
-        $this->assertTrue($this->recepcionista->can('create', AptoFisico::class));
+        $this->assertFalse($this->recepcionista->can('create', AptoFisico::class));
 
         $archivo = UploadedFile::fake()->create('certificado.pdf', 500, 'application/pdf');
 
-        $apto = $this->service->registrarCertificado(
-            socio: $socio,
-            fechaEmision: '2026-11-01',
-            fechaVencimiento: '2027-11-01',
-            operador: $this->recepcionista,
-            archivo: $archivo
-        );
+        try {
+            $this->service->registrarCertificado(
+                socio: $socio,
+                fechaEmision: today()->toDateString(),
+                fechaVencimiento: today()->addYear()->toDateString(),
+                operador: $this->recepcionista,
+                archivo: $archivo
+            );
+            $this->fail('Recepción no debe registrar documentos médicos.');
+        } catch (\Illuminate\Auth\Access\AuthorizationException) {
+            $this->assertDatabaseCount('aptos_fisicos', 0);
+        }
 
-        $this->assertNotNull($apto->id);
-        $this->assertEquals($socio->id, $apto->socio_id);
-        $this->assertEquals(AptoFisico::ESTADO_PENDIENTE_REVISION, $apto->estado);
-        $this->assertFalse($this->service->evaluarRequisitoMedico($socio)['cumple']);
-        $this->assertNotNull($apto->archivo);
-        Storage::disk('local')->assertExists($apto->archivo);
+        $this->get(route('aptos-fisicos.create', $socio))->assertForbidden();
     }
 
     /** 17 – Conservación del historial de certificados */
@@ -431,14 +431,14 @@ class NucleoFuncionalCertificadosMedicosTest extends TestCase
             socio: $socio,
             fechaEmision: '2025-01-01',
             fechaVencimiento: '2026-01-01',
-            operador: $this->recepcionista
+            operador: $this->duena
         );
 
         $apto2 = $this->service->registrarCertificado(
             socio: $socio,
             fechaEmision: '2026-01-02',
             fechaVencimiento: '2027-01-02',
-            operador: $this->recepcionista
+            operador: $this->duena
         );
 
         $historial = $this->service->obtenerHistorialCertificados($socio);
@@ -473,18 +473,25 @@ class NucleoFuncionalCertificadosMedicosTest extends TestCase
         $this->assertArrayNotHasKey('decision_medica_obs', $auditoriaDecision->datos_despues);
 
         // 2. Registro de certificado auditado
+        $archivoAuditoria = UploadedFile::fake()->create('archivo-clinico-no-auditar.pdf', 300, 'application/pdf');
         $this->service->registrarCertificado(
             socio: $socio,
             fechaEmision: '2026-11-01',
             fechaVencimiento: '2027-11-01',
-            operador: $this->recepcionista
+            operador: $this->duena,
+            archivo: $archivoAuditoria
         );
 
         $this->assertDatabaseHas('auditorias', [
             'tipo_evento' => 'medico',
             'accion'      => 'certificado_medico_registrado',
-            'user_id'     => $this->recepcionista->id,
+            'user_id'     => $this->duena->id,
         ]);
+        $auditoriaCertificado = Auditoria::where('accion', 'certificado_medico_registrado')->firstOrFail();
+        $datosCertificado = json_encode([$auditoriaCertificado->datos_antes, $auditoriaCertificado->datos_despues]);
+        $this->assertStringNotContainsString('archivo-clinico-no-auditar.pdf', $datosCertificado);
+        $this->assertStringNotContainsString('secure/aptos_fisicos/', $datosCertificado);
+        $this->assertArrayNotHasKey('archivo', $auditoriaCertificado->datos_despues);
     }
 
     /** 19 – Archivos médicos protegidos en almacenamiento privado */
@@ -497,7 +504,7 @@ class NucleoFuncionalCertificadosMedicosTest extends TestCase
             socio: $socio,
             fechaEmision: '2026-11-01',
             fechaVencimiento: '2027-11-01',
-            operador: $this->recepcionista,
+            operador: $this->duena,
             archivo: $archivo
         );
 
@@ -530,7 +537,7 @@ class NucleoFuncionalCertificadosMedicosTest extends TestCase
             socio: $socio,
             fechaEmision: '2026-11-01',
             fechaVencimiento: '2027-11-01',
-            operador: $this->recepcionista
+            operador: $this->duena
         );
 
         $socio->refresh();
@@ -616,13 +623,13 @@ class NucleoFuncionalCertificadosMedicosTest extends TestCase
 
         $solicitud = $this->service->informarRevisionADuena(
             socio: $socio,
-            recepcionista: $this->recepcionista,
-            descripcion: 'El socio trajo certificado médico para que la dueña revise su situación'
+            recepcionista: $this->recepcionista
         );
 
         $this->assertEquals(Solicitud::TIPO_EXCEPCION_MEDICA, $solicitud->tipo);
         $this->assertEquals(Solicitud::ESTADO_PENDIENTE, $solicitud->estado);
         $this->assertEquals($this->recepcionista->id, $solicitud->solicitante_id);
+        $this->assertSame('Revisión administrativa solicitada a la dueña.', $solicitud->descripcion);
     }
 
     public function test_vencimiento_de_hoy_es_vigente_hasta_el_final_del_dia(): void
@@ -644,12 +651,12 @@ class NucleoFuncionalCertificadosMedicosTest extends TestCase
     public function test_reception_cannot_approve_a_pending_certificate(): void
     {
         $socio = $this->crearSocio(['decision_medica' => 'requerido']);
-        $apto = $this->service->registrarCertificado(
-            socio: $socio,
-            fechaEmision: today()->subDay()->toDateString(),
-            fechaVencimiento: today()->addYear()->toDateString(),
-            operador: $this->recepcionista
-        );
+        $apto = AptoFisico::create([
+            'socio_id' => $socio->id,
+            'fecha_emision' => today()->subDay()->toDateString(),
+            'fecha_vencimiento' => today()->addYear()->toDateString(),
+            'estado' => AptoFisico::ESTADO_PENDIENTE_REVISION,
+        ]);
 
         $this->actingAs($this->recepcionista);
         $this->get(route('aptos-fisicos.edit', $apto))->assertForbidden();
@@ -659,12 +666,12 @@ class NucleoFuncionalCertificadosMedicosTest extends TestCase
     public function test_owner_rejection_does_not_satisfy_medical_requirement(): void
     {
         $socio = $this->crearSocio(['decision_medica' => 'requerido']);
-        $apto = $this->service->registrarCertificado(
-            socio: $socio,
-            fechaEmision: today()->subDay()->toDateString(),
-            fechaVencimiento: today()->addYear()->toDateString(),
-            operador: $this->recepcionista
-        );
+        $apto = AptoFisico::create([
+            'socio_id' => $socio->id,
+            'fecha_emision' => today()->subDay()->toDateString(),
+            'fecha_vencimiento' => today()->addYear()->toDateString(),
+            'estado' => AptoFisico::ESTADO_PENDIENTE_REVISION,
+        ]);
 
         $this->actingAs($this->duena);
         Livewire::test(\App\Livewire\AptosFisicos\EditarAptoFisico::class, ['aptoFisico' => $apto])
@@ -683,7 +690,7 @@ class NucleoFuncionalCertificadosMedicosTest extends TestCase
             socio: $socio,
             fechaEmision: today()->toDateString(),
             fechaVencimiento: today()->addYear()->toDateString(),
-            operador: $this->recepcionista
+            operador: $this->duena
         );
         $usuario = User::create([
             'name' => 'Usuario sin rol',

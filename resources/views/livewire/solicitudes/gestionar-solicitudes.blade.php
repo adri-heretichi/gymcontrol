@@ -35,14 +35,9 @@
                         </select>
                         @error('socioId') <span class="mt-1 block text-xs text-rose-600">{{ $message }}</span> @enderror
                     </div>
-                    <div class="md:col-span-2">
-                        <label for="motivo" class="form-label">Motivo administrativo de revisión</label>
-                        <textarea id="motivo" wire:model="motivo" rows="2" maxlength="1000" class="form-input" placeholder="Describí brevemente qué necesita revisar la dueña. No incluyas diagnósticos ni datos médicos."></textarea>
-                        @error('motivo') <span class="mt-1 block text-xs text-rose-600">{{ $message }}</span> @enderror
-                    </div>
-                    <div class="md:col-span-3">
+                    <div class="md:col-span-2 flex flex-col justify-end">
                         <button type="submit" class="btn-primary">Enviar revisión médica</button>
-                        <p class="mt-2 text-xs text-slate-500">La solicitud no cambia la decisión médica ni habilita el acceso.</p>
+                        <p class="mt-2 text-xs text-slate-500">Envía una solicitud administrativa sin incluir ni consultar información médica.</p>
                     </div>
                 </form>
             @endif

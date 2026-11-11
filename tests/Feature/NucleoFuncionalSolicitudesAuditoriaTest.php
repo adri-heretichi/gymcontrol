@@ -53,13 +53,13 @@ class NucleoFuncionalSolicitudesAuditoriaTest extends TestCase
         $this->actingAs($this->recepcionista);
         Livewire::test(GestionarSolicitudes::class)
             ->set('socioId', (string) $socio->id)
-            ->set('motivo', 'Solicita revisar su requisito')
             ->call('crearRevisionMedica')
             ->assertHasNoErrors();
 
         $solicitud = Solicitud::query()->sole();
         $this->assertSame(Solicitud::ESTADO_PENDIENTE, $solicitud->estado);
         $this->assertSame($this->recepcionista->id, $solicitud->solicitante_id);
+        $this->assertSame('Revisión administrativa solicitada a la dueña.', $solicitud->descripcion);
         $this->assertSame('pendiente', $socio->fresh()->decision_medica);
         $this->assertDatabaseHas('auditorias', [
             'auditable_type' => Solicitud::class,
@@ -436,11 +436,13 @@ class NucleoFuncionalSolicitudesAuditoriaTest extends TestCase
         for ($i = 0; $i < 55; $i++) {
             Auditoria::registrar('administrativo', 'operacion_recepcion_' . $i, null, null, null, $this->recepcionista->id);
         }
+        Auditoria::registrar('medico', 'decision_medica_actualizada', null, null, null, $this->recepcionista->id);
         Auditoria::registrar('administrativo', 'operacion_otra', null, null, null, $this->duena->id);
 
         $this->actingAs($this->recepcionista);
         Livewire::test(GestionarSolicitudes::class)
             ->assertViewHas('movimientosRecepcion', fn ($movimientos) => $movimientos->count() === 50)
+            ->assertDontSee('decision_medica_actualizada')
             ->assertDontSee('operacion_otra');
     }
 
@@ -448,8 +450,7 @@ class NucleoFuncionalSolicitudesAuditoriaTest extends TestCase
     {
         return app(CertificadoMedicoService::class)->informarRevisionADuena(
             $socio,
-            $this->recepcionista,
-            'Solicita revisión administrativa'
+            $this->recepcionista
         );
     }
 

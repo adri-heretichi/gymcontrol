@@ -149,6 +149,7 @@ class TerminalAcceso extends Component
             metodo: ControlAccesoService::METODO_PIN,
             grupoId: $this->grupoSeleccionado ? (int) $this->grupoSeleccionado : null
         );
+        $resultado = app(ControlAccesoService::class)->ocultarDetalleMedico($resultado);
 
         $this->estadoAcceso = $resultado['autorizado'] ? 'exito' : 'error';
         $this->socioInfo = $resultado['socio'];

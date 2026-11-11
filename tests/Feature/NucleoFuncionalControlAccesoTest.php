@@ -290,6 +290,43 @@ class NucleoFuncionalControlAccesoTest extends TestCase
         $this->assertStringContainsString('aprobación de la dueña', $resultado['mensaje']);
     }
 
+    public function test_operational_surfaces_hide_medical_denial_details(): void
+    {
+        $this->socio->update(['decision_medica' => 'requerido']);
+
+        $this->actingAs($this->recepcionista);
+        Livewire::test(\App\Livewire\ControlAcceso::class)
+            ->set('identificador', $this->socio->pin)
+            ->call('consultar')
+            ->assertSee('No habilitado. Consultar con la dueña.')
+            ->assertDontSee('certificado médico');
+
+        $token = $this->recepcionista->createToken('test-token')->plainTextToken;
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson(route('api.control-acceso.scan'), [
+                'identificador' => $this->socio->pin,
+                'metodo' => 'pin',
+                'accion' => 'ingreso',
+                'grupo_id' => $this->grupo->id,
+            ])
+            ->assertForbidden()
+            ->assertJsonPath('data.codigo', 'requisitos_pendientes')
+            ->assertJsonPath('data.mensaje', 'No habilitado. Consultar con la dueña.')
+            ->assertDontSee('certificado médico');
+
+        Http::fake();
+        Livewire::test(\App\Livewire\TerminalAcceso::class)
+            ->set('pin', $this->socio->pin)
+            ->call('procesar')
+            ->assertSee('No habilitado. Consultar con la dueña.')
+            ->assertDontSee('certificado médico');
+
+        $this->get(route('terminal.scan', $this->socio->qr_token))
+            ->assertForbidden()
+            ->assertSee('No habilitado. Consultar con la dueña.')
+            ->assertDontSee('certificado médico');
+    }
+
     public function test_certificate_is_valid_on_its_expiration_date_and_no_requirement_is_silent(): void
     {
         $this->socio->update(['decision_medica' => 'requerido']);

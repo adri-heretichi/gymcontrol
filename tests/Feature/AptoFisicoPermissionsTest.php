@@ -9,6 +9,7 @@ use App\Models\AptoFisico;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
+use Livewire\Livewire;
 use Tests\TestCase;
 
 class AptoFisicoPermissionsTest extends TestCase
@@ -65,21 +66,19 @@ class AptoFisicoPermissionsTest extends TestCase
         Storage::disk('local')->put($this->aptoFisico->archivo, 'medical document');
     }
 
-    /**
-     * Reception may register medical documents but cannot view or modify them.
-     */
+    /** Reception cannot access any medical record or document workflow. */
     public function test_recepcionista_permisos_apto_fisico(): void
     {
         $this->actingAs($this->recepcionista);
 
-        // Medical records are private; reception cannot list or download them.
         $this->get('/aptos-fisicos')->assertForbidden();
-
-        // Puede acceder al formulario de carga para un socio
-        $this->get('/socios/' . $this->socio->id . '/aptos-fisicos/crear')->assertStatus(200);
-
+        $this->get('/socios/' . $this->socio->id . '/aptos-fisicos/crear')->assertForbidden();
         $this->get('/aptos-fisicos/' . $this->aptoFisico->id . '/editar')->assertForbidden();
         $this->get('/aptos-fisicos/' . $this->aptoFisico->id . '/descargar')->assertForbidden();
+
+        Livewire::test(\App\Livewire\AptosFisicos\ListarAptosFisicos::class)->assertStatus(403);
+        Livewire::test(\App\Livewire\AptosFisicos\CrearAptoFisico::class, ['socio' => $this->socio])->assertStatus(403);
+        Livewire::test(\App\Livewire\AptosFisicos\EditarAptoFisico::class, ['aptoFisico' => $this->aptoFisico])->assertStatus(403);
     }
 
     /**
@@ -94,5 +93,20 @@ class AptoFisicoPermissionsTest extends TestCase
         $this->get('/socios/' . $this->socio->id . '/aptos-fisicos/crear')->assertStatus(200);
         $this->get('/aptos-fisicos/' . $this->aptoFisico->id . '/editar')->assertStatus(200);
         $this->get('/aptos-fisicos/' . $this->aptoFisico->id . '/descargar')->assertStatus(200);
+    }
+
+    public function test_recepcion_ficha_socio_no_expone_observaciones_ni_historial_medico(): void
+    {
+        $this->socio->update([
+            'decision_medica' => 'requerido',
+            'decision_medica_obs' => 'Observación clínica privada de prueba',
+        ]);
+
+        $this->actingAs($this->recepcionista)
+            ->get(route('socios.show', $this->socio))
+            ->assertOk()
+            ->assertDontSee('Observación clínica privada de prueba')
+            ->assertDontSee('Ver Certificado')
+            ->assertDontSee($this->aptoFisico->fecha_vencimiento->format('d/m/Y'));
     }
 }

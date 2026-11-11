@@ -15,6 +15,14 @@ use Illuminate\Support\Facades\DB;
 
 class ControlAccesoService
 {
+    private const CODIGOS_DENEGACION_MEDICA = [
+        'decision_medica_pendiente',
+        'certificado_vencido',
+        'certificado_pendiente_aprobacion',
+        'certificado_rechazado',
+        'certificado_faltante',
+    ];
+
     public const METODO_PIN = 'pin';
     public const METODO_QR = 'qr';
 
@@ -138,6 +146,19 @@ class ControlAccesoService
         }
 
         return $this->evaluarSocio($socio, $metodo, $grupoId, $momento);
+    }
+
+    /**
+     * Oculta los detalles médicos en las respuestas operativas y públicas.
+     */
+    public function ocultarDetalleMedico(array $resultado): array
+    {
+        if (in_array($resultado['codigo'], self::CODIGOS_DENEGACION_MEDICA, true)) {
+            $resultado['codigo'] = 'requisitos_pendientes';
+            $resultado['mensaje'] = 'No habilitado. Consultar con la dueña.';
+        }
+
+        return $resultado;
     }
 
     /**

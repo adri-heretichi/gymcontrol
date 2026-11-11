@@ -28,7 +28,7 @@ class AptoFisicoPolicy
      */
     public function create(User $user): bool
     {
-        return $user->esDuena() || $user->esRecepcionista();
+        return $user->esDuena();
     }
 
     /**

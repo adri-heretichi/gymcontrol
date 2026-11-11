@@ -53,12 +53,13 @@ Route::prefix('v1')->group(function () {
             Route::delete('membresias/{id}', [MembresiaApiController::class, 'destroy'])->name('api.membresias.destroy');
         });
 
-        // --- MÓDULO: APTOS FÍSICOS ---
-        // Carga, listados y descargas (Admin y Recepcionista)
-        Route::get('aptos-fisicos', [AptoFisicoApiController::class, 'index'])->name('api.aptos-fisicos.index');
-        Route::get('aptos-fisicos/{aptoFisico}', [AptoFisicoApiController::class, 'show'])->name('api.aptos-fisicos.show');
-        Route::post('aptos-fisicos', [AptoFisicoApiController::class, 'store'])->middleware('throttle:8,1')->name('api.aptos-fisicos.store');
-        Route::get('aptos-fisicos/{aptoFisico}/descargar', [AptoFisicoApiController::class, 'descargar'])->name('api.aptos-fisicos.download');
+        // --- MÓDULO: APTOS FÍSICOS (Solo Dueña / Administradora) ---
+        Route::middleware(['can:viewAny,App\\Models\\AptoFisico'])->group(function () {
+            Route::get('aptos-fisicos', [AptoFisicoApiController::class, 'index'])->name('api.aptos-fisicos.index');
+            Route::get('aptos-fisicos/{aptoFisico}', [AptoFisicoApiController::class, 'show'])->name('api.aptos-fisicos.show');
+            Route::post('aptos-fisicos', [AptoFisicoApiController::class, 'store'])->middleware('throttle:8,1')->name('api.aptos-fisicos.store');
+            Route::get('aptos-fisicos/{aptoFisico}/descargar', [AptoFisicoApiController::class, 'descargar'])->name('api.aptos-fisicos.download');
+        });
 
         // --- MÓDULO: PAGOS ---
         // Consulta y Cobros (Admin y Recepcionista)

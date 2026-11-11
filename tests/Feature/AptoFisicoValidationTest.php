@@ -60,7 +60,7 @@ class AptoFisicoValidationTest extends TestCase
      */
     public function test_autocompletado_fecha_vencimiento(): void
     {
-        $this->actingAs($this->recepcionista);
+        $this->actingAs($this->admin);
 
         Livewire::test(\App\Livewire\AptosFisicos\CrearAptoFisico::class, ['socio' => $this->socio])
             ->set('fecha_emision', '2026-06-08')
@@ -72,7 +72,7 @@ class AptoFisicoValidationTest extends TestCase
      */
     public function test_validacion_archivo_apto_fisico(): void
     {
-        $this->actingAs($this->recepcionista);
+        $this->actingAs($this->admin);
 
         // 1. Archivo PDF válido (dentro del límite)
         $archivoValido = UploadedFile::fake()->create('certificado.pdf', 1024, 'application/pdf');
@@ -87,7 +87,7 @@ class AptoFisicoValidationTest extends TestCase
         // Verificamos que se guardó en la base de datos
         $this->assertDatabaseHas('aptos_fisicos', [
             'socio_id' => $this->socio->id,
-            'estado' => AptoFisico::ESTADO_PENDIENTE_REVISION,
+            'estado' => AptoFisico::ESTADO_VIGENTE,
         ]);
 
         $apto = AptoFisico::first();
@@ -119,7 +119,7 @@ class AptoFisicoValidationTest extends TestCase
      */
     public function test_validacion_fechas_apto_fisico(): void
     {
-        $this->actingAs($this->recepcionista);
+        $this->actingAs($this->admin);
 
         Livewire::test(\App\Livewire\AptosFisicos\CrearAptoFisico::class, ['socio' => $this->socio])
             ->set('fecha_emision', '2026-06-08')

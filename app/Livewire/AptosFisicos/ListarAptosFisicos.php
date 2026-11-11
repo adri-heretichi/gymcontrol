@@ -42,6 +42,8 @@ class ListarAptosFisicos extends Component
 
     public function render()
     {
+        $this->authorize('viewAny', AptoFisico::class);
+
         // Consulta optimizada con eager loading de socio
         $query = AptoFisico::with('socio');
 

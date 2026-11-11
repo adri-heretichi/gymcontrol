@@ -125,6 +125,10 @@ class ControlAcceso extends Component
 
     private function actualizarResultado(array $resultado): void
     {
+        if (auth()->user()->esRecepcionista()) {
+            $resultado = app(ControlAccesoService::class)->ocultarDetalleMedico($resultado);
+        }
+
         $this->estadoAcceso = $resultado['autorizado'] ? 'exito' : 'error';
         $this->mensajeAcceso = $resultado['mensaje'];
         $this->socioInfo = $resultado['socio'];

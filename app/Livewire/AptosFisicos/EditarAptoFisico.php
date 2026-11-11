@@ -133,6 +133,8 @@ class EditarAptoFisico extends Component
 
     public function render()
     {
+        $this->authorize('update', $this->aptoFisico);
+
         return view('livewire.aptos-fisicos.editar-apto-fisico')
             ->layout('layouts.app');
     }

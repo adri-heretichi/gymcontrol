@@ -70,6 +70,8 @@ class ScanQrController extends Controller
 
     private function respuestaMovil(array $resultado, string $token, bool $desdePost, bool $puedeSalir)
     {
+        $resultado = app(ControlAccesoService::class)->ocultarDetalleMedico($resultado);
+
         return response()
             ->view('terminal.scan-mobile', [
                 'resultado' => $resultado,
