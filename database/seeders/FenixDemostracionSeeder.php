@@ -2,7 +2,7 @@
 
 namespace Database\Seeders;
 
-use App\Models\AptoFisico;
+use App\Models\Auditoria;
 use App\Models\Disciplina;
 use App\Models\Grupo;
 use App\Models\GrupoHorario;
@@ -13,10 +13,12 @@ use App\Models\Socio;
 use App\Models\User;
 use App\Services\CertificadoMedicoService;
 use App\Services\CredencialService;
+use App\Services\FenixDemoSafety;
 use App\Services\HorarioGimnasioService;
 use App\Services\InscripcionService;
 use App\Services\PagoService;
 use Carbon\Carbon;
+use Illuminate\Database\QueryException;
 use Illuminate\Database\Seeder;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
@@ -29,6 +31,8 @@ use Throwable;
 
 class FenixDemostracionSeeder extends Seeder
 {
+    private const MANIFEST_ACTION = 'fenix_demo_created_v1';
+
     private const GROUPS = [
         ['discipline' => 'Krav Maga Kids', 'letter' => 'A', 'count' => 15, 'day' => 'lunes', 'start' => '08:00:00', 'end' => '09:00:00'],
         ['discipline' => 'Krav Maga Kids', 'letter' => 'B', 'count' => 1, 'day' => 'lunes', 'start' => '09:00:00', 'end' => '10:00:00'],
@@ -62,16 +66,24 @@ class FenixDemostracionSeeder extends Seeder
 
     public function run(): void
     {
-        $this->assertSafeTarget();
+        app(FenixDemoSafety::class)->run(fn () => $this->loadDemo());
+    }
+
+    private function loadDemo(): void
+    {
         $prices = $this->validatedPrices();
         $this->assertSchemaReady();
         $this->assertOriginalOperatorsExist();
+        $this->manifestDigest([]); // Require a signing key before any write.
 
         $createdFiles = [];
 
         try {
             Event::fakeFor(function () use ($prices, &$createdFiles): void {
                 DB::transaction(function () use ($prices, &$createdFiles): void {
+                    if ($this->alreadyLoaded($prices)) {
+                        return;
+                    }
                     $owner = User::query()->where('rol', 'admin')->orderBy('id')->firstOrFail();
                     $reception = User::query()->where('rol', 'recepcionista')->orderBy('id')->firstOrFail();
                     $disciplines = $this->prepareDisciplines($prices);
@@ -92,14 +104,9 @@ class FenixDemostracionSeeder extends Seeder
                             ];
                             $member = $this->prepareMember($memberNumber);
                             $enrollment = $this->ensureEnrollment($member, $group, $reception);
-                            $hadCredentials = in_array($member->estado_credencial, [
-                                CredencialService::ESTADO_ACTIVO,
-                                CredencialService::ESTADO_REVOCADO,
-                            ], true);
-
                             $this->ensureMedicalDecision(
                                 $member,
-                                $hadCredentials ? $profile['final'] : $profile['initial'],
+                                $profile['initial'],
                                 $owner,
                                 $certificateService
                             );
@@ -120,7 +127,6 @@ class FenixDemostracionSeeder extends Seeder
                             );
 
                             if ($member->estado_credencial === CredencialService::ESTADO_SIN_EMITIR
-                                && !empty($profile['issue'] ?? true)
                                 && $credentialService->evaluarRequisitosEmision($member)['habilitado']) {
                                 $credentialService->emitirPrimeraVez($member, $owner);
                             }
@@ -144,68 +150,141 @@ class FenixDemostracionSeeder extends Seeder
                             $memberNumber++;
                         }
                     }
-                }, 3);
+                    $manifest = [
+                        'version' => 1,
+                        'period' => Carbon::now(config('app.timezone'))->format('Ym'),
+                        'prices' => $this->priceSignature($prices),
+                        'state' => $this->demoState(),
+                    ];
+                    // Stored atomically with the fixtures, using the existing immutable
+                    // audit table. Contains IDs and keyed digests, never raw credentials.
+                    Auditoria::registrar(
+                        tipoEvento: 'administrativo',
+                        accion: self::MANIFEST_ACTION,
+                        datosDespues: ['manifest' => $manifest, 'signature' => $this->manifestDigest($manifest)],
+                        userId: $owner->id,
+                    );
+                }); // No automatic retries: filesystem writes are not transactional.
             });
         } catch (Throwable $exception) {
             foreach ($createdFiles as $path) {
                 Storage::disk('local')->delete($path);
             }
 
-            throw $exception;
+            throw $exception instanceof QueryException
+                ? new RuntimeException('La carga se revirtió por un error de base de datos; no se exponen consultas ni valores sensibles.')
+                : $exception;
         }
     }
 
-    private function assertSafeTarget(): void
+    /** Repeated loads are read-only. Any ambiguity or manual change requires review. */
+    private function alreadyLoaded(array $prices): bool
     {
-        $environment = (string) config('app.env', app()->environment());
-        if (!in_array($environment, ['local', 'demo', 'testing'], true)) {
-            throw new RuntimeException('El seeder Fénix de demostración solo se permite en local, demo o testing.');
+        $markers = Auditoria::query()->where('accion', self::MANIFEST_ACTION)->lockForUpdate()->get();
+        if ($markers->count() > 1) {
+            throw new RuntimeException('La procedencia de la demostración es ambigua; no se modificó ningún dato.');
         }
-
-        $connectionName = (string) config('database.default');
-        $connection = config("database.connections.{$connectionName}", []);
-        if (!empty($connection['url']) || !empty($connection['read'])
-            || !empty($connection['write']) || !empty($connection['unix_socket'])) {
-            throw new RuntimeException('Destino rechazado: la carga demo no admite DB_URL, read/write ni socket alternativo.');
-        }
-
-        $driver = $connection['driver'] ?? null;
-
-        if ($driver === 'sqlite') {
-            $database = (string) ($connection['database'] ?? '');
-            if ($environment === 'testing' && $database !== ':memory:') {
-                throw new RuntimeException('En testing, el seeder de demostración solo admite SQLite en memoria.');
+        if ($markers->isEmpty()) {
+            if ($this->reservedMembers()->exists()
+                || Grupo::query()->whereIn('nombre', ['DEMO FENIX - Grupo A', 'DEMO FENIX - Grupo B'])->exists()
+                || Pago::query()->where('referencia', 'like', 'FENIX-DEMO-%')->exists()) {
+                throw new RuntimeException('Existen identificadores reservados sin procedencia verificada; no se reutilizarán registros ajenos.');
             }
 
-            if ($environment !== 'testing' && $database !== ':memory:') {
-                $databasePath = realpath(dirname($database));
-                $allowedPath = realpath(database_path());
-                if (
-                    !$databasePath
-                    || !$allowedPath
-                    || !Str::startsWith($databasePath . DIRECTORY_SEPARATOR, $allowedPath . DIRECTORY_SEPARATOR)
-                    || strtolower(pathinfo($database, PATHINFO_EXTENSION)) !== 'sqlite'
-                ) {
-                    throw new RuntimeException('El SQLite local de demostración debe ser un archivo .sqlite dentro de database/.');
+            return false;
+        }
+        $payload = $markers->first()->datos_despues;
+        $manifest = $payload['manifest'] ?? null;
+        $signature = $payload['signature'] ?? null;
+        if (!is_array($manifest) || !is_string($signature)
+            || !hash_equals($this->manifestDigest($manifest), $signature)
+            || ($manifest['version'] ?? null) !== 1) {
+            throw new RuntimeException('No se pudo verificar la procedencia de la demostración; revise el registro y la clave de aplicación.');
+        }
+        if (($manifest['period'] ?? null) !== Carbon::now(config('app.timezone'))->format('Ym')
+            || !is_array($manifest['prices'] ?? null)
+            || $this->manifestDigest($manifest['prices']) !== $this->manifestDigest($this->priceSignature($prices))) {
+            throw new RuntimeException('El período o los precios cambiaron; la demostración existente requiere revisión y no se actualizará automáticamente.');
+        }
+        if (!is_array($manifest['state'] ?? null)
+            || $this->manifestDigest($manifest['state']) !== $this->manifestDigest($this->demoState())) {
+            throw new RuntimeException('Los datos o documentos de demostración fueron modificados; no se sobrescribirán cambios manuales.');
+        }
+
+        return true;
+    }
+
+    private function reservedMembers(): \Illuminate\Database\Eloquent\Builder
+    {
+        return Socio::query()->where(function ($query): void {
+            $query->whereIn('dni', array_map('strval', range(99990001, 99990066)))
+                ->orWhere('correo', 'like', 'fenix-demo-%@gymcontrol.test');
+        });
+    }
+
+    private function priceSignature(array $prices): array
+    {
+        return array_map(fn ($price) => number_format($price, 2, '.', ''), $prices);
+    }
+
+    private function manifestDigest(array $data): string
+    {
+        $key = config('app.key');
+        if (!is_string($key) || $key === '') {
+            throw new RuntimeException('La procedencia de la demostración requiere una clave de aplicación configurada.');
+        }
+
+        return base64_encode(hash_hmac('sha256', "fenix-demo-v1\0" . json_encode($this->canonicalData($data), JSON_THROW_ON_ERROR), $key, true));
+    }
+
+    private function canonicalData(array $data): array
+    {
+        if (!array_is_list($data)) {
+            ksort($data);
+        }
+        foreach ($data as &$value) {
+            if (is_array($value)) {
+                $value = $this->canonicalData($value);
+            }
+        }
+
+        return $data;
+    }
+
+    /** Only identifiers and keyed digests leave this method, never row contents or paths. */
+    private function demoState(): array
+    {
+        $memberIds = $this->reservedMembers()->pluck('id');
+        $groupIds = Grupo::query()->whereIn('nombre', ['DEMO FENIX - Grupo A', 'DEMO FENIX - Grupo B'])->pluck('id');
+        $enrollmentIds = Inscripcion::query()->whereIn('socio_id', $memberIds)->orWhereIn('grupo_id', $groupIds)->pluck('id');
+        $paymentIds = Pago::query()->whereIn('socio_id', $memberIds)->orWhere('referencia', 'like', 'FENIX-DEMO-%')->pluck('id');
+        $queries = [
+            'disciplinas' => DB::table('disciplinas')->whereIn('nombre', Disciplina::PLANES_FENIX),
+            'socios' => DB::table('socios')->whereIn('id', $memberIds),
+            'grupos' => DB::table('grupos')->whereIn('id', $groupIds),
+            'grupo_horarios' => DB::table('grupo_horarios')->whereIn('grupo_id', $groupIds),
+            'inscripciones' => DB::table('inscripciones')->whereIn('id', $enrollmentIds),
+            'pagos' => DB::table('pagos')->whereIn('id', $paymentIds),
+            'pago_detalles' => DB::table('pago_detalles')->whereIn('pago_id', $paymentIds)->orWhereIn('inscripcion_id', $enrollmentIds),
+            'aptos_fisicos' => DB::table('aptos_fisicos')->whereIn('socio_id', $memberIds),
+        ];
+        $state = [];
+        foreach ($queries as $table => $query) {
+            $rows = $query->orderBy('id')->get();
+            $state[$table] = ['ids' => $rows->pluck('id')->all(), 'digest' => $this->manifestDigest($rows->map(fn ($row) => (array) $row)->all())];
+            if ($table === 'aptos_fisicos') {
+                foreach ($rows as $row) {
+                    if ($row->archivo) {
+                        if (!Storage::disk('local')->exists($row->archivo)) {
+                            throw new RuntimeException('Falta un documento privado de demostración; no se reemplazará automáticamente.');
+                        }
+                        $state['files'][$row->id] = $this->manifestDigest(['content' => base64_encode(Storage::disk('local')->get($row->archivo))]);
+                    }
                 }
             }
-
-            return;
         }
 
-        $host = strtolower((string) ($connection['host'] ?? ''));
-        $database = (string) ($connection['database'] ?? '');
-        if (
-            !in_array($environment, ['local', 'demo'], true)
-            || !in_array($driver, ['mysql', 'mariadb'], true)
-            || !in_array($host, ['127.0.0.1', 'localhost', '::1'], true)
-            || !in_array($database, ['gymcontrol', 'gymcontrol_demo'], true)
-            || !config('fenix_demo.allow_local_mysql', false)
-        ) {
-            throw new RuntimeException(
-                'Destino rechazado. MySQL requiere entorno local/demo, host loopback, base gymcontrol o gymcontrol_demo y FENIX_DEMO_ALLOW_LOCAL_MYSQL=true.'
-            );
-        }
+        return $state;
     }
 
     /**
@@ -313,30 +392,17 @@ class FenixDemostracionSeeder extends Seeder
                 ->where('nombre', $name)
                 ->get();
 
-            if ($matches->count() > 1) {
-                throw new RuntimeException("Hay más de un grupo de demostración con el nombre {$name}.");
+            if ($matches->isNotEmpty()) {
+                throw new RuntimeException('Apareció un grupo reservado durante la carga; operación rechazada sin reutilizarlo.');
             }
 
-            $group = $matches->first();
-            if (!$group) {
-                $group = Grupo::create([
-                    'disciplina_id' => $discipline->id,
-                    'nombre' => $name,
-                    'profesor' => 'Coach de demostración',
-                    'cupo_maximo' => 15,
-                    'estado' => 'activo',
-                ]);
-            } else {
-                if ($group->inscripciones()->where('estado', Inscripcion::ESTADO_APROBADA)->count() > 15) {
-                    throw new RuntimeException("El grupo {$name} supera el cupo máximo y no será alterado.");
-                }
-
-                $group->update([
-                    'profesor' => 'Coach de demostración',
-                    'cupo_maximo' => 15,
-                    'estado' => 'activo',
-                ]);
-            }
+            $group = Grupo::create([
+                'disciplina_id' => $discipline->id,
+                'nombre' => $name,
+                'profesor' => 'Coach de demostración',
+                'cupo_maximo' => 15,
+                'estado' => 'activo',
+            ]);
 
             $this->ensureSchedule($group, $definition);
             $groups[$definition['discipline'] . ':' . $definition['letter']] = $group->fresh(['horarios', 'disciplina']);
@@ -351,7 +417,7 @@ class FenixDemostracionSeeder extends Seeder
     private function ensureSchedule(Grupo $group, array $definition): void
     {
         $schedules = $group->horarios()->get();
-        if ($schedules->count() > 1) {
+        if ($schedules->isNotEmpty()) {
             throw new RuntimeException("El grupo de demostración {$group->nombre} tiene horarios inesperados.");
         }
 
@@ -367,16 +433,12 @@ class FenixDemostracionSeeder extends Seeder
             );
         }
 
-        GrupoHorario::updateOrCreate(
-            [
-                'grupo_id' => $group->id,
-                'dia_semana' => $definition['day'],
-            ],
-            [
-                'hora_inicio' => $definition['start'],
-                'hora_fin' => $definition['end'],
-            ]
-        );
+        GrupoHorario::create([
+            'grupo_id' => $group->id,
+            'dia_semana' => $definition['day'],
+            'hora_inicio' => $definition['start'],
+            'hora_fin' => $definition['end'],
+        ]);
     }
 
     private function prepareMember(int $number): Socio
@@ -388,31 +450,29 @@ class FenixDemostracionSeeder extends Seeder
             ->orWhere('correo', $email)
             ->first();
 
-        if ($collision && ($collision->dni !== $dni || $collision->correo !== $email)) {
+        if ($collision) {
             throw new RuntimeException("Colisión con un registro ajeno a la demostración para el socio ficticio {$number}.");
         }
 
-        return Socio::query()->firstOrCreate(
-            ['correo' => $email],
-            [
-                'membresia_id' => null,
-                'apellido' => sprintf('Demo Fénix %03d', $number),
-                'nombre' => 'Participante',
-                'dni' => $dni,
-                'sexo' => $number % 2 === 0 ? 'F' : 'M',
-                'celular' => null,
-                'foto' => null,
-                'token' => Str::random(40),
-                'qr' => null,
-                'pin' => null,
-                'qr_token' => null,
-                'estado_credencial' => CredencialService::ESTADO_SIN_EMITIR,
-                'decision_medica' => 'pendiente',
-                'fecha_alta' => now()->toDateString(),
-                'fecha_vencimiento' => null,
-                'estado' => 'activo',
-            ]
-        );
+        return Socio::create([
+            'correo' => $email,
+            'membresia_id' => null,
+            'apellido' => sprintf('Demo Fénix %03d', $number),
+            'nombre' => 'Participante',
+            'dni' => $dni,
+            'sexo' => $number % 2 === 0 ? 'F' : 'M',
+            'celular' => null,
+            'foto' => null,
+            'token' => Str::random(40),
+            'qr' => null,
+            'pin' => null,
+            'qr_token' => null,
+            'estado_credencial' => CredencialService::ESTADO_SIN_EMITIR,
+            'decision_medica' => 'pendiente',
+            'fecha_alta' => now()->toDateString(),
+            'fecha_vencimiento' => null,
+            'estado' => 'activo',
+        ]);
     }
 
     private function ensureEnrollment(Socio $member, Grupo $group, User $reception): Inscripcion
@@ -423,13 +483,7 @@ class FenixDemostracionSeeder extends Seeder
             ->first();
 
         if ($enrollment) {
-            if ($enrollment->estado !== Inscripcion::ESTADO_APROBADA) {
-                throw new RuntimeException(
-                    "La inscripción demo de {$member->correo} no está confirmada; el seeder no la sustituirá."
-                );
-            }
-
-            return $enrollment;
+            throw new RuntimeException('Apareció una inscripción durante la carga; no se reutilizará ni sustituirá.');
         }
 
         $result = app(InscripcionService::class)->solicitarInscripcion(
@@ -477,25 +531,7 @@ class FenixDemostracionSeeder extends Seeder
             ->latest('id')
             ->first();
         if ($existing) {
-            $today = Carbon::now(config('app.timezone'))->toDateString();
-            $isValid = $existing->estado === AptoFisico::ESTADO_VIGENTE
-                && $existing->fecha_emision->toDateString() <= $today
-                && $existing->fecha_vencimiento->toDateString() >= $today;
-            $isExpired = $existing->estado === AptoFisico::ESTADO_VENCIDO
-                && $existing->fecha_vencimiento->toDateString() < $today;
-
-            if (($certificateType === 'valid' && $isValid) || ($certificateType === 'expired' && $isExpired)) {
-                return;
-            }
-
-            if ($certificateType === 'expired' || in_array($existing->estado, [
-                AptoFisico::ESTADO_PENDIENTE_REVISION,
-                AptoFisico::ESTADO_RECHAZADO,
-            ], true)) {
-                throw new RuntimeException(
-                    "El certificado demo de {$member->correo} fue modificado; el seeder no lo reemplazará."
-                );
-            }
+            throw new RuntimeException('Apareció un certificado durante la carga; no se reutilizará ni reemplazará.');
         }
 
         $today = Carbon::now(config('app.timezone'))->startOfDay();
@@ -534,14 +570,7 @@ class FenixDemostracionSeeder extends Seeder
             ->first();
 
         if ($demoPayment) {
-            $detail = $demoPayment->detalles()
-                ->where('inscripcion_id', $enrollment->id)
-                ->first();
-            if (!$detail) {
-                throw new RuntimeException("El pago demo {$reference} no contiene la cobertura esperada.");
-            }
-
-            return $detail;
+            throw new RuntimeException('Apareció un pago durante la carga; no se reutilizará ni modificará.');
         }
 
         $today = Carbon::now(config('app.timezone'))->toDateString();
@@ -555,7 +584,7 @@ class FenixDemostracionSeeder extends Seeder
             ->latest('id')
             ->first();
         if ($existingCoverage) {
-            return $existingCoverage;
+            throw new RuntimeException('Apareció una cobertura durante la carga; no se reutilizará ni modificará.');
         }
 
         $start = Carbon::now(config('app.timezone'))->startOfMonth()->toDateString();

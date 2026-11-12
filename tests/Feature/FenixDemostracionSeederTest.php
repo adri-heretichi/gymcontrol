@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Livewire\Socios\VerSocio;
 use App\Events\GymRealtimeUpdate;
 use App\Models\Disciplina;
+use App\Models\Auditoria;
 use App\Models\Grupo;
 use App\Models\Inscripcion;
 use App\Models\Membresia;
@@ -15,6 +16,7 @@ use App\Models\User;
 use App\Services\CertificadoMedicoService;
 use App\Services\ControlAccesoService;
 use App\Services\CredencialService;
+use App\Services\FenixDemoSafety;
 use App\Services\HorarioGimnasioService;
 use App\Services\InscripcionService;
 use App\Services\PagoService;
@@ -23,6 +25,7 @@ use Database\Seeders\FenixDemostracionSeeder;
 use DomainException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
 use Tests\TestCase;
@@ -399,9 +402,13 @@ class FenixDemostracionSeederTest extends TestCase
 
         $this->runDemoSeeder();
         $countsAfterFirstRun = $this->demoCounts();
+        $databaseBefore = $this->fixtureState();
+        $filesBefore = Storage::disk('local')->allFiles();
         $this->runDemoSeeder();
 
         $this->assertSame($countsAfterFirstRun, $this->demoCounts());
+        $this->assertSame($databaseBefore, $this->fixtureState(), 'A repeated load must not write timestamps or audit entries.');
+        $this->assertSame($filesBefore, Storage::disk('local')->allFiles());
         $this->assertSame($usersBefore, User::query()->orderBy('id')->get(['id', 'name', 'email', 'password', 'rol'])->toArray());
         $this->assertSame($historicMemberBefore, $this->historicMember->fresh()->getAttributes());
         $this->assertSame($historicMembershipBefore, $this->historicMembership->fresh()->getAttributes());
@@ -523,7 +530,7 @@ class FenixDemostracionSeederTest extends TestCase
             $this->runDemoSeeder();
             $this->fail('Production must reject the demo seeder.');
         } catch (\RuntimeException $exception) {
-            $this->assertStringContainsString('solo se permite en local, demo o testing', $exception->getMessage());
+            $this->assertStringContainsString('solo se permite en local', $exception->getMessage());
         }
 
         config([
@@ -544,6 +551,240 @@ class FenixDemostracionSeederTest extends TestCase
         }
 
         $this->assertSame(0, Socio::query()->where('correo', 'like', 'fenix-demo-%@gymcontrol.test')->count());
+    }
+
+    public function test_all_invalid_prices_abort_before_any_fixture_write(): void
+    {
+        $before = $this->fixtureState();
+        foreach ([null, '', 'not-a-price', 0, -1, '0.001', 1000000, INF, NAN, [], true] as $price) {
+            config(['fenix_demo.prices.Funcional' => $price]);
+            try {
+                $this->runDemoSeeder();
+                $this->fail('Invalid prices must reject the complete fixture.');
+            } catch (\RuntimeException $exception) {
+                $this->assertStringContainsString('FENIX_DEMO_PRICE_FUNCIONAL', $exception->getMessage());
+            }
+            $this->assertSame($before, $this->fixtureState());
+        }
+    }
+
+    public function test_an_unowned_member_is_not_adopted_even_if_both_reserved_identifiers_match(): void
+    {
+        $this->historicMember->update(['dni' => '99990001', 'correo' => 'fenix-demo-001@gymcontrol.test']);
+        $before = $this->fixtureState();
+        try {
+            $this->runDemoSeeder();
+            $this->fail('Matching conventional identifiers do not prove ownership.');
+        } catch (\RuntimeException $exception) {
+            $this->assertStringContainsString('sin procedencia verificada', $exception->getMessage());
+        }
+        $this->assertSame($before, $this->fixtureState());
+    }
+
+    public function test_an_unowned_group_name_is_not_adopted(): void
+    {
+        Grupo::create(['disciplina_id' => Disciplina::firstOrFail()->id, 'nombre' => 'DEMO FENIX - Grupo A',
+            'profesor' => 'Historical coach', 'cupo_maximo' => 10, 'estado' => 'inactivo']);
+        $before = $this->fixtureState();
+        try {
+            $this->runDemoSeeder();
+            $this->fail('A group name alone does not prove ownership.');
+        } catch (\RuntimeException $exception) {
+            $this->assertStringContainsString('sin procedencia verificada', $exception->getMessage());
+        }
+        $this->assertSame($before, $this->fixtureState());
+    }
+
+    public function test_an_unowned_payment_reference_is_not_adopted(): void
+    {
+        Pago::create(['socio_id' => $this->historicMember->id, 'operador_id' => $this->reception->id,
+            'fecha_pago' => '2026-11-11', 'importe' => 1, 'metodo_pago' => 'efectivo',
+            'referencia' => 'FENIX-DEMO-001-202611', 'estado' => 'activo']);
+        $before = $this->fixtureState();
+        try {
+            $this->runDemoSeeder();
+            $this->fail('A payment reference alone does not prove ownership.');
+        } catch (\RuntimeException $exception) {
+            $this->assertStringContainsString('sin procedencia verificada', $exception->getMessage());
+        }
+        $this->assertSame($before, $this->fixtureState());
+    }
+
+    public function test_manual_changes_to_any_fixture_table_are_preserved_and_rejected(): void
+    {
+        $this->runDemoSeeder();
+        $changes = [
+            ['socios', 'nombre', 'Manual name'],
+            ['grupos', 'profesor', 'Manual coach'],
+            ['grupo_horarios', 'hora_inicio', '08:15:00'],
+            ['inscripciones', 'estado', 'baja'],
+            ['pagos', 'importe', 123],
+            ['pago_detalles', 'subtotal', 321],
+            ['aptos_fisicos', 'estado', 'rechazado'],
+            ['disciplinas', 'precio', 999],
+        ];
+        foreach ($changes as [$table, $column, $value]) {
+            $row = DB::table($table)->when($table === 'socios', fn ($query) => $query->where('correo', 'like', 'fenix-demo-%'))
+                ->orderBy('id')->first();
+            $original = $row->$column;
+            DB::table($table)->where('id', $row->id)->update([$column => $value]);
+            $before = $this->fixtureState();
+            try {
+                $this->runDemoSeeder();
+                $this->fail('A manual change must never be overwritten.');
+            } catch (\RuntimeException $exception) {
+                $this->assertStringContainsString('no se sobrescribirán', $exception->getMessage());
+            }
+            $this->assertSame($before, $this->fixtureState());
+            DB::table($table)->where('id', $row->id)->update([$column => $original]);
+        }
+    }
+
+    public function test_modified_or_missing_private_demo_documents_are_not_recreated(): void
+    {
+        $this->runDemoSeeder();
+        $path = $this->demoMember(16)->aptosFisicos()->firstOrFail()->archivo;
+        Storage::disk('local')->put($path, 'Manual replacement, not a medical document.');
+        $before = $this->fixtureState();
+        try {
+            $this->runDemoSeeder();
+            $this->fail('Modified files must not be replaced.');
+        } catch (\RuntimeException $exception) {
+            $this->assertStringContainsString('no se sobrescribirán', $exception->getMessage());
+        }
+        $this->assertSame('Manual replacement, not a medical document.', Storage::disk('local')->get($path));
+        Storage::disk('local')->delete($path);
+        try {
+            $this->runDemoSeeder();
+            $this->fail('Missing files must not be recreated.');
+        } catch (\RuntimeException $exception) {
+            $this->assertStringContainsString('no se reemplazará', $exception->getMessage());
+        }
+        $this->assertSame($before, $this->fixtureState());
+        Storage::disk('local')->assertMissing($path);
+    }
+
+    public function test_changed_period_or_prices_do_not_create_payments_or_overwrite_existing_data(): void
+    {
+        $this->runDemoSeeder();
+        $before = $this->fixtureState();
+        foreach ([false, true] as $nextMonth) {
+            if ($nextMonth) {
+                config(['fenix_demo.prices.Funcional' => 24004]);
+                Carbon::setTestNow(Carbon::now()->addMonth());
+            } else {
+                config(['fenix_demo.prices.Funcional' => 24005]);
+            }
+            try {
+                $this->runDemoSeeder();
+                $this->fail('Changed prices or periods require explicit review.');
+            } catch (\RuntimeException $exception) {
+                $this->assertStringContainsString('requiere revisión', $exception->getMessage());
+            }
+            $this->assertSame($before, $this->fixtureState());
+        }
+    }
+
+    public function test_modified_provenance_is_rejected_without_writes(): void
+    {
+        $this->runDemoSeeder();
+        $marker = Auditoria::where('accion', 'fenix_demo_created_v1')->firstOrFail();
+        $payload = $marker->datos_despues;
+        $payload['manifest']['period'] = '199901';
+        DB::table('auditorias')->where('id', $marker->id)->update(['datos_despues' => json_encode($payload)]);
+        $before = $this->fixtureState();
+        try {
+            $this->runDemoSeeder();
+            $this->fail('Unverified provenance must not be accepted.');
+        } catch (\RuntimeException $exception) {
+            $this->assertStringContainsString('verificar la procedencia', $exception->getMessage());
+        }
+        $this->assertSame($before, $this->fixtureState());
+    }
+
+    public function test_missing_or_ambiguous_provenance_never_adopts_existing_fixtures(): void
+    {
+        $this->runDemoSeeder();
+        $marker = Auditoria::where('accion', 'fenix_demo_created_v1')->firstOrFail();
+        $duplicate = $marker->replicate();
+        $duplicate->save();
+        $before = $this->fixtureState();
+        try {
+            $this->runDemoSeeder();
+            $this->fail('Multiple provenance entries are ambiguous.');
+        } catch (\RuntimeException $exception) {
+            $this->assertStringContainsString('ambigua', $exception->getMessage());
+        }
+        $this->assertSame($before, $this->fixtureState());
+        // Simulate damaged audit storage only inside the isolated SQLite fixture.
+        DB::table('auditorias')->where('accion', 'fenix_demo_created_v1')->delete();
+        $before = $this->fixtureState();
+        try {
+            $this->runDemoSeeder();
+            $this->fail('Missing provenance must not adopt rows by convention.');
+        } catch (\RuntimeException $exception) {
+            $this->assertStringContainsString('sin procedencia verificada', $exception->getMessage());
+        }
+        $this->assertSame($before, $this->fixtureState());
+    }
+
+    public function test_missing_application_key_aborts_before_writes(): void
+    {
+        config(['app.key' => '']);
+        $before = $this->fixtureState();
+        try {
+            $this->runDemoSeeder();
+            $this->fail('Provenance must not be generated without an application key.');
+        } catch (\RuntimeException $exception) {
+            $this->assertStringContainsString('clave de aplicación', $exception->getMessage());
+        }
+        $this->assertSame($before, $this->fixtureState());
+    }
+
+    public function test_database_errors_roll_back_and_do_not_expose_query_bindings(): void
+    {
+        $paymentService = \Mockery::mock(PagoService::class);
+        $paymentService->shouldReceive('registrarPago')->once()->andThrow(new \Illuminate\Database\QueryException(
+            'sqlite', 'insert secret payload', ['synthetic-sensitive-value'], new \Exception('synthetic-sensitive-value')
+        ));
+        $this->app->instance(PagoService::class, $paymentService);
+        $before = $this->fixtureState();
+        try {
+            $this->runDemoSeeder();
+            $this->fail('Database errors must reject the fixture.');
+        } catch (\RuntimeException $exception) {
+            $this->assertStringNotContainsString('synthetic-sensitive-value', (string) $exception);
+            $this->assertStringNotContainsString('insert secret payload', (string) $exception);
+            $this->assertNull($exception->getPrevious());
+        }
+        $this->assertSame($before, $this->fixtureState());
+    }
+
+    public function test_reentrant_execution_is_rejected_even_on_the_same_process(): void
+    {
+        app(FenixDemoSafety::class)->run(function (): void {
+            try {
+                $this->runDemoSeeder();
+                $this->fail('A second load cannot run inside the protected callback.');
+            } catch (\RuntimeException $exception) {
+                $this->assertStringContainsString('en ejecución', $exception->getMessage());
+            }
+        });
+        $this->assertSame(0, Grupo::count());
+        $this->runDemoSeeder(); // The guard is released after the callback finishes.
+        $this->assertSame(8, Grupo::count());
+    }
+
+    private function fixtureState(): array
+    {
+        $snapshot = [];
+        foreach (['users', 'socios', 'membresias', 'disciplinas', 'grupos', 'grupo_horarios',
+            'inscripciones', 'pagos', 'pago_detalles', 'aptos_fisicos', 'auditorias'] as $table) {
+            // Digest avoids printing credential-bearing rows in assertion diagnostics.
+            $snapshot[$table] = hash('sha256', json_encode(DB::table($table)->orderBy('id')->get(), JSON_THROW_ON_ERROR));
+        }
+
+        return $snapshot;
     }
 
     private function runDemoSeeder(): void
