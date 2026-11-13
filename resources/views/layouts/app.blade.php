@@ -49,6 +49,13 @@
 
             <!-- Page Content -->
             <main class="flex-1">
+                @if(request()->routeIs('membresias.*', 'disciplinas.*', 'grupos.*'))
+                    <x-gym.module-sections module="Membresías" />
+                @elseif(request()->routeIs('socios.*', 'inscripciones.*'))
+                    <x-gym.module-sections module="Socios" />
+                @elseif(request()->routeIs('control-acceso', 'asistencias.*'))
+                    <x-gym.module-sections module="Control de Acceso" />
+                @endif
                 {{ $slot }}
             </main>
 

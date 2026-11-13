@@ -17,6 +17,19 @@ new class extends Component
 }; ?>
 
 <nav x-data="{ open: false }" class="relative z-30 border-b border-orange-100 bg-white shadow-sm">
+    @php
+        $modules = [
+            ['label' => 'Panel Administrativo', 'route' => 'dashboard', 'active' => ['dashboard', 'solicitudes.*']],
+            ['label' => 'Socios', 'route' => 'socios.index', 'active' => ['socios.*', 'inscripciones.*']],
+            ['label' => 'Membresías', 'route' => 'membresias.index', 'active' => ['membresias.*', 'disciplinas.*', 'grupos.*']],
+            ['label' => 'Aptos Físicos', 'route' => 'aptos-fisicos.index', 'active' => ['aptos-fisicos.*'], 'permission' => ['viewAny', \App\Models\AptoFisico::class]],
+            ['label' => 'Pagos', 'route' => 'pagos.index', 'active' => ['pagos.*']],
+            ['label' => 'Control de Acceso', 'route' => 'control-acceso', 'active' => ['control-acceso', 'asistencias.*']],
+            ['label' => 'Operadores', 'route' => 'operadores.index', 'active' => ['operadores.*'], 'permission' => ['administrar-operadores']],
+            ['label' => 'Auditoría', 'route' => 'auditoria.index', 'active' => ['auditoria.*'], 'permission' => ['viewAny', \App\Models\Auditoria::class]],
+        ];
+        $modules = array_filter($modules, fn ($module) => !isset($module['permission']) || auth()->user()->can(...$module['permission']));
+    @endphp
     <!-- Primary Navigation Menu -->
     <div class="mx-auto max-w-7xl px-3 sm:px-6 lg:px-8">
         <div class="flex min-h-16 h-auto flex-wrap items-center justify-between gap-x-4 gap-y-2 py-2">
@@ -29,48 +42,12 @@ new class extends Component
                 </div>
 
                 <!-- Navigation Links -->
-                <div class="hidden min-w-0 flex-1 flex-wrap items-center justify-start gap-x-3 gap-y-0.5 xl:flex xl:ms-3">
-                    <x-nav-link class="whitespace-nowrap px-1" :href="route('dashboard')" :active="request()->routeIs('dashboard')" wire:navigate>
-                        {{ auth()->user()->rol === 'admin' ? 'Panel Administrativo' : 'Panel Operativo' }}
-                    </x-nav-link>
-                    <x-nav-link class="whitespace-nowrap px-1" :href="route('socios.index')" :active="request()->routeIs('socios.*')" wire:navigate>
-                        Socios
-                    </x-nav-link>
-                    <x-nav-link class="whitespace-nowrap px-1" :href="route('membresias.index')" :active="request()->routeIs('membresias.*')" wire:navigate>
-                        Membresías
-                    </x-nav-link>
-                    <x-nav-link class="whitespace-nowrap px-1" :href="route('disciplinas.index')" :active="request()->routeIs('disciplinas.*')" wire:navigate>
-                        Disciplinas
-                    </x-nav-link>
-                    <x-nav-link class="whitespace-nowrap px-1" :href="route('grupos.index')" :active="request()->routeIs('grupos.*')" wire:navigate>
-                        Grupos
-                    </x-nav-link>
-                    <x-nav-link class="whitespace-nowrap px-1" :href="route('inscripciones.index')" :active="request()->routeIs('inscripciones.*')" wire:navigate>
-                        Inscripciones
-                    </x-nav-link>
-                    <x-nav-link class="whitespace-nowrap px-1" :href="route('aptos-fisicos.index')" :active="request()->routeIs('aptos-fisicos.*')" wire:navigate>
-                        Aptos Físicos
-                    </x-nav-link>
-                    <x-nav-link class="whitespace-nowrap px-1" :href="route('pagos.index')" :active="request()->routeIs('pagos.*')" wire:navigate>
-                        Pagos
-                    </x-nav-link>
-                    <x-nav-link class="whitespace-nowrap px-1" :href="route('control-acceso')" :active="request()->routeIs('control-acceso')" wire:navigate>
-                        Control de Acceso
-                    </x-nav-link>
-                    <x-nav-link class="whitespace-nowrap px-1" :href="route('asistencias.index')" :active="request()->routeIs('asistencias.*')" wire:navigate>
-                        Historial
-                    </x-nav-link>
-                    <x-nav-link class="whitespace-nowrap px-1" :href="route('solicitudes.index')" :active="request()->routeIs('solicitudes.*')" wire:navigate>
-                        Solicitudes
-                    </x-nav-link>
-                    @if(auth()->user()->rol === 'admin')
-                        <x-nav-link class="whitespace-nowrap px-1" :href="route('auditoria.index')" :active="request()->routeIs('auditoria.*')" wire:navigate>
-                            Auditoría
+                <div data-navigation-menu="desktop" aria-label="Módulos principales" class="hidden min-w-0 flex-1 flex-wrap items-center justify-start gap-x-3 gap-y-0.5 xl:flex xl:ms-3">
+                    @foreach($modules as $module)
+                        <x-nav-link data-module="{{ $module['route'] }}" class="whitespace-nowrap px-1" :href="route($module['route'])" :active="request()->routeIs(...$module['active'])" wire:navigate>
+                            {{ $module['label'] }}
                         </x-nav-link>
-                        <x-nav-link class="whitespace-nowrap px-1" :href="route('operadores.index')" :active="request()->routeIs('operadores.*')" wire:navigate>
-                            Operadores
-                        </x-nav-link>
-                    @endif
+                    @endforeach
                 </div>
             </div>
 
@@ -118,48 +95,12 @@ new class extends Component
 
     <!-- Responsive Navigation Menu -->
     <div :class="{'block': open, 'hidden': ! open}" class="hidden border-t border-orange-100 bg-white xl:hidden">
-        <div class="pt-2 pb-3 space-y-1">
-            <x-responsive-nav-link :href="route('dashboard')" :active="request()->routeIs('dashboard')" wire:navigate>
-                {{ auth()->user()->rol === 'admin' ? 'Panel Administrativo' : 'Panel Operativo' }}
-            </x-responsive-nav-link>
-            <x-responsive-nav-link :href="route('socios.index')" :active="request()->routeIs('socios.*')" wire:navigate>
-                Socios
-            </x-responsive-nav-link>
-            <x-responsive-nav-link :href="route('membresias.index')" :active="request()->routeIs('membresias.*')" wire:navigate>
-                Membresías
-            </x-responsive-nav-link>
-            <x-responsive-nav-link :href="route('disciplinas.index')" :active="request()->routeIs('disciplinas.*')" wire:navigate>
-                Disciplinas
-            </x-responsive-nav-link>
-            <x-responsive-nav-link :href="route('grupos.index')" :active="request()->routeIs('grupos.*')" wire:navigate>
-                Grupos
-            </x-responsive-nav-link>
-            <x-responsive-nav-link :href="route('inscripciones.index')" :active="request()->routeIs('inscripciones.*')" wire:navigate>
-                Inscripciones
-            </x-responsive-nav-link>
-            <x-responsive-nav-link :href="route('aptos-fisicos.index')" :active="request()->routeIs('aptos-fisicos.*')" wire:navigate>
-                Aptos Físicos
-            </x-responsive-nav-link>
-            <x-responsive-nav-link :href="route('pagos.index')" :active="request()->routeIs('pagos.*')" wire:navigate>
-                Pagos
-            </x-responsive-nav-link>
-            <x-responsive-nav-link :href="route('control-acceso')" :active="request()->routeIs('control-acceso')" wire:navigate>
-                Control de Acceso
-            </x-responsive-nav-link>
-            <x-responsive-nav-link :href="route('asistencias.index')" :active="request()->routeIs('asistencias.*')" wire:navigate>
-                Historial
-            </x-responsive-nav-link>
-            <x-responsive-nav-link :href="route('solicitudes.index')" :active="request()->routeIs('solicitudes.*')" wire:navigate>
-                Solicitudes
-            </x-responsive-nav-link>
-            @if(auth()->user()->rol === 'admin')
-                <x-responsive-nav-link :href="route('auditoria.index')" :active="request()->routeIs('auditoria.*')" wire:navigate>
-                    Auditoría
+        <div data-navigation-menu="mobile" aria-label="Módulos principales móviles" class="pt-2 pb-3 space-y-1">
+            @foreach($modules as $module)
+                <x-responsive-nav-link data-module="{{ $module['route'] }}" :href="route($module['route'])" :active="request()->routeIs(...$module['active'])" wire:navigate>
+                    {{ $module['label'] }}
                 </x-responsive-nav-link>
-                <x-responsive-nav-link :href="route('operadores.index')" :active="request()->routeIs('operadores.*')" wire:navigate>
-                    Operadores
-                </x-responsive-nav-link>
-            @endif
+            @endforeach
         </div>
 
         <!-- Responsive Settings Options -->

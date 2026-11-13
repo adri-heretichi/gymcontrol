@@ -1,5 +1,8 @@
-<div class="py-8 bg-slate-50 dark:bg-slate-900 min-h-screen">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
+<div @class(['py-8 bg-slate-50 dark:bg-slate-900 min-h-screen' => !$integrado])>
+    <div @class(['space-y-6', 'max-w-7xl mx-auto px-4 sm:px-6 lg:px-8' => !$integrado])>
+        @unless($integrado)
+            <a href="{{ route('dashboard') }}#solicitudes" wire:navigate class="btn-secondary">Panel Administrativo · Solicitudes</a>
+        @endunless
         @if (session()->has('message'))
             <div class="rounded-xl border-l-4 border-emerald-500 bg-emerald-50 p-4 text-sm font-bold text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-200" role="status">
                 {{ session('message') }}
@@ -9,7 +12,11 @@
         <section class="main-card">
             <div class="mb-6 flex flex-col gap-3 border-b border-slate-200 pb-5 dark:border-slate-800 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                    <h1 class="text-2xl font-black text-slate-900 dark:text-white">Solicitudes administrativas</h1>
+                    @if($integrado)
+                        <h2 class="text-2xl font-black text-slate-900 dark:text-white">Solicitudes pendientes e historial</h2>
+                    @else
+                        <h1 class="text-2xl font-black text-slate-900 dark:text-white">Solicitudes administrativas</h1>
+                    @endif
                     <p class="mt-1 text-sm text-slate-500 dark:text-slate-300">
                         @if(auth()->user()->esDuena())
                             Revisá y resolvé solicitudes. Los cambios se aplican mediante los servicios autorizados.
@@ -19,7 +26,7 @@
                     </p>
                 </div>
                 @if(auth()->user()->esRecepcionista())
-                    <a href="{{ route('inscripciones.create') }}" class="btn-primary" wire:navigate>Nueva solicitud de inscripción</a>
+                    <a href="{{ route('inscripciones.create') }}" class="btn-primary" wire:navigate>Nueva inscripción</a>
                 @endif
             </div>
 

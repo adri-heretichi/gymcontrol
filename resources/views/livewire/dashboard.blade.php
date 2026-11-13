@@ -2,9 +2,10 @@
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
         <header class="border-b border-slate-200 dark:border-slate-700 pb-5">
             <h1 class="text-3xl font-black text-slate-900 dark:text-white">
-                {{ $esDuena ? 'Panel administrativo' : 'Panel de recepción' }}
+                Panel Administrativo
             </h1>
             <p class="mt-1 text-sm text-slate-600 dark:text-slate-300">
+                {{ $esDuena ? 'Vista de administración.' : 'Vista de recepción.' }}
                 Indicadores operativos actualizados desde los registros del gimnasio.
             </p>
         </header>
@@ -20,7 +21,7 @@
                 <div class="flex flex-wrap gap-3">
                     <a href="{{ route('control-acceso') }}" class="btn-primary">Registrar ingreso o salida</a>
                     <a href="{{ route('inscripciones.index') }}" class="btn-secondary">Inscripciones</a>
-                    <a href="{{ route('solicitudes.index') }}" class="btn-secondary">Mis solicitudes</a>
+                    <a href="#solicitudes" class="btn-secondary">Mis solicitudes</a>
                     <a href="{{ route('pagos.index') }}" class="btn-secondary">Pagos y seguimiento</a>
                 </div>
             </section>
@@ -61,6 +62,10 @@
                     <p class="mt-2 text-3xl font-black text-slate-900 dark:text-white">{{ $valor }}</p>
                 </article>
             @endforeach
+        </section>
+
+        <section id="solicitudes" aria-label="Solicitudes del Panel Administrativo" class="scroll-mt-6">
+            <livewire:solicitudes.gestionar-solicitudes :integrado="true" />
         </section>
 
         <section class="rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-5">
@@ -162,7 +167,7 @@
             <section class="rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-5">
                 <div class="flex items-center justify-between mb-4">
                     <h2 class="text-lg font-bold text-slate-900 dark:text-white">Solicitudes recientes</h2>
-                    <a href="{{ route('solicitudes.index') }}" class="text-sm font-semibold text-indigo-600 dark:text-indigo-300">Ver solicitudes</a>
+                    <a href="#solicitudes" class="text-sm font-semibold text-indigo-600 dark:text-indigo-300">Gestionar solicitudes en este panel</a>
                 </div>
                 <ul class="divide-y divide-slate-200 dark:divide-slate-700">
                     @forelse($solicitudesRecientes as $solicitud)

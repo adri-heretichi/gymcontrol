@@ -171,6 +171,7 @@ class Dashboard extends Component
     }
 
     #[On('gym-realtime-updated')]
+    #[On('solicitudes-actualizadas')]
     public function refreshRealtimeStats(): void
     {
         $this->updateStats();
