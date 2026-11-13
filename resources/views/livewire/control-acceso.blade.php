@@ -236,13 +236,15 @@
                                 <div class="flex items-center gap-2 mt-2">
                                     <span class="text-xs text-slate-500 dark:text-slate-300 font-bold">{{ $asistencia->fecha->format('d/m/Y') }} · {{ \Carbon\Carbon::parse($asistencia->hora_ingreso)->format('H:i') }}</span>
                                     <span class="rounded-full px-2 py-0.5 text-[10px] font-black {{ $asistencia->hora_salida ? 'bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-200' : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200' }}">
-                                        {{ $asistencia->hora_salida ? 'Salida registrada' : 'En el gimnasio' }}
+                                        {{ $asistencia->requiereRevision() ? 'Requiere revisión' : ($asistencia->hora_salida ? 'Salida registrada' : 'En el gimnasio') }}
                                     </span>
                                 </div>
-
+                                @if($asistencia->hora_salida)
+                                    <p class="mt-1 text-xs text-slate-500">Salida: {{ ($asistencia->fecha_salida ?? $asistencia->fecha)->format('d/m/Y') }} {{ $asistencia->hora_salida }}</p>
+                                @endif
                             </div>
 
-                            @unless($asistencia->hora_salida)
+                            @if(!$asistencia->hora_salida && !$asistencia->requiereRevision())
                             <button
                                 wire:click="registrarSalidaManual({{ $asistencia->id }})"
                                 wire:loading.attr="disabled"
@@ -251,7 +253,7 @@
                             >
                                 Registrar salida
                             </button>
-                            @endunless
+                            @endif
                         </div>
                     @empty
                         <div class="h-full flex flex-col items-center justify-center text-center text-slate-400 dark:text-slate-500 italic py-12">

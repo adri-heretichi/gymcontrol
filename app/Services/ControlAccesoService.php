@@ -328,6 +328,16 @@ class ControlAccesoService
             }
             $minutos = (int) floor(($momento->getTimestamp() - $fechaIngreso->getTimestamp()) / 60);
 
+            if ($asistencia->requiereRevision($momento)) {
+                $resultado = $this->denegar(
+                    'permanencia_requiere_revision',
+                    'El ingreso lleva más de 24 horas abierto. Requiere revisión mediante una corrección de asistencia; no se registró la salida.',
+                    $socioBloqueado
+                );
+                $this->auditarAcceso($resultado, 'salida', null, $operadorId, $socioBloqueado, $metodoSalida);
+                return $resultado;
+            }
+
             $asistencia->update([
                 'fecha_salida' => $momento->toDateString(),
                 'hora_salida' => $momento->format('H:i:s'),

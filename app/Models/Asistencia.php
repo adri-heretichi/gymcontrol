@@ -11,6 +11,29 @@ class Asistencia extends Model
 {
     use HasFactory;
 
+    public const MAX_PERMANENCIA_AUTOMATICA_MINUTOS = 1440;
+
+    public function requiereRevision(?\Carbon\Carbon $momento = null): bool
+    {
+        if ($this->hora_salida) {
+            return $this->tiempo_permanencia !== null
+                && ($this->tiempo_permanencia < 0
+                    || $this->tiempo_permanencia > self::MAX_PERMANENCIA_AUTOMATICA_MINUTOS);
+        }
+
+        $ingreso = \Carbon\Carbon::parse($this->fecha->toDateString() . ' ' . $this->hora_ingreso, config('app.timezone'));
+        $momento ??= \Carbon\Carbon::now(config('app.timezone'));
+
+        return $momento->lt($ingreso)
+            || $ingreso->diffInMinutes($momento) > self::MAX_PERMANENCIA_AUTOMATICA_MINUTOS;
+    }
+
+    public function scopeConPermanenciaVerificable($query)
+    {
+        return $query->whereNotNull('hora_salida')
+            ->whereBetween('tiempo_permanencia', [0, self::MAX_PERMANENCIA_AUTOMATICA_MINUTOS]);
+    }
+
     // Indicamos que la tabla correspondiente en MySQL es "asistencias"
     protected $table = 'asistencias';
 
@@ -50,6 +73,10 @@ class Asistencia extends Model
     // Accessor para formatear el tiempo de permanencia de forma amigable
     public function getPermanenciaFormateadaAttribute(): string
     {
+        if ($this->requiereRevision()) {
+            return 'Permanencia pendiente de revisión';
+        }
+
         if ($this->hora_salida) {
             $minutos = $this->tiempo_permanencia;
             if ($minutos === null) {

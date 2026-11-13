@@ -57,9 +57,9 @@ class VerSocio extends Component
             ->whereNull('hora_salida')
             ->exists();
 
-        // 4. Permanencia promedio: Calculada directamente en la base de datos omitiendo registros nulos
+        // 4. Promedio de permanencias cerradas, excluyendo valores pendientes de revisión.
         $this->permanenciaPromedio = (int) $this->socio->asistencias()
-            ->whereNotNull('tiempo_permanencia')
+            ->conPermanenciaVerificable()
             ->avg('tiempo_permanencia');
 
         $this->historialAptos = collect();

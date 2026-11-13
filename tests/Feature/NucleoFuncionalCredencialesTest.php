@@ -233,6 +233,44 @@ class NucleoFuncionalCredencialesTest extends TestCase
         $this->service->emitirPrimeraVez($socio, $this->duena);
     }
 
+    public function test_missing_certificate_disables_button_and_direct_action_keeps_credentials_unissued(): void
+    {
+        $this->socio->update(['decision_medica' => 'requerido']);
+        $this->actingAs($this->duena);
+        $componente = Livewire::test(\App\Livewire\Socios\VerSocio::class, ['socio' => $this->socio])
+            ->assertSee('El socio requiere un certificado médico vigente.');
+        $this->assertMatchesRegularExpression('/<button[^>]*wire:click="emitirCredenciales"[^>]*\sdisabled(?:\s|>)/s', $componente->html());
+        $componente->call('emitirCredenciales')->assertHasErrors(['credenciales']);
+        $socio = $this->socio->fresh();
+        $this->assertSame(CredencialService::ESTADO_SIN_EMITIR, $socio->estado_credencial);
+        $this->assertNull($socio->pin);
+        $this->assertNull($socio->qr_token);
+        $this->assertDatabaseMissing('auditorias', ['accion' => 'credencial_emitida', 'auditable_id' => $socio->id]);
+    }
+
+    public function test_unpaid_or_inactive_member_cannot_issue_credentials_from_the_profile(): void
+    {
+        $this->actingAs($this->duena);
+        foreach (['sin_pago', 'inactivo'] as $caso) {
+            $socio = $this->crearSocio(['estado' => $caso === 'inactivo' ? 'inactivo' : 'activo', 'decision_medica' => 'no_requerido']);
+            if ($caso === 'inactivo') {
+                $this->crearInscripcionConCoberturaVigente($socio);
+            } else {
+                $inscripcion = $this->socio->inscripciones()->firstOrFail();
+                \App\Models\Inscripcion::create([
+                    'socio_id' => $socio->id, 'grupo_id' => $inscripcion->grupo_id,
+                    'fecha_inscripcion' => today(), 'estado' => \App\Models\Inscripcion::ESTADO_APROBADA,
+                ]);
+            }
+            $componente = Livewire::test(\App\Livewire\Socios\VerSocio::class, ['socio' => $socio]);
+            $this->assertMatchesRegularExpression('/<button[^>]*wire:click="emitirCredenciales"[^>]*\sdisabled(?:\s|>)/s', $componente->html());
+            $componente->call('emitirCredenciales')->assertHasErrors(['credenciales']);
+            $this->assertSame(CredencialService::ESTADO_SIN_EMITIR, $socio->fresh()->estado_credencial);
+            $this->assertNull($socio->fresh()->pin);
+            $this->assertNull($socio->fresh()->qr_token);
+        }
+    }
+
     public function test_decision_no_requerido_definida_por_duena_permite_emitir(): void
     {
         $socio = $this->crearSocio(['decision_medica' => 'pendiente']);

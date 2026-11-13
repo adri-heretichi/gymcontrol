@@ -356,6 +356,35 @@ class NucleoFuncionalSolicitudesAuditoriaTest extends TestCase
         ]);
     }
 
+    public function test_historical_exit_correction_retains_same_record_and_original_values_in_audit(): void
+    {
+        $socio = $this->crearSocio();
+        $asistencia = Asistencia::create([
+            'socio_id' => $socio->id, 'fecha' => '2026-06-07', 'hora_ingreso' => '15:00:00',
+            'fecha_salida' => '2026-11-13', 'hora_salida' => '10:02:27', 'tiempo_permanencia' => 228662,
+        ]);
+        $solicitud = app(SolicitudService::class)->crearCorreccion(
+            'permanencia', $asistencia->id, $this->recepcionista,
+            'Caso ficticio: cierre tardío de una asistencia histórica; revisar la evidencia antes de resolver.'
+        );
+        $this->assertSame(228662, $asistencia->fresh()->tiempo_permanencia);
+        app(SolicitudService::class)->resolver(
+            $solicitud, $this->duena, Solicitud::ESTADO_APROBADA,
+            'Horario ficticio verificado para esta prueba aislada.', null,
+            ['fecha_ingreso' => '2026-06-07', 'hora_ingreso' => '15:00:00',
+                'fecha_salida' => '2026-06-07', 'hora_salida' => '16:30:00']
+        );
+        $this->assertDatabaseCount('asistencias', 1);
+        $this->assertSame(90, $asistencia->fresh()->tiempo_permanencia);
+        $audit = Auditoria::where('accion', 'permanencia_corregida')->where('auditable_id', $asistencia->id)->firstOrFail();
+        $this->assertSame('2026-11-13', $audit->datos_antes['fecha_salida']);
+        $this->assertSame('10:02:27', $audit->datos_antes['hora_salida']);
+        $this->assertSame(228662, $audit->datos_antes['tiempo_permanencia']);
+        $this->assertSame(90, $audit->datos_despues['tiempo_permanencia']);
+        $this->assertSame($this->duena->id, $audit->user_id);
+        $this->assertSame(Solicitud::ESTADO_APROBADA, $solicitud->fresh()->estado);
+    }
+
     public function test_solicitud_no_puede_corregir_un_registro_de_otro_socio(): void
     {
         $socio = $this->crearSocio();

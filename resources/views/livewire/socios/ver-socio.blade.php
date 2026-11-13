@@ -196,7 +196,9 @@
                                     {{ $evaluacionCredenciales['motivo'] ?? 'No se cumplen los requisitos de emisión.' }}
                                 </p>
                             @endif
-                            <button type="button" wire:click="emitirCredenciales" class="btn-primary">
+                            <button type="button" wire:click="emitirCredenciales" class="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+                                    @disabled(!($evaluacionCredenciales['habilitado'] ?? false))
+                                    wire:loading.attr="disabled">
                                 Emitir credenciales
                             </button>
                         @else
@@ -377,6 +379,7 @@
                                     <span class="text-sm font-bold text-slate-800 dark:text-slate-200 block mt-1">
                                         {{ $permanenciaPromedio > 0 ? $permanenciaPromedio . ' minutos' : 'Sin registros suficientes' }}
                                     </span>
+                                    <span class="block text-xs text-slate-500">Solo salidas registradas de hasta 24 horas; las permanencias anómalas requieren revisión.</span>
                                 </div>
                             </div>
                         </div>

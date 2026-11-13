@@ -21,6 +21,26 @@ class AsistenciaHistoryTest extends TestCase
     private Socio $socioJuan;
     private Socio $socioAna;
 
+    public function test_unreviewed_multimonth_stay_is_preserved_but_excluded_from_average(): void
+    {
+        $normal = Asistencia::create([
+            'socio_id' => $this->socioJuan->id, 'fecha' => '2026-06-05',
+            'hora_ingreso' => '18:00:00', 'hora_salida' => '19:30:00', 'tiempo_permanencia' => 90,
+        ]);
+        $anomala = Asistencia::create([
+            'socio_id' => $this->socioJuan->id, 'fecha' => '2026-06-07',
+            'hora_ingreso' => '15:00:00', 'hora_salida' => '10:02:27',
+            'fecha_salida' => '2026-11-13', 'tiempo_permanencia' => 228662,
+        ]);
+        $antes = $anomala->fresh()->getAttributes();
+        $this->actingAs($this->admin);
+        Livewire::test(\App\Livewire\Socios\VerSocio::class, ['socio' => $this->socioJuan])
+            ->assertSet('permanenciaPromedio', 90);
+        $this->assertSame('Permanencia pendiente de revisión', $anomala->permanencia_formateada);
+        $this->assertSame($antes, $anomala->fresh()->getAttributes());
+        $this->assertSame('1h 30m', $normal->permanencia_formateada);
+    }
+
     protected function setUp(): void
     {
         parent::setUp();
