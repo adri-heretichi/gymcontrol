@@ -99,14 +99,27 @@ class SecureBootstrapSeederTest extends TestCase
         $this->assertTrue(password_verify($ownerPassword, $owner->fresh()->password));
     }
 
-    public function test_database_seeder_refuses_to_run_demo_fixtures_in_production(): void
+    public function test_clean_installation_seeds_only_original_operators_and_disciplines_even_in_production(): void
     {
+        $this->setBootstrapEnvironment([
+            'GYMCONTROL_BOOTSTRAP_OWNER_EMAIL' => 'owner@example.test',
+            'GYMCONTROL_BOOTSTRAP_OWNER_PASSWORD' => 'owner-secret-for-test-2026',
+            'GYMCONTROL_BOOTSTRAP_RECEPTION_EMAIL' => 'reception@example.test',
+            'GYMCONTROL_BOOTSTRAP_RECEPTION_PASSWORD' => 'reception-secret-for-test-2026',
+        ]);
         $this->app->detectEnvironment(fn () => 'production');
-
-        $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('cannot run in production');
-
         app(DatabaseSeeder::class)->run();
+        $this->assertDatabaseCount('users', 2);
+        $originales = User::orderBy('id')->get()->map->getAttributes()->all();
+        app(DatabaseSeeder::class)->run();
+        $this->assertSame($originales, User::orderBy('id')->get()->map->getAttributes()->all());
+        $this->assertDatabaseCount('disciplinas', 4);
+        foreach (['socios', 'inscripciones', 'pagos', 'pago_detalles', 'aptos_fisicos', 'asistencias', 'asistencias_clases', 'grupos', 'grupo_horarios', 'membresias', 'solicitudes'] as $tabla) {
+            $this->assertDatabaseCount($tabla, 0);
+        }
+        foreach (['Krav Maga Kids' => 30000, 'Kapap Krav Maga' => 35000, 'Kickboxing Muay Thai' => 35000, 'Funcional' => 35000] as $nombre => $precio) {
+            $this->assertDatabaseHas('disciplinas', ['nombre' => $nombre, 'precio' => $precio]);
+        }
     }
 
     private function setBootstrapEnvironment(array $values): void

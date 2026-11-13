@@ -19,11 +19,19 @@ class DisciplinaSeeder extends Seeder
             'Funcional' => 'Entrenamiento funcional de fuerza, resistencia y movilidad',
         ];
 
+        $precios = [
+            'Krav Maga Kids' => 30000,
+            'Kapap Krav Maga' => 35000,
+            'Kickboxing Muay Thai' => 35000,
+            'Funcional' => 35000,
+        ];
+
         foreach (Disciplina::PLANES_FENIX as $nombre) {
-            Disciplina::updateOrCreate(
+            Disciplina::firstOrCreate(
                 ['nombre' => $nombre],
                 [
                     'descripcion' => $descripciones[$nombre],
+                    'precio' => $precios[$nombre],
                     'estado' => 'activo',
                 ]
             );
