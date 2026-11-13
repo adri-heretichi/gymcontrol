@@ -202,4 +202,18 @@ class NavegacionModulosFenixTest extends TestCase
             'tipo' => Solicitud::TIPO_OTRO, 'descripcion' => 'Nueva solicitud.', 'estado' => 'pendiente']);
         $component->dispatch('solicitudes-actualizadas')->assertSet('solicitudesPendientes', 1);
     }
+
+    public function test_original_dashboard_sections_remain_before_the_additional_requests_section(): void
+    {
+        $this->actingAs($this->owner)->get(route('dashboard'))->assertOk()->assertSeeInOrder([
+            'Panel administrativo', 'Socios registrados', 'Recaudación del mes', 'Cupos por grupo',
+            'Permanencias abiertas', 'Asistencias a clase de hoy', 'Solicitudes recientes',
+            'Accesos denegados recientes', 'Socios registrados recientemente', 'Solicitudes pendientes e historial',
+        ]);
+        $this->actingAs($this->reception)->get(route('dashboard'))->assertOk()->assertSeeInOrder([
+            'Panel de recepción', 'Buscar socio', 'Mis solicitudes pendientes', 'Cupos por grupo',
+            'Permanencias abiertas', 'Asistencias a clase de hoy', 'Solicitudes recientes',
+            'Últimas operaciones', 'Solicitudes pendientes e historial',
+        ])->assertDontSee('Recaudación del mes');
+    }
 }

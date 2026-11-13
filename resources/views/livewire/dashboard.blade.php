@@ -2,10 +2,9 @@
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
         <header class="border-b border-slate-200 dark:border-slate-700 pb-5">
             <h1 class="text-3xl font-black text-slate-900 dark:text-white">
-                Panel Administrativo
+                {{ $esDuena ? 'Panel administrativo' : 'Panel de recepción' }}
             </h1>
             <p class="mt-1 text-sm text-slate-600 dark:text-slate-300">
-                {{ $esDuena ? 'Vista de administración.' : 'Vista de recepción.' }}
                 Indicadores operativos actualizados desde los registros del gimnasio.
             </p>
         </header>
@@ -62,10 +61,6 @@
                     <p class="mt-2 text-3xl font-black text-slate-900 dark:text-white">{{ $valor }}</p>
                 </article>
             @endforeach
-        </section>
-
-        <section id="solicitudes" aria-label="Solicitudes del Panel Administrativo" class="scroll-mt-6">
-            <livewire:solicitudes.gestionar-solicitudes :integrado="true" />
         </section>
 
         <section class="rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-5">
@@ -250,5 +245,9 @@
                 </div>
             </section>
         @endunless
+
+        <section id="solicitudes" aria-label="Solicitudes del Panel Administrativo" class="scroll-mt-6">
+            <livewire:solicitudes.gestionar-solicitudes :integrado="true" />
+        </section>
     </div>
 </div>

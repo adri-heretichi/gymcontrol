@@ -31,7 +31,7 @@
             <div class="flex flex-wrap items-center gap-3">
                 @if($socio->estado === 'activo')
                     <a href="{{ route('inscripciones.create', ['socio_id' => $socio->id]) }}" class="btn-primary">
-                        Inscribir en un grupo
+                        Agregar disciplina o grupo
                     </a>
                 @endif
 
@@ -310,6 +310,9 @@
                                             @empty
                                                 <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">Sin horarios asignados.</p>
                                             @endforelse
+                                            @if($inscripcion->grupo?->disciplina?->precio !== null)
+                                                <p class="mt-1 text-xs font-semibold text-slate-600 dark:text-slate-300">Cuota de esta disciplina: ${{ number_format((float) $inscripcion->grupo->disciplina->precio, 2, ',', '.') }}</p>
+                                            @endif
                                         </div>
                                     @empty
                                         <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">No hay inscripciones registradas.</p>

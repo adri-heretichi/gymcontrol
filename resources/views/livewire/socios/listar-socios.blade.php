@@ -20,7 +20,7 @@
                     <h2 class="text-3xl font-black text-slate-900 dark:text-white tracking-tight">Listado de Socios</h2>
                     <p class="text-sm text-slate-500 dark:text-slate-300 mt-1 font-semibold">Administración, estado y control de accesos de socios</p>
                 </div>
-                @if(auth()->check() && auth()->user()->rol === 'admin')
+                @can('create', \App\Models\Socio::class)
                     <div class="flex-shrink-0">
                         <a href="{{ route('socios.create') }}" class="btn-primary">
                             <svg class="w-4 h-4 mr-2 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -29,7 +29,7 @@
                             Registrar Socio
                         </a>
                     </div>
-                @endif
+                @endcan
             </div>
 
             <!-- Barra de Búsqueda y Resultados -->
