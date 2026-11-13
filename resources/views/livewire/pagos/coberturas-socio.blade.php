@@ -66,6 +66,8 @@
                                         <span class="px-2 py-1 bg-green-100 text-green-700 rounded text-xs font-medium">
                                             ✓ Vigente
                                         </span>
+                                    @elseif($cob['estado'] === 'proxima')
+                                        <span class="rounded bg-blue-100 px-2 py-1 text-xs text-blue-700">Próxima</span>
                                     @elseif($cob['estado'] === 'vencida')
                                         <span class="px-2 py-1 bg-red-100 text-red-700 rounded text-xs font-medium">
                                             Vencida

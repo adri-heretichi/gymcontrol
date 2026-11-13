@@ -449,6 +449,8 @@
                                     </span>
                                     @if($cobertura['vigente'])
                                         <span class="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-black text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">Al día</span>
+                                    @elseif($cobertura['estado'] === 'proxima')
+                                        <span class="rounded bg-blue-100 px-2 py-1 text-xs text-blue-700">Próxima</span>
                                     @elseif($cobertura['estado'] === 'vencida')
                                         <span class="rounded-full bg-rose-100 px-2.5 py-1 text-xs font-black text-rose-800 dark:bg-rose-950 dark:text-rose-300">Vencida</span>
                                     @else

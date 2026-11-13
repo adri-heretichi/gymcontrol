@@ -175,7 +175,7 @@ class PagoService
      *   - fecha_inicio    (string|null)
      *   - fecha_fin       (string|null)
      *   - dias_restantes  (int)
-     *   - estado          ('vigente' | 'vencida' | 'sin_cobertura')
+     *   - estado          ('vigente' | 'proxima' | 'vencida' | 'suspendida' | 'sin_cobertura')
      *   - pago_id         (int|null) – pago activo más reciente
      *   - inscripcion_estado (string) – estado de la inscripción misma
      *
@@ -222,7 +222,11 @@ class PagoService
             ->orderByDesc('fecha_fin_cobertura')
             ->first();
 
-        $estado = $ultimoDetalle ? PagoDetalle::COBERTURA_VENCIDA : 'sin_cobertura';
+        $estado = $ultimoDetalle?->estadoTemporal($hoy) ?? 'sin_cobertura';
+        if ($estado === PagoDetalle::COBERTURA_VIGENTE
+            && $ultimoDetalle->estado_cobertura === PagoDetalle::COBERTURA_SUSPENDIDA) {
+            $estado = PagoDetalle::COBERTURA_SUSPENDIDA;
+        }
 
         return [
             'vigente'            => false,
