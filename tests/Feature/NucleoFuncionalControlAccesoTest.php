@@ -472,6 +472,109 @@ class NucleoFuncionalControlAccesoTest extends TestCase
         $this->assertNotNull($entrada['asistencia']->fresh()->hora_salida);
     }
 
+    public function test_exit_with_required_missing_certificate_allows_exit_but_not_reentry(): void
+    {
+        $this->comprobarSalidaConRequisitosIncumplidos(false);
+    }
+
+    public function test_exit_with_expired_coverage_and_required_missing_certificate_denies_reentry(): void
+    {
+        $this->comprobarSalidaConRequisitosIncumplidos(true);
+    }
+
+    private function comprobarSalidaConRequisitosIncumplidos(bool $vencerCobertura): void
+    {
+        $entrada = $this->control->registrarIngreso($this->socio->pin, 'pin', $this->grupo->id, null, $this->momento);
+        $this->assertTrue($entrada['autorizado']);
+        $this->socio->update(['decision_medica' => 'requerido']);
+        $this->assertSame(0, AptoFisico::where('socio_id', $this->socio->id)->count());
+        if ($vencerCobertura) {
+            $this->cobertura->update([
+                'fecha_inicio_cobertura' => '2026-10-01',
+                'fecha_fin_cobertura' => '2026-11-08',
+            ]);
+        }
+        $momentoSalida = $this->momento->copy()->addMinutes(15);
+        $salida = $this->control->registrarSalidaPorCredencial($this->socio->qr_token, 'qr', $this->recepcionista->id, $momentoSalida);
+        $this->assertTrue($salida['autorizado']);
+        $this->assertSame(15, $entrada['asistencia']->fresh()->tiempo_permanencia);
+        $reingreso = $this->control->registrarIngreso($this->socio->pin, 'pin', $this->grupo->id, null, $momentoSalida->copy()->addMinute());
+        $this->assertFalse($reingreso['autorizado']);
+        $this->assertSame($vencerCobertura ? 'cuota_vencida' : 'certificado_faltante', $reingreso['codigo']);
+        $this->assertDatabaseCount('asistencias', 1);
+        if ($vencerCobertura) {
+            $this->cobertura->update(['fecha_fin_cobertura' => '2026-11-30']);
+            $sinCertificado = $this->control->registrarIngreso($this->socio->pin, 'pin', $this->grupo->id, null, $momentoSalida->copy()->addMinute());
+            $this->assertFalse($sinCertificado['autorizado']);
+            $this->assertSame('certificado_faltante', $sinCertificado['codigo']);
+        }
+    }
+
+    public function test_exit_with_expired_coverage_and_unapproved_certificate_allows_exit_but_not_reentry(): void
+    {
+        $entrada = $this->control->registrarIngreso($this->socio->pin, 'pin', $this->grupo->id, null, $this->momento);
+        $this->assertTrue($entrada['autorizado']);
+        $this->socio->update(['decision_medica' => 'requerido']);
+        AptoFisico::create([
+            'socio_id' => $this->socio->id,
+            'archivo' => null,
+            'fecha_emision' => '2026-11-01',
+            'fecha_vencimiento' => '2027-11-01',
+            'estado' => AptoFisico::ESTADO_PENDIENTE_REVISION,
+        ]);
+        $this->cobertura->update([
+            'fecha_inicio_cobertura' => '2026-10-01',
+            'fecha_fin_cobertura' => '2026-11-08',
+        ]);
+        $momento = $this->momento->copy()->addMinutes(15);
+        $salida = $this->control->registrarSalidaPorCredencial($this->socio->pin, 'pin', $this->recepcionista->id, $momento);
+        $this->assertTrue($salida['autorizado']);
+        $this->assertSame(15, $entrada['asistencia']->fresh()->tiempo_permanencia);
+        $reingreso = $this->control->registrarIngreso($this->socio->pin, 'pin', $this->grupo->id, null, $momento->copy()->addMinute());
+        $this->assertFalse($reingreso['autorizado']);
+        $this->assertSame('cuota_vencida', $reingreso['codigo']);
+        $this->cobertura->update(['fecha_fin_cobertura' => '2026-11-30']);
+        $reingreso = $this->control->registrarIngreso($this->socio->pin, 'pin', $this->grupo->id, null, $momento->copy()->addMinute());
+        $this->assertFalse($reingreso['autorizado']);
+        $this->assertSame('certificado_pendiente_aprobacion', $reingreso['codigo']);
+        $this->assertDatabaseCount('asistencias', 1);
+    }
+
+    public function test_exit_crossing_midnight_preserves_dates_and_elapsed_minutes(): void
+    {
+        $entrada = $this->control->registrarIngreso($this->socio->pin, 'pin', $this->grupo->id, null, $this->momento);
+        $this->assertTrue($entrada['autorizado']);
+        $salida = $this->control->registrarSalida($this->socio, $this->recepcionista->id, $this->momento->copy()->addDay()->startOfDay()->addMinutes(15));
+        $this->assertTrue($salida['autorizado']);
+        $asistencia = $entrada['asistencia']->fresh();
+        $this->assertSame('2026-11-09', $asistencia->fecha->toDateString());
+        $this->assertSame('2026-11-10', $asistencia->fecha_salida->toDateString());
+        $this->assertSame(345, $asistencia->tiempo_permanencia);
+    }
+
+    public function test_exit_after_more_than_24_hours_requires_review_without_closing_entry(): void
+    {
+        $entrada = $this->control->registrarIngreso($this->socio->pin, 'pin', $this->grupo->id, null, $this->momento);
+        $this->assertTrue($entrada['autorizado']);
+        $salida = $this->control->registrarSalida($this->socio, $this->recepcionista->id, $this->momento->copy()->addHours(24)->addMinute());
+        $this->assertFalse($salida['autorizado']);
+        $this->assertSame('permanencia_requiere_revision', $salida['codigo']);
+        $this->assertNull($entrada['asistencia']->fresh()->hora_salida);
+    }
+
+    public function test_duplicate_exit_does_not_replace_the_first_exit(): void
+    {
+        $entrada = $this->control->registrarIngreso($this->socio->pin, 'pin', $this->grupo->id, null, $this->momento);
+        $this->assertTrue($entrada['autorizado']);
+        $primera = $this->control->registrarSalida($this->socio, $this->recepcionista->id, $this->momento->copy()->addMinutes(15));
+        $this->assertTrue($primera['autorizado']);
+        $segunda = $this->control->registrarSalida($this->socio, $this->recepcionista->id, $this->momento->copy()->addMinutes(30));
+        $this->assertFalse($segunda['autorizado']);
+        $this->assertSame('sin_ingreso_abierto', $segunda['codigo']);
+        $this->assertSame(15, $entrada['asistencia']->fresh()->tiempo_permanencia);
+        $this->assertDatabaseCount('asistencias', 1);
+    }
+
     public function test_qr_get_is_read_only_and_legacy_qr_get_cannot_enter(): void
     {
         $this->get(route('terminal.scan', $this->socio->qr_token))->assertOk();
