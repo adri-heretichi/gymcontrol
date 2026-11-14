@@ -122,18 +122,14 @@ En una base nueva, `migrate:status` puede indicar que aún falta la tabla de mig
 
 ## Operadores originales y seeders
 
-`UserSeeder` conserva el mecanismo original: requiere configuración privada explícita y no restablece contraseñas existentes. No hay un seeder independiente de roles: los dos operadores tienen los roles admin y recepcionista.
+`UserSeeder` reproduce los dos operadores del proyecto original, sin variables de aprovisionamiento adicionales:
 
-Para reproducir `owner@gymcontrol.test` y `reception@gymcontrol.test`, solicitar a la responsable sus contraseñas originales por el canal privado acordado. No se publican ni se sustituyen por contraseñas de ejemplo. Completar privadamente estas variables existentes de `.env` solo durante el aprovisionamiento:
+| Nombre | Correo | Rol |
+|---|---|---|
+| Administrador General | admin@gymcontrol.com | admin |
+| Recepcionista de Turno | recep@gymcontrol.com | recepcionista |
 
-```dotenv
-GYMCONTROL_BOOTSTRAP_OWNER_EMAIL=owner@gymcontrol.test
-GYMCONTROL_BOOTSTRAP_OWNER_PASSWORD=
-GYMCONTROL_BOOTSTRAP_RECEPTION_EMAIL=reception@gymcontrol.test
-GYMCONTROL_BOOTSTRAP_RECEPTION_PASSWORD=
-```
-
-Los campos vacíos deben completarse con las credenciales originales. El seeder exige contraseñas distintas de al menos 16 caracteres. Si la configuración privada no satisface esos requisitos, detenerse y consultar a la responsable; no modificar el seeder ni inventar contraseñas alternativas.
+La contraseña inicial original de ambos operadores es `password`, almacenada mediante `Hash::make()`. Esta contraseña predeterminada es exclusiva del entorno académico/local y no debe utilizarse en producción. No hay un seeder independiente de roles.
 
 Verificar nuevamente la carpeta y base nuevas y ejecutar:
 
@@ -141,7 +137,7 @@ Verificar nuevamente la carpeta y base nuevas y ejecutar:
 php artisan db:seed --class=DatabaseSeeder
 ```
 
-Después quitar los valores de las cuatro variables de aprovisionamiento de `.env`. No incluirlos en capturas, logs ni commits.
+El comportamiento original utiliza `updateOrCreate`: volver a ejecutar UserSeeder actualiza los nombres, roles y contraseñas de esos correos. Ejecutar DatabaseSeeder únicamente en una instalación nueva y aislada; no ejecutarlo sobre la base histórica `gymcontrol` ni sobre cuentas existentes que deban conservar sus contraseñas.
 
 DatabaseSeeder ejecuta únicamente UserSeeder y DisciplinaSeeder. Una instalación nueva comienza con dos operadores, cuatro disciplinas y **cero socios, grupos, inscripciones, pagos, certificados, asistencias y credenciales de socios**. El catálogo es idempotente y no sobrescribe precios, descripciones o estados de disciplinas existentes, incluso si su precio está vacío.
 
