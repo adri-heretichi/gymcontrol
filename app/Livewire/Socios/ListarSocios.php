@@ -3,6 +3,7 @@
 namespace App\Livewire\Socios;
 
 use App\Models\Socio;
+use App\Services\HabilitacionSocioService;
 use Livewire\Component;
 use Livewire\WithPagination;
 
@@ -60,8 +61,9 @@ class ListarSocios extends Component
 
     public function render()
     {
-        // Consulta optimizada con buscador y búsqueda ampliada (celular agregada)
-        $socios = Socio::with('membresia')
+        // Consulta optimizada con inscripciones y disciplina para mostrar la habilitación por actividad.
+        $socios = Socio::withCount('inscripciones')
+            ->with('inscripciones.grupo.disciplina')
             ->where(function ($query) {
                 $query->where('nombre', 'like', '%' . $this->buscar . '%')
                       ->orWhere('apellido', 'like', '%' . $this->buscar . '%')
@@ -74,8 +76,23 @@ class ListarSocios extends Component
             ->orderBy($this->ordenarPor, $this->ordenarDireccion)
             ->paginate(10);
 
+        $esDuena = auth()->user()->esDuena();
+        $habilitaciones = $socios->getCollection()->mapWithKeys(function (Socio $socio) use ($esDuena) {
+            $estado = app(HabilitacionSocioService::class)->evaluar($socio);
+            if (!$esDuena) {
+                $estado['etiqueta'] = $estado['habilitado'] ? 'Habilitado' : 'No habilitado';
+                $estado['detalle'] = $estado['habilitado']
+                    ? 'Requisitos operativos completos.'
+                    : 'Consultar con la dueña para continuar.';
+                $estado['por_inscripcion'] = [];
+            }
+
+            return [$socio->id => $estado];
+        });
+
         return view('livewire.socios.listar-socios', [
-            'socios' => $socios
+            'socios' => $socios,
+            'estadosAcceso' => $habilitaciones,
         ])->layout('layouts.app');
     }
 }

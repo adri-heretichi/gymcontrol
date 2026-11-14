@@ -2,10 +2,8 @@
  * GymControl · Gimnasio Fénix
  * Estilos de los componentes de interfaz (rama feature/componentes-interfaz).
  *
- * IMPORTANTE: este archivo todavía NO se carga en la aplicación.
- * Vite solo compila los archivos listados en vite.config.js (app.css y app.js).
- * Los componentes funcionan con clases de Tailwind; este archivo queda listo
- * para que la responsable principal lo incorpore durante la integración.
+ * La hoja se importa desde app.css y sus variables están disponibles
+ * en las interfaces del panel y la terminal.
  */
 
 :root {

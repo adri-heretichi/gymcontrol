@@ -140,6 +140,27 @@ class NucleoFuncionalAsistenciaClasesTest extends TestCase
         $this->assertSame($this->recepcionista->id, $entry->fresh()->operador_salida_id);
     }
 
+    public function test_historical_open_stay_cannot_be_closed_as_a_current_exit(): void
+    {
+        $entry = Asistencia::create([
+            'socio_id' => $this->socio->id,
+            'fecha' => '2026-06-07',
+            'hora_ingreso' => '15:00:00',
+        ]);
+        $antes = $entry->fresh()->getAttributes();
+        $result = $this->control->registrarSalida($this->socio, $this->recepcionista->id, $this->ahora);
+        $this->assertFalse($result['autorizado']);
+        $this->assertSame('permanencia_requiere_revision', $result['codigo']);
+        $this->assertSame($antes, $entry->fresh()->getAttributes());
+        $this->assertSame('Permanencia pendiente de revisión', $entry->permanencia_formateada);
+        $this->actingAs($this->recepcionista);
+        \Livewire\Livewire::test(\App\Livewire\ControlAcceso::class)
+            ->assertSee('Requiere revisión')
+            ->assertDontSeeHtml('wire:click="registrarSalidaManual(' . $entry->id . ')"')
+            ->call('registrarSalidaManual', $entry->id);
+        $this->assertNull($entry->fresh()->hora_salida);
+    }
+
     public function test_exit_without_open_movement_never_creates_an_entry_and_is_not_blocked_by_expired_requirements(): void
     {
         $this->expirarCobertura();

@@ -112,6 +112,15 @@ class Dashboard extends Component
                 ->latest('id')
                 ->limit(5)
                 ->get();
+        } else {
+            $this->ingresosHoy = 0;
+            $this->recaudacionHoy = 0.0;
+            $this->ingresosMes = 0.0;
+            $this->decisionesMedicasPendientes = 0;
+            $this->certificadosFaltantesOVencidos = 0;
+            $this->accesosDenegadosRecientes = 0;
+            $this->accesosDenegados = [];
+            $this->sociosRecientes = [];
         }
 
         $this->grupos = Grupo::query()
@@ -162,6 +171,7 @@ class Dashboard extends Component
     }
 
     #[On('gym-realtime-updated')]
+    #[On('solicitudes-actualizadas')]
     public function refreshRealtimeStats(): void
     {
         $this->updateStats();
@@ -169,6 +179,19 @@ class Dashboard extends Component
 
     public function render()
     {
+        Gate::authorize('controlar-acceso');
+        $this->esDuena = auth()->user()->esDuena();
+        if (!$this->esDuena) {
+            $this->ingresosHoy = 0;
+            $this->recaudacionHoy = 0.0;
+            $this->ingresosMes = 0.0;
+            $this->decisionesMedicasPendientes = 0;
+            $this->certificadosFaltantesOVencidos = 0;
+            $this->accesosDenegadosRecientes = 0;
+            $this->accesosDenegados = [];
+            $this->sociosRecientes = [];
+        }
+
         return view('livewire.dashboard')->layout('layouts.app');
     }
 

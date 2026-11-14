@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\HorarioGimnasioService;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -25,6 +26,11 @@ class GrupoHorario extends Model
     public function grupo(): BelongsTo
     {
         return $this->belongsTo(Grupo::class, 'grupo_id');
+    }
+
+    public function getDiaSemanaLabelAttribute(): string
+    {
+        return HorarioGimnasioService::DIAS_SEMANA[$this->dia_semana] ?? ucfirst($this->dia_semana);
     }
 
     /**

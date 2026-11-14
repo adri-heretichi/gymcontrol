@@ -8,6 +8,7 @@ use App\Models\Asistencia;
 use App\Models\Auditoria;
 use App\Models\Disciplina;
 use App\Models\Grupo;
+use App\Models\GrupoHorario;
 use App\Models\Inscripcion;
 use App\Models\Membresia;
 use App\Models\Solicitud;
@@ -52,13 +53,13 @@ class NucleoFuncionalSolicitudesAuditoriaTest extends TestCase
         $this->actingAs($this->recepcionista);
         Livewire::test(GestionarSolicitudes::class)
             ->set('socioId', (string) $socio->id)
-            ->set('motivo', 'Solicita revisar su requisito')
             ->call('crearRevisionMedica')
             ->assertHasNoErrors();
 
         $solicitud = Solicitud::query()->sole();
         $this->assertSame(Solicitud::ESTADO_PENDIENTE, $solicitud->estado);
         $this->assertSame($this->recepcionista->id, $solicitud->solicitante_id);
+        $this->assertSame('Revisión administrativa solicitada a la dueña.', $solicitud->descripcion);
         $this->assertSame('pendiente', $socio->fresh()->decision_medica);
         $this->assertDatabaseHas('auditorias', [
             'auditable_type' => Solicitud::class,
@@ -163,19 +164,46 @@ class NucleoFuncionalSolicitudesAuditoriaTest extends TestCase
         ]);
     }
 
-    public function test_solicitud_de_inscripcion_se_aprueba_una_sola_vez_y_aplica_cupo(): void
+    public function test_duena_aprueba_excepcion_medica_sin_certificado(): void
+    {
+        $socio = $this->crearSocio(['decision_medica' => 'requerido']);
+        $solicitud = $this->crearSolicitudMedica($socio);
+
+        $resuelta = app(SolicitudService::class)->resolver(
+            $solicitud,
+            $this->duena,
+            Solicitud::ESTADO_APROBADA,
+            'Excepción médica aprobada por la dueña.',
+            'no_requerido'
+        );
+
+        $this->assertSame(Solicitud::ESTADO_APROBADA, $resuelta->estado);
+        $this->assertSame('no_requerido', $socio->fresh()->decision_medica);
+        $this->assertSame($this->duena->id, $socio->fresh()->decision_medica_por);
+        $this->assertTrue(app(CertificadoMedicoService::class)->evaluarRequisitoMedico($socio->fresh())['cumple']);
+    }
+
+    public function test_solicitud_heredada_de_inscripcion_se_aprueba_una_sola_vez_y_aplica_cupo(): void
     {
         $socio = $this->crearSocio();
         $grupo = $this->crearGrupo('Funcional', 1);
-        $resultado = app(InscripcionService::class)->solicitarInscripcion(
-            $socio,
-            $grupo,
-            $this->recepcionista,
-            'Inscripción solicitada'
-        );
-        $solicitud = $resultado['solicitud'];
+        $inscripcion = Inscripcion::create([
+            'socio_id' => $socio->id,
+            'grupo_id' => $grupo->id,
+            'fecha_inscripcion' => now()->toDateString(),
+            'estado' => Inscripcion::ESTADO_PENDIENTE,
+        ]);
+        $solicitud = Solicitud::create([
+            'socio_id' => $socio->id,
+            'solicitante_id' => $this->recepcionista->id,
+            'tipo' => Solicitud::TIPO_INSCRIPCION,
+            'inscripcion_id' => $inscripcion->id,
+            'grupo_id' => $grupo->id,
+            'descripcion' => 'Solicitud heredada de inscripción',
+            'estado' => Solicitud::ESTADO_PENDIENTE,
+        ]);
 
-        $this->assertSame(Inscripcion::ESTADO_PENDIENTE, $resultado['modelo']->fresh()->estado);
+        $this->assertSame(Inscripcion::ESTADO_PENDIENTE, $inscripcion->fresh()->estado);
         app(SolicitudService::class)->resolver(
             $solicitud,
             $this->duena,
@@ -183,7 +211,7 @@ class NucleoFuncionalSolicitudesAuditoriaTest extends TestCase
             'Cupo confirmado.'
         );
 
-        $this->assertSame(Inscripcion::ESTADO_APROBADA, $resultado['modelo']->fresh()->estado);
+        $this->assertSame(Inscripcion::ESTADO_APROBADA, $inscripcion->fresh()->estado);
         $this->assertSame(Solicitud::ESTADO_APROBADA, $solicitud->fresh()->estado);
         $this->assertDatabaseHas('auditorias', [
             'auditable_type' => Solicitud::class,
@@ -328,6 +356,35 @@ class NucleoFuncionalSolicitudesAuditoriaTest extends TestCase
         ]);
     }
 
+    public function test_historical_exit_correction_retains_same_record_and_original_values_in_audit(): void
+    {
+        $socio = $this->crearSocio();
+        $asistencia = Asistencia::create([
+            'socio_id' => $socio->id, 'fecha' => '2026-06-07', 'hora_ingreso' => '15:00:00',
+            'fecha_salida' => '2026-11-13', 'hora_salida' => '10:02:27', 'tiempo_permanencia' => 228662,
+        ]);
+        $solicitud = app(SolicitudService::class)->crearCorreccion(
+            'permanencia', $asistencia->id, $this->recepcionista,
+            'Caso ficticio: cierre tardío de una asistencia histórica; revisar la evidencia antes de resolver.'
+        );
+        $this->assertSame(228662, $asistencia->fresh()->tiempo_permanencia);
+        app(SolicitudService::class)->resolver(
+            $solicitud, $this->duena, Solicitud::ESTADO_APROBADA,
+            'Horario ficticio verificado para esta prueba aislada.', null,
+            ['fecha_ingreso' => '2026-06-07', 'hora_ingreso' => '15:00:00',
+                'fecha_salida' => '2026-06-07', 'hora_salida' => '16:30:00']
+        );
+        $this->assertDatabaseCount('asistencias', 1);
+        $this->assertSame(90, $asistencia->fresh()->tiempo_permanencia);
+        $audit = Auditoria::where('accion', 'permanencia_corregida')->where('auditable_id', $asistencia->id)->firstOrFail();
+        $this->assertSame('2026-11-13', $audit->datos_antes['fecha_salida']);
+        $this->assertSame('10:02:27', $audit->datos_antes['hora_salida']);
+        $this->assertSame(228662, $audit->datos_antes['tiempo_permanencia']);
+        $this->assertSame(90, $audit->datos_despues['tiempo_permanencia']);
+        $this->assertSame($this->duena->id, $audit->user_id);
+        $this->assertSame(Solicitud::ESTADO_APROBADA, $solicitud->fresh()->estado);
+    }
+
     public function test_solicitud_no_puede_corregir_un_registro_de_otro_socio(): void
     {
         $socio = $this->crearSocio();
@@ -408,11 +465,13 @@ class NucleoFuncionalSolicitudesAuditoriaTest extends TestCase
         for ($i = 0; $i < 55; $i++) {
             Auditoria::registrar('administrativo', 'operacion_recepcion_' . $i, null, null, null, $this->recepcionista->id);
         }
+        Auditoria::registrar('medico', 'decision_medica_actualizada', null, null, null, $this->recepcionista->id);
         Auditoria::registrar('administrativo', 'operacion_otra', null, null, null, $this->duena->id);
 
         $this->actingAs($this->recepcionista);
         Livewire::test(GestionarSolicitudes::class)
             ->assertViewHas('movimientosRecepcion', fn ($movimientos) => $movimientos->count() === 50)
+            ->assertDontSee('decision_medica_actualizada')
             ->assertDontSee('operacion_otra');
     }
 
@@ -420,8 +479,7 @@ class NucleoFuncionalSolicitudesAuditoriaTest extends TestCase
     {
         return app(CertificadoMedicoService::class)->informarRevisionADuena(
             $socio,
-            $this->recepcionista,
-            'Solicita revisión administrativa'
+            $this->recepcionista
         );
     }
 
@@ -448,12 +506,21 @@ class NucleoFuncionalSolicitudesAuditoriaTest extends TestCase
     {
         $disciplina = Disciplina::create(['nombre' => $nombre . ' ' . uniqid(), 'estado' => 'activo']);
 
-        return Grupo::create([
+        $grupo = Grupo::create([
             'disciplina_id' => $disciplina->id,
             'nombre' => $nombre,
             'cupo_maximo' => $cupo,
             'estado' => 'activo',
         ]);
+
+        GrupoHorario::create([
+            'grupo_id' => $grupo->id,
+            'dia_semana' => 'lunes',
+            'hora_inicio' => '18:00:00',
+            'hora_fin' => '19:00:00',
+        ]);
+
+        return $grupo;
     }
 
     private function crearInscripcion(Socio $socio, Grupo $grupo): Inscripcion

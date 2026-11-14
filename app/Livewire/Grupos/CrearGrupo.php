@@ -19,6 +19,7 @@ class CrearGrupo extends Component
     public $estado = 'activo';
 
     public $horarios = [];
+    public bool $volverAMembresias = false;
 
     public function mount()
     {
@@ -27,23 +28,26 @@ class CrearGrupo extends Component
         }
 
         $this->profesor = \App\Models\User::nombreProfesora();
+        $this->volverAMembresias = request()->query('origen') === 'membresias';
+        $disciplinaId = request()->query('disciplina_id');
+        if ($disciplinaId && Disciplina::whereKey($disciplinaId)->where('estado', 'activo')->exists()) {
+            $this->disciplina_id = (string) $disciplinaId;
+        }
 
-        // Fila inicial por defecto
-        $this->horarios = [
-            [
-                'dia_semana' => 'lunes',
-                'hora_inicio' => '18:00',
-                'hora_fin' => '19:00',
-            ],
-        ];
+        $this->horarios = [$this->horarioVacio()];
     }
 
     public function agregarHorario()
     {
-        $this->horarios[] = [
-            'dia_semana' => 'lunes',
-            'hora_inicio' => '18:00',
-            'hora_fin' => '19:00',
+        $this->horarios[] = $this->horarioVacio();
+    }
+
+    private function horarioVacio(): array
+    {
+        return [
+            'dia_semana' => '',
+            'hora_inicio' => '',
+            'hora_fin' => '',
         ];
     }
 
@@ -64,9 +68,9 @@ class CrearGrupo extends Component
             'cupo_maximo' => 'required|integer|min:1|max:15',
             'estado' => 'required|in:activo,inactivo',
             'horarios' => 'required|array|min:1',
-            'horarios.*.dia_semana' => 'required|string|in:lunes,martes,miercoles,jueves,viernes,sabado,domingo',
-            'horarios.*.hora_inicio' => 'required|string',
-            'horarios.*.hora_fin' => 'required|string',
+            'horarios.*.dia_semana' => 'required|string|in:' . implode(',', array_keys(HorarioGimnasioService::DIAS_SEMANA)),
+            'horarios.*.hora_inicio' => 'required|date_format:H:i',
+            'horarios.*.hora_fin' => 'required|date_format:H:i',
         ];
     }
 
@@ -85,6 +89,11 @@ class CrearGrupo extends Component
         'estado.in' => 'El estado seleccionado es inválido.',
         'horarios.required' => 'Debe configurar al menos un horario de clase.',
         'horarios.min' => 'Debe configurar al menos un horario de clase.',
+        'horarios.*.dia_semana.required' => 'Debe seleccionar el día de cada horario.',
+        'horarios.*.hora_inicio.required' => 'Debe indicar la hora de inicio.',
+        'horarios.*.hora_inicio.date_format' => 'La hora de inicio debe tener formato HH:MM.',
+        'horarios.*.hora_fin.required' => 'Debe indicar la hora de fin.',
+        'horarios.*.hora_fin.date_format' => 'La hora de fin debe tener formato HH:MM.',
     ];
 
     public function guardar()
@@ -94,6 +103,11 @@ class CrearGrupo extends Component
         }
 
         $this->validate();
+
+        if (!Disciplina::query()->whereKey($this->disciplina_id)->where('estado', 'activo')->exists()) {
+            $this->addError('disciplina_id', 'La disciplina seleccionada debe estar activa.');
+            return;
+        }
 
         // 1. Validar reglas de la colección de horarios (horarios dentro de turnos, inicio < fin, sin superposición interna)
         $errorHorarios = HorarioGimnasioService::validarColeccionHorarios($this->horarios);
@@ -158,6 +172,10 @@ class CrearGrupo extends Component
         });
 
         session()->flash('message', "Grupo '{$this->nombre}' creado exitosamente con cupo de {$this->cupo_maximo} alumnos.");
+        if ($this->volverAMembresias) {
+            return redirect()->route('membresias.index', ['disciplina' => $this->disciplina_id]);
+        }
+
         return redirect()->route('grupos.index');
     }
 

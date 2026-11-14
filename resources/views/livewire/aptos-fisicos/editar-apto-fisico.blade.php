@@ -12,7 +12,7 @@
                 Editar Certificado Médico: <span class="text-indigo-600 dark:text-indigo-400">{{ $aptoFisico->socio?->nombre }} {{ $aptoFisico->socio?->apellido }}</span>
             </h2>
             <p class="text-sm text-slate-500 dark:text-slate-300 mt-1 font-semibold">
-                Modifique las fechas, el estado de vigencia o reemplace el certificado médico privado.
+                La dueña puede aprobar, rechazar o dejar pendiente la revisión del certificado médico.
             </p>
         </div>
 
@@ -54,8 +54,10 @@
                         <div>
                             <label for="estado" class="form-label">Estado de Vigencia</label>
                             <select id="estado" wire:model="estado" class="form-input">
-                                <option value="vigente">Vigente (Aprobado para ingreso)</option>
-                                <option value="vencido">Vencido (Ingreso denegado)</option>
+                                <option value="pendiente_revision">Pendiente de revisión</option>
+                                <option value="vigente">Aprobado y vigente</option>
+                                <option value="vencido">Vencido</option>
+                                <option value="rechazado">Rechazado por la dueña</option>
                             </select>
                             @error('estado') <span class="text-xs text-rose-500 font-semibold mt-1 block">{{ $message }}</span> @enderror
                         </div>

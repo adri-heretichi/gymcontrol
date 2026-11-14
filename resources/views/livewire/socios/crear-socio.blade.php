@@ -12,7 +12,7 @@
                 Registrar Nuevo Socio
             </h2>
             <p class="text-sm text-slate-500 dark:text-slate-400 mt-1 font-semibold">
-                Complete los datos para dar de alta al socio y generar su credencial de ingreso.
+                Registrá los datos, las disciplinas y los cobros confirmados. El acceso depende de los requisitos de cada inscripción.
             </p>
         </div>
 
@@ -87,40 +87,116 @@
 
                 <hr class="border-slate-100 dark:border-slate-800">
 
-                <!-- Sección 3: Configuración de Membresía e Ingreso -->
+                <!-- Sección 3: Datos de alta -->
                 <div>
                     <h3 class="text-sm font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest mb-4">
-                        3. Membresía y Fechas
+                        3. Datos de alta
                     </h3>
                     
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        <!-- Membresía (Select Dinámico) -->
-                        <div>
-                            <label for="membresia_id" class="form-label">Membresía</label>
-                            <select id="membresia_id" wire:model="membresia_id" class="form-input">
-                                <option value="">Seleccione un plan...</option>
-                                @foreach($membresias as $membresia)
-                                    <option value="{{ $membresia->id }}">{{ $membresia->nombre }} - ${{ number_format($membresia->precio, 2, ',', '.') }}</option>
-                                @endforeach
-                            </select>
-                            @error('membresia_id') <span class="text-xs text-rose-500 font-semibold mt-1 block">{{ $message }}</span> @enderror
-                        </div>
-
-                        <!-- Fecha de Alta -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div>
                             <label for="fecha_alta" class="form-label">Fecha de Alta</label>
                             <input type="date" id="fecha_alta" wire:model="fecha_alta" class="form-input">
                             @error('fecha_alta') <span class="text-xs text-rose-500 font-semibold mt-1 block">{{ $message }}</span> @enderror
                         </div>
-
-                        <!-- Fecha de Vencimiento -->
                         <div>
-                            <label for="fecha_vencimiento" class="form-label">Fecha de Vencimiento (Requerido)</label>
-                            <input type="date" id="fecha_vencimiento" wire:model="fecha_vencimiento" class="form-input">
-                            @error('fecha_vencimiento') <span class="text-xs text-rose-500 font-semibold mt-1 block">{{ $message }}</span> @enderror
+                            <p class="form-label">Acceso y pagos</p>
+                            <p class="text-sm text-slate-600 dark:text-slate-300">Se gestionan por disciplina, grupo, inscripción y cobertura; no por una membresía general.</p>
                         </div>
                     </div>
                 </div>
+
+                <section aria-label="Disciplinas y cobros del socio" class="space-y-4">
+                    <div class="flex flex-wrap items-center justify-between gap-3">
+                        <h3 class="text-sm font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-400">4. Disciplinas y grupos</h3>
+                        <button type="button" wire:click="agregarInscripcion" class="btn-secondary">Agregar otra disciplina</button>
+                    </div>
+                    <p class="text-sm text-slate-600 dark:text-slate-300">Podés elegir varias disciplinas con horarios compatibles o guardar los datos de forma preliminar. Cada inscripción se habilita solo con su pago vigente y el requisito médico resuelto.</p>
+                    @error('inscripciones') <p class="text-sm text-rose-600">{{ $message }}</p> @enderror
+                    @foreach($inscripciones as $index => $seleccion)
+                        @php
+                            $disciplinaElegida = $disciplinas->firstWhere('id', (int) ($seleccion['disciplina_id'] ?? 0));
+                            $grupoElegido = $disciplinaElegida?->grupos->firstWhere('id', (int) ($seleccion['grupo_id'] ?? 0));
+                        @endphp
+                        <fieldset wire:key="registro-inscripcion-{{ $index }}" class="space-y-4 rounded-xl border border-slate-200 p-4 dark:border-slate-700">
+                            <legend class="px-2 font-bold text-slate-800 dark:text-slate-100">Inscripción {{ $loop->iteration }}</legend>
+                            <div class="grid gap-4 md:grid-cols-2">
+                                <div>
+                                    <label for="disciplina-{{ $index }}" class="form-label">Disciplina</label>
+                                    <select id="disciplina-{{ $index }}" wire:model.live="inscripciones.{{ $index }}.disciplina_id" class="form-input">
+                                        <option value="">Seleccionar disciplina</option>
+                                        @foreach($disciplinas as $disciplina)
+                                            <option value="{{ $disciplina->id }}">{{ $disciplina->nombre }}</option>
+                                        @endforeach
+                                    </select>
+                                    @error("inscripciones.{$index}.disciplina_id") <p class="text-xs text-rose-600">{{ $message }}</p> @enderror
+                                </div>
+                                <div>
+                                    <label for="grupo-{{ $index }}" class="form-label">Grupo y horario</label>
+                                    <select id="grupo-{{ $index }}" wire:model.live="inscripciones.{{ $index }}.grupo_id" class="form-input" @disabled(!$disciplinaElegida)>
+                                        <option value="">Seleccionar grupo</option>
+                                        @foreach($disciplinaElegida?->grupos ?? [] as $grupo)
+                                            <option value="{{ $grupo->id }}" @disabled(!$grupo->tieneCupoDisponible())>{{ $grupo->nombre }} · {{ $grupo->resumen_horarios }} · {{ $grupo->texto_cupo }}</option>
+                                        @endforeach
+                                    </select>
+                                    @error("inscripciones.{$index}.grupo_id") <p class="text-xs text-rose-600">{{ $message }}</p> @enderror
+                                </div>
+                            </div>
+                            @if($grupoElegido)
+                                <p class="text-sm font-bold text-slate-800 dark:text-slate-100">
+                                    Cuota de {{ $disciplinaElegida->nombre }}:
+                                    {{ $disciplinaElegida->precio === null ? 'precio pendiente de definición' : '$'.number_format((float) $disciplinaElegida->precio, 2, ',', '.') }}
+                                </p>
+                                <label class="flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-slate-100">
+                                    <input type="checkbox" wire:model.live="inscripciones.{{ $index }}.confirmar_cobro">
+                                    Confirmo el cobro real de esta cuota
+                                </label>
+                                @error("inscripciones.{$index}.confirmar_cobro") <p class="text-xs text-rose-600">{{ $message }}</p> @enderror
+                                @if(!empty($seleccion['confirmar_cobro']))
+                                    <div class="grid gap-4 md:grid-cols-2">
+                                        <div>
+                                            <label for="inicio-{{ $index }}" class="form-label">Inicio de cobertura de esta inscripción</label>
+                                            <input id="inicio-{{ $index }}" type="date" wire:model="inscripciones.{{ $index }}.fecha_inicio" class="form-input">
+                                            @error("inscripciones.{$index}.fecha_inicio") <p class="text-xs text-rose-600">{{ $message }}</p> @enderror
+                                        </div>
+                                        <div>
+                                            <label for="fin-{{ $index }}" class="form-label">Vencimiento de esta inscripción</label>
+                                            <input id="fin-{{ $index }}" type="date" wire:model="inscripciones.{{ $index }}.fecha_fin" class="form-input">
+                                            @error("inscripciones.{$index}.fecha_fin") <p class="text-xs text-rose-600">{{ $message }}</p> @enderror
+                                        </div>
+                                    </div>
+                                    <p class="text-xs text-slate-500">Se registrará un pago independiente para esta inscripción.</p>
+                                @else
+                                    <p class="text-xs text-slate-500">Cuota pendiente: no se registrará ningún pago para esta inscripción.</p>
+                                @endif
+                            @endif
+                            <button type="button" wire:click="quitarInscripcion({{ $index }})" class="text-sm font-semibold text-rose-600">Quitar esta selección</button>
+                        </fieldset>
+                    @endforeach
+                    <div>
+                        <label for="metodo_pago" class="form-label">Medio de los cobros confirmados</label>
+                        <select id="metodo_pago" wire:model="metodo_pago" class="form-input">
+                            @foreach($mediosPago as $valor => $etiqueta)<option value="{{ $valor }}">{{ $etiqueta }}</option>@endforeach
+                        </select>
+                        @error('metodo_pago') <p class="text-xs text-rose-600">{{ $message }}</p> @enderror
+                    </div>
+                </section>
+
+                <section aria-label="Requisito médico individual" class="space-y-3">
+                    <h3 class="text-sm font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-400">5. Requisito médico individual</h3>
+                    @if(auth()->user()->esDuena())
+                        <label for="decision_medica" class="form-label">Decisión de la dueña</label>
+                        <select id="decision_medica" wire:model="decision_medica" class="form-input">
+                            <option value="pendiente">Pendiente de revisión</option>
+                            <option value="requerido">Requiere certificado aprobado</option>
+                            <option value="no_requerido">No requiere certificado</option>
+                        </select>
+                        <p class="text-sm text-slate-600 dark:text-slate-300">Si el certificado es requerido, se presenta y aprueba desde la ficha. Solo se emiten PIN y QR si ya existe una inscripción con todos los requisitos cumplidos.</p>
+                    @else
+                        <p class="text-sm text-slate-600 dark:text-slate-300">La decisión queda pendiente hasta que la dueña la resuelva. Confirmar un cobro no reemplaza el requisito médico ni habilita el acceso.</p>
+                    @endif
+                    @error('decision_medica') <p class="text-xs text-rose-600">{{ $message }}</p> @enderror
+                </section>
 
                 <!-- Botones del Formulario -->
                 <div class="flex items-center justify-end gap-3 pt-6 border-t border-slate-100 dark:border-slate-800">
@@ -128,7 +204,7 @@
                         Cancelar
                     </a>
                     
-                    <button type="submit" class="btn-primary">
+                    <button type="submit" class="btn-primary" wire:loading.attr="disabled" wire:target="guardar">
                         Registrar Socio
                     </button>
                 </div>

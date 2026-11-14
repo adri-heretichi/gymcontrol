@@ -135,8 +135,12 @@ class Inscripcion extends Model
         $fechaConsulta = $fecha ?? now()->toDateString();
 
         return $this->pagoDetalles()
+            ->where('estado_cobertura', PagoDetalle::COBERTURA_VIGENTE)
             ->where('fecha_inicio_cobertura', '<=', $fechaConsulta)
             ->where('fecha_fin_cobertura', '>=', $fechaConsulta)
+            ->whereHas('pago', fn ($query) => $query
+                ->where('estado', Pago::ESTADO_ACTIVO)
+                ->where('socio_id', $this->socio_id))
             ->exists();
     }
 }

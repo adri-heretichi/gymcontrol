@@ -10,7 +10,7 @@ class HorarioGimnasioService
     /**
      * Períodos oficiales de funcionamiento del gimnasio:
      * Turno Mañana: 08:00 a 12:00
-     * Turno Tarde/Noche: 15:00 a 22:00
+     * Turno Tarde: 15:00 a 20:00
      */
     public const TURNOS = [
         [
@@ -19,9 +19,9 @@ class HorarioGimnasioService
             'fin' => '12:00:00',
         ],
         [
-            'nombre' => 'Turno Tarde/Noche',
+            'nombre' => 'Turno Tarde',
             'inicio' => '15:00:00',
-            'fin' => '22:00:00',
+            'fin' => '20:00:00',
         ],
     ];
 
@@ -31,8 +31,6 @@ class HorarioGimnasioService
         'miercoles' => 'Miércoles',
         'jueves' => 'Jueves',
         'viernes' => 'Viernes',
-        'sabado' => 'Sábado',
-        'domingo' => 'Domingo',
     ];
 
     /**
@@ -105,7 +103,7 @@ class HorarioGimnasioService
             $fin = trim($h['hora_fin'] ?? '');
 
             if (!$dia || !array_key_exists($dia, self::DIAS_SEMANA)) {
-                return 'El día indicado en el horario #' . ($idx + 1) . ' es inválido.';
+                return 'El horario #' . ($idx + 1) . ' debe asignarse de lunes a viernes.';
             }
 
             if (!$inicio || !$fin) {
@@ -120,7 +118,7 @@ class HorarioGimnasioService
             }
 
             if (!self::estaDentroDelHorarioApertura($inicioNorm, $finNorm)) {
-                return "El horario {$inicio} a {$fin} está fuera de los turnos de apertura del gimnasio (08:00 a 12:00 o 15:00 a 22:00).";
+                return "El horario {$inicio} a {$fin} está fuera de los turnos de apertura del gimnasio (08:00 a 12:00 o 15:00 a 20:00).";
             }
 
             // Verificar contra los horarios ya procesados en la misma colección

@@ -6,6 +6,7 @@ use App\Livewire\Socios\ListarSocios;
 use App\Livewire\Socios\CrearSocio;
 use App\Livewire\Socios\EditarSocio;
 use App\Livewire\Socios\VerSocio;
+use App\Livewire\Membresias\ListarMembresias;
 
 Route::view('/', 'welcome');
 
@@ -13,6 +14,7 @@ Route::view('/', 'welcome');
 Route::middleware(['auth'])->group(function () {
     // Dashboard principal usando el nuevo componente Livewire
     Route::get('dashboard', \App\Livewire\Dashboard::class)->name('dashboard');
+    Route::get('membresias', ListarMembresias::class)->name('membresias.index');
     
     // Perfil del operador
     Route::view('profile', 'profile')->name('profile');
@@ -24,17 +26,10 @@ Route::middleware(['auth'])->group(function () {
     Route::middleware(['rol:admin'])->group(function () {
         Route::get('socios/{socio}/editar', EditarSocio::class)->name('socios.edit');
 
-        // CRUD de Membresías: Escritura
-        Route::get('membresias/crear', \App\Livewire\Membresias\CrearMembresia::class)->name('membresias.create');
-        Route::get('membresias/{membresia}/editar', \App\Livewire\Membresias\EditarMembresia::class)->name('membresias.edit');
-
         // Gestión de Operadores
         Route::get('operadores', \App\Livewire\Operadores\ListarOperadores::class)->name('operadores.index');
         Route::get('operadores/crear', \App\Livewire\Operadores\CrearOperador::class)->name('operadores.create');
         Route::get('operadores/{user}/editar', \App\Livewire\Operadores\EditarOperador::class)->name('operadores.edit');
-
-        // CRUD de Aptos Físicos: Escritura (Solo Administradores)
-        Route::get('aptos-fisicos/{aptoFisico}/editar', \App\Livewire\AptosFisicos\EditarAptoFisico::class)->name('aptos-fisicos.edit');
 
         // CRUD de Disciplinas y Grupos: Escritura (Solo Dueña / Administradora)
         Route::get('disciplinas/crear', \App\Livewire\Disciplinas\CrearDisciplina::class)->name('disciplinas.create');
@@ -56,13 +51,13 @@ Route::middleware(['auth'])->group(function () {
     Route::get('inscripciones', \App\Livewire\Inscripciones\ListarInscripciones::class)->name('inscripciones.index');
     Route::get('inscripciones/crear', \App\Livewire\Inscripciones\CrearInscripcion::class)->name('inscripciones.create');
 
-    // CRUD de Membresías: Lectura (Accesible por ambos roles)
-    Route::get('membresias', \App\Livewire\Membresias\ListarMembresias::class)->name('membresias.index');
-
-    // CRUD de Aptos Físicos: Lectura y Carga (Accesible por ambos roles)
-    Route::get('aptos-fisicos', \App\Livewire\AptosFisicos\ListarAptosFisicos::class)->name('aptos-fisicos.index');
-    Route::get('socios/{socio}/aptos-fisicos/crear', \App\Livewire\AptosFisicos\CrearAptoFisico::class)->name('aptos-fisicos.create');
-    Route::get('aptos-fisicos/{aptoFisico}/descargar', [\App\Http\Controllers\AptoFisicoController::class, 'descargar'])->name('aptos-fisicos.download');
+    // Acceso médico completo (lectura, carga, edición y descarga) exclusivo de la dueña.
+    Route::middleware(['can:viewAny,App\\Models\\AptoFisico'])->group(function () {
+        Route::get('aptos-fisicos', \App\Livewire\AptosFisicos\ListarAptosFisicos::class)->name('aptos-fisicos.index');
+        Route::get('socios/{socio}/aptos-fisicos/crear', \App\Livewire\AptosFisicos\CrearAptoFisico::class)->name('aptos-fisicos.create');
+        Route::get('aptos-fisicos/{aptoFisico}/editar', \App\Livewire\AptosFisicos\EditarAptoFisico::class)->name('aptos-fisicos.edit');
+        Route::get('aptos-fisicos/{aptoFisico}/descargar', [\App\Http\Controllers\AptoFisicoController::class, 'descargar'])->name('aptos-fisicos.download');
+    });
 
     // CRUD de Pagos: Lectura y Carga (Accesible por ambos roles) – Fase 5
     Route::get('pagos', \App\Livewire\Pagos\ListarPagos::class)->name('pagos.index');
@@ -87,7 +82,9 @@ Route::middleware(['auth'])->group(function () {
 
     // Código QR y Tarjeta PDF (Parte 2 y 3)
     Route::get('socios/{socio}/qr', [\App\Http\Controllers\QrController::class, 'show'])->name('socios.qr');
-    Route::get('socios/{socio}/tarjeta-pdf', [\App\Http\Controllers\ReporteController::class, 'tarjeta'])->name('socios.tarjeta-pdf');
+    Route::get('socios/{socio}/tarjeta-pdf', [\App\Http\Controllers\ReporteController::class, 'tarjeta'])
+        ->middleware('can:view,socio')
+        ->name('socios.tarjeta-pdf');
 });
 
 // Terminal Pública de Acceso (Parte 4)

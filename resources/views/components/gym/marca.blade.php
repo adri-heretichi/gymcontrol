@@ -44,7 +44,7 @@
     <div {{ $attributes->merge(['class' => 'flex flex-wrap items-center gap-3 sm:gap-4']) }}>
         @if ($hayLogo)
             <img src="{{ asset($rutaLogo) }}" alt="Gimnasio Fénix"
-                 class="h-12 w-auto rounded-lg object-contain sm:h-14">
+                 class="h-10 w-auto rounded-lg object-contain sm:h-12">
         @else
             <span class="rounded-lg bg-black px-3 py-2 text-sm font-black uppercase tracking-widest text-amber-400">
                 Fénix
@@ -55,9 +55,6 @@
 
         <div class="leading-tight">
             <x-application-logo />
-            <span class="block text-2xs font-bold uppercase tracking-widest text-orange-600 dark:text-orange-400">
-                Gimnasio Fénix
-            </span>
         </div>
     </div>
 @endif

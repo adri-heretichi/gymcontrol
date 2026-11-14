@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Pagos;
 
+use App\Models\Pago;
 use App\Models\Socio;
 use App\Services\PagoService;
 use Livewire\Component;
@@ -19,6 +20,9 @@ class CoberturasSocio extends Component
 
     public function mount(Socio $socio): void
     {
+        $this->authorize('viewAny', Pago::class);
+        $this->authorize('view', $socio);
+
         $this->socio = $socio;
         $this->actualizarCoberturas();
     }

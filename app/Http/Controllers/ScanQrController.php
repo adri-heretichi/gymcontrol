@@ -18,9 +18,10 @@ class ScanQrController extends Controller
             grupoId: $request->integer('grupo_id') ?: null
         );
 
-        $puedeSalir = $resultado['socio'] !== null
-            && $resultado['socio']->tieneCredencialesActivas()
-            && $resultado['socio']->asistencias()->whereNull('hora_salida')->exists();
+        $puedeSalir = $controlAcceso->puedeCerrarPermanenciaPorCredencial(
+            $token,
+            ControlAccesoService::METODO_QR
+        );
 
         return $this->respuestaMovil($resultado, $token, false, $puedeSalir);
     }
@@ -47,9 +48,10 @@ class ScanQrController extends Controller
             $resultado,
             $datos['identificador'],
             true,
-            $resultado['socio'] !== null
-                && $resultado['socio']->tieneCredencialesActivas()
-                && $resultado['socio']->asistencias()->whereNull('hora_salida')->exists()
+            $controlAcceso->puedeCerrarPermanenciaPorCredencial(
+                $datos['identificador'],
+                ControlAccesoService::METODO_QR
+            )
         );
     }
 
@@ -70,6 +72,8 @@ class ScanQrController extends Controller
 
     private function respuestaMovil(array $resultado, string $token, bool $desdePost, bool $puedeSalir)
     {
+        $resultado = app(ControlAccesoService::class)->ocultarDetalleMedico($resultado);
+
         return response()
             ->view('terminal.scan-mobile', [
                 'resultado' => $resultado,

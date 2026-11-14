@@ -4,8 +4,8 @@
             <!-- Encabezado -->
             <div class="pb-6 border-b border-slate-200 dark:border-slate-800 mb-6 flex items-center justify-between">
                 <div>
-                    <h2 class="text-2xl font-black text-slate-900 dark:text-white tracking-tight">Solicitar Inscripción a Grupo</h2>
-                    <p class="text-sm text-slate-500 dark:text-slate-400 mt-1 font-semibold">Selección de disciplina, grupo de clase y verificación de cupos</p>
+                    <h2 class="text-2xl font-black text-slate-900 dark:text-white tracking-tight">Inscribir socio en un grupo</h2>
+                    <p class="text-sm text-slate-500 dark:text-slate-400 mt-1 font-semibold">La inscripción se confirma directamente si hay vacantes; la habilitación de ingreso se evalúa por separado.</p>
                 </div>
                 <a href="{{ route('inscripciones.index') }}" class="btn-secondary" wire:navigate>
                     Volver
@@ -99,7 +99,7 @@
                             <option value="">-- {{ $disciplina_id ? 'Seleccionar grupo' : 'Primero elija disciplina' }} --</option>
                             @foreach ($grupos as $g)
                                 <option value="{{ $g->id }}">
-                                    {{ $g->nombre }} ({{ $g->texto_cupo }})
+                                    {{ $g->nombre }} ({{ $g->texto_cupo }}){{ $g->vacantesDisponibles() === 0 ? ' — COMPLETO' : '' }}
                                 </option>
                             @endforeach
                         </select>
@@ -108,6 +108,32 @@
                         @enderror
                     </div>
                 </div>
+
+                @if($disciplina_id && count($grupos))
+                    <section class="space-y-3" aria-label="Grupos y vacantes disponibles">
+                        <h3 class="text-sm font-black uppercase tracking-wide text-slate-700 dark:text-slate-200">Grupos de la disciplina</h3>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            @foreach($grupos as $grupo)
+                                <article class="rounded-xl border p-4 {{ $grupo->vacantesDisponibles() === 0 ? 'border-rose-200 bg-rose-50/70 dark:border-rose-900 dark:bg-rose-950/20' : 'border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800' }}">
+                                    <div class="flex justify-between gap-3">
+                                        <h4 class="font-black text-slate-900 dark:text-white">{{ $grupo->nombre }}</h4>
+                                        <span class="text-xs font-bold {{ $grupo->vacantesDisponibles() === 0 ? 'text-rose-700 dark:text-rose-300' : 'text-emerald-700 dark:text-emerald-300' }}">
+                                            {{ $grupo->texto_cupo }}
+                                        </span>
+                                    </div>
+                                    <ul class="mt-2 space-y-1 text-xs text-slate-600 dark:text-slate-300">
+                                        @foreach($grupo->horarios as $horario)
+                                            <li>{{ $horario->dia_semana_label }} {{ substr($horario->hora_inicio, 0, 5) }} a {{ substr($horario->hora_fin, 0, 5) }} hs</li>
+                                        @endforeach
+                                    </ul>
+                                    <p class="mt-2 text-xs font-bold {{ $grupo->vacantesDisponibles() === 0 ? 'text-rose-700 dark:text-rose-300' : 'text-emerald-700 dark:text-emerald-300' }}">
+                                        {{ $grupo->vacantesDisponibles() === 0 ? 'Inscripción cerrada: grupo completo' : 'Inscripción abierta: ' . $grupo->vacantesDisponibles() . ' vacantes' }}
+                                    </p>
+                                </article>
+                            @endforeach
+                        </div>
+                    </section>
+                @endif
 
                 <!-- Detalle del Grupo Seleccionado: Horarios y Cupos -->
                 @if($grupoSeleccionado)
@@ -142,7 +168,7 @@
                             <div class="flex flex-wrap gap-1.5">
                                 @forelse($grupoSeleccionado->horarios as $h)
                                     <span class="inline-block bg-white dark:bg-slate-800 px-2.5 py-1 rounded-lg text-xs font-semibold text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700">
-                                        {{ ucfirst($h->dia_semana) }} {{ substr($h->hora_inicio, 0, 5) }} a {{ substr($h->hora_fin, 0, 5) }} hs
+                                        {{ $h->dia_semana_label }} {{ substr($h->hora_inicio, 0, 5) }} a {{ substr($h->hora_fin, 0, 5) }} hs
                                     </span>
                                 @empty
                                     <span class="text-xs italic text-slate-400">Sin horarios definidos</span>
@@ -154,11 +180,11 @@
                         @if($grupoSeleccionado->vacantesDisponibles() === 0)
                             <div class="p-3 bg-amber-100/70 dark:bg-amber-900/30 rounded-xl border border-amber-200 text-amber-900 dark:text-amber-200 text-xs font-bold flex items-center gap-2">
                                 <svg class="w-4 h-4 shrink-0 text-amber-600" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path></svg>
-                                <span>Cupo máximo colmado (15/15). Al confirmar, el socio quedará registrado automáticamente en la <strong>Lista de Espera</strong> del grupo.</span>
+                                <span>El grupo alcanzó el máximo de 15. No se puede inscribir aquí; seleccione otro grupo de esta disciplina con vacantes.</span>
                             </div>
                         @else
                             <div class="text-xs text-slate-600 dark:text-slate-300">
-                                La solicitud quedará registrada en estado <strong>pendiente</strong> y requerirá la aprobación de la dueña.
+                                Al confirmar, la inscripción queda <strong>confirmada</strong> y ocupa una vacante. Esto no habilita por sí solo el ingreso del socio.
                             </div>
                         @endif
                     </div>
@@ -181,8 +207,8 @@
                     <a href="{{ route('inscripciones.index') }}" class="btn-secondary" wire:navigate>
                         Cancelar
                     </a>
-                    <button type="submit" class="btn-primary" @disabled(!$socio_id || !$grupo_id)>
-                        {{ $grupoSeleccionado && $grupoSeleccionado->vacantesDisponibles() === 0 ? 'Registrar en Lista de Espera' : 'Enviar Solicitud de Inscripción' }}
+                    <button type="submit" class="btn-primary" @disabled(!$socio_id || !$grupo_id || !$grupoSeleccionado || $grupoSeleccionado->vacantesDisponibles() === 0)>
+                        Confirmar inscripción
                     </button>
                 </div>
             </form>

@@ -10,6 +10,11 @@ class AptoFisico extends Model
 {
     use HasFactory;
 
+    public const ESTADO_PENDIENTE_REVISION = 'pendiente_revision';
+    public const ESTADO_VIGENTE = 'vigente';
+    public const ESTADO_VENCIDO = 'vencido';
+    public const ESTADO_RECHAZADO = 'rechazado';
+
     // Indicamos que la tabla correspondiente en MySQL es "aptos_fisicos" (plural correcto en español)
     protected $table = 'aptos_fisicos';
 

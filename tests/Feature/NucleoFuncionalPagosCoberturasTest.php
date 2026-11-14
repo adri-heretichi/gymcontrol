@@ -11,10 +11,14 @@ use App\Models\Pago;
 use App\Models\PagoDetalle;
 use App\Models\Socio;
 use App\Models\User;
+use App\Livewire\Pagos\CrearPago;
+use App\Livewire\Socios\VerSocio;
 use App\Services\InscripcionService;
+use App\Services\HabilitacionSocioService;
 use App\Services\PagoService;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Livewire\Livewire;
 use Tests\TestCase;
 
 /**
@@ -55,6 +59,8 @@ class NucleoFuncionalPagosCoberturasTest extends TestCase
         // Disciplinas y grupos
         $this->disciplina1 = Disciplina::create(['nombre' => 'Kickboxing Test', 'activa' => true]);
         $this->disciplina2 = Disciplina::create(['nombre' => 'Funcional Test', 'activa' => true]);
+        $this->disciplina1->update(['precio' => 35000]);
+        $this->disciplina2->update(['precio' => 40000]);
 
         $this->grupo1 = Grupo::create([
             'disciplina_id' => $this->disciplina1->id,
@@ -70,6 +76,12 @@ class NucleoFuncionalPagosCoberturasTest extends TestCase
             'nivel'         => 'todos',
             'activo'        => true,
         ]);
+    }
+
+    protected function tearDown(): void
+    {
+        Carbon::setTestNow();
+        parent::tearDown();
     }
 
     // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -170,6 +182,112 @@ class NucleoFuncionalPagosCoberturasTest extends TestCase
         ]);
     }
 
+    public function test_future_coverage_is_not_expired_or_enabled_and_is_shown_as_upcoming(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-11-13 12:00:00', config('app.timezone')));
+        $socio = $this->crearSocio();
+        $inscripcion = $this->inscribirAprobado($socio, $this->grupo1);
+        $otra = $this->inscribirAprobado($socio, $this->grupo2);
+        $pago = $this->registrarPagoSimple($socio, $inscripcion, '2026-12-01', '2026-12-31');
+        $detalle = $pago->detalles()->first();
+
+        foreach (['2026-11-13' => 'proxima', '2026-12-01' => 'vigente', '2026-12-31' => 'vigente', '2027-01-01' => 'vencida'] as $fecha => $estado) {
+            $this->assertSame($estado, $detalle->estadoTemporal($fecha));
+            $cobertura = $this->pagoService->consultarCoberturaInscripcion($inscripcion, $fecha);
+            $this->assertSame($estado, $cobertura['estado']);
+            $this->assertSame($estado === 'vigente', $cobertura['vigente']);
+        }
+        $this->assertFalse($this->pagoService->consultarCoberturaInscripcion($otra, '2026-12-13')['vigente']);
+        $socio->update(['decision_medica' => 'no_requerido']);
+        $habilitacion = app(HabilitacionSocioService::class);
+        $this->assertFalse($habilitacion->evaluar($socio, '2026-11-13')['habilitado']);
+        $porInscripcion = collect($habilitacion->evaluar($socio, '2026-12-13')['por_inscripcion'])->keyBy('inscripcion_id');
+        $this->assertTrue($porInscripcion[$inscripcion->id]['habilitado']);
+        $this->assertFalse($porInscripcion[$otra->id]['habilitado']);
+        $this->actingAs($this->recepcionista);
+        Livewire::test(\App\Livewire\Pagos\ListarPagos::class)->assertSee('Próxima')->assertDontSee('Vencida');
+        Livewire::test(\App\Livewire\Pagos\CoberturasSocio::class, ['socio' => $socio])->assertSee('Próxima');
+        $this->assertSame(Pago::ESTADO_ACTIVO, $pago->fresh()->estado);
+    }
+
+    public function test_advance_payment_preserves_current_coverage_and_annulled_payment_cannot_enable_access(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-11-13 12:00:00', config('app.timezone')));
+        $socio = $this->crearSocio();
+        $inscripcion = $this->inscribirAprobado($socio, $this->grupo1);
+        $actual = $this->registrarPagoSimple($socio, $inscripcion, '2026-11-01', '2026-11-30');
+        $futuro = $this->registrarPagoSimple($socio, $inscripcion, '2026-12-01', '2026-12-31');
+        $cobertura = $this->pagoService->consultarCoberturaInscripcion($inscripcion);
+        $this->assertTrue($cobertura['vigente']);
+        $this->assertSame($actual->id, $cobertura['pago_id']);
+        $this->assertSame('2026-11-30', $cobertura['fecha_fin']);
+        $futuro->update(['estado' => Pago::ESTADO_ANULADO]);
+        $this->assertFalse($this->pagoService->consultarCoberturaInscripcion($inscripcion, '2026-12-13')['vigente']);
+        $this->assertTrue($this->pagoService->consultarCoberturaInscripcion($inscripcion)['vigente']);
+    }
+
+    public function test_formulario_busca_socio_y_precarga_precio_y_cobertura_de_la_disciplina(): void
+    {
+        $socio = $this->crearSocio();
+        $inscripcion = $this->inscribirAprobado($socio, $this->grupo1);
+        $this->actingAs($this->recepcionista);
+
+        $componente = Livewire::test(CrearPago::class)
+            ->set('buscarSocio', $socio->dni)
+            ->assertSee($socio->dni)
+            ->call('seleccionarSocio', $socio->id)
+            ->set('detalles.0.inscripcion_id', $inscripcion->id)
+            ->assertSet('detalles.0.subtotal', '35000.00')
+            ->assertSet('detalles.0.fecha_inicio', now(config('app.timezone'))->toDateString())
+            ->assertSet('detalles.0.fecha_fin', now(config('app.timezone'))->endOfMonth()->toDateString())
+            ->assertSee('Kickboxing Test');
+
+        $componente->call('guardar')->assertRedirect(route('pagos.index'));
+
+        $detalle = PagoDetalle::where('inscripcion_id', $inscripcion->id)->firstOrFail();
+        $this->assertSame(now(config('app.timezone'))->toDateString(), $detalle->fecha_inicio_cobertura->toDateString());
+        $this->assertSame(now(config('app.timezone'))->endOfMonth()->toDateString(), $detalle->fecha_fin_cobertura->toDateString());
+        $this->assertEquals(35000, $detalle->subtotal);
+    }
+
+    public function test_formulario_impide_cobrar_si_la_disciplina_no_tiene_precio_configurado(): void
+    {
+        $this->disciplina1->update(['precio' => null]);
+        $socio = $this->crearSocio();
+        $inscripcion = $this->inscribirAprobado($socio, $this->grupo1);
+        $this->actingAs($this->recepcionista);
+
+        Livewire::test(CrearPago::class, ['socio' => $socio])
+            ->set('detalles.0.inscripcion_id', $inscripcion->id)
+            ->assertSee('Esta membresía no tiene precio configurado')
+            ->call('guardar')
+            ->assertSet('errorGeneral', "La membresía 'Kickboxing Test' no tiene precio configurado. Defina el precio desde Membresías antes de registrar el pago.")
+            ->assertHasNoErrors();
+
+        $this->assertDatabaseCount('pagos', 0);
+    }
+
+    public function test_renovacion_cuya_cobertura_vence_hoy_comienza_al_dia_siguiente(): void
+    {
+        $fecha = Carbon::now(config('app.timezone'))->startOfDay();
+        Carbon::setTestNow($fecha->copy()->setTime(12, 0));
+        $socio = $this->crearSocio();
+        $inscripcion = $this->inscribirAprobado($socio, $this->grupo1);
+        $this->registrarPagoSimple(
+            $socio,
+            $inscripcion,
+            $fecha->copy()->subMonth()->startOfMonth()->toDateString(),
+            $fecha->toDateString()
+        );
+
+        $this->assertSame(
+            $fecha->copy()->addDay()->toDateString(),
+            $this->pagoService->obtenerProximaFechaInicio($inscripcion)
+        );
+
+        Carbon::setTestNow();
+    }
+
     /** 02 – Pago asociado a una inscripción */
     public function test_02_pago_asociado_a_inscripcion(): void
     {
@@ -229,6 +347,121 @@ class NucleoFuncionalPagosCoberturasTest extends TestCase
 
         $this->assertTrue($cobs[$insc1->id]['vigente'],  'Disciplina 1 debe estar vigente');
         $this->assertFalse($cobs[$insc2->id]['vigente'], 'Disciplina 2 no debe estar vigente');
+    }
+
+    public function test_two_disciplines_keep_independent_expiration_dates_and_amounts(): void
+    {
+        $socio = $this->crearSocio();
+        $insc1 = $this->inscribirAprobado($socio, $this->grupo1);
+        $insc2 = $this->inscribirAprobado($socio, $this->grupo2);
+
+        $this->registrarPagoSimple($socio, $insc1, '2026-11-01', '2026-11-30', 35000);
+        $this->registrarPagoSimple($socio, $insc2, '2026-10-01', '2026-10-31', 15000);
+
+        $coberturas = $this->pagoService->consultarCoberturasSocio($socio, '2026-11-15');
+
+        $this->assertTrue($coberturas[$insc1->id]['vigente']);
+        $this->assertSame('2026-11-30', $coberturas[$insc1->id]['fecha_fin']);
+        $this->assertEquals(35000, $coberturas[$insc1->id]['importe']);
+        $this->assertFalse($coberturas[$insc2->id]['vigente']);
+        $this->assertSame('2026-10-31', $coberturas[$insc2->id]['fecha_fin']);
+        $this->assertEquals(15000, $coberturas[$insc2->id]['importe']);
+    }
+
+    public function test_payment_cannot_cover_another_members_enrollment(): void
+    {
+        $socioPago = $this->crearSocio();
+        $socioInscripcion = $this->crearSocio();
+        $inscripcionAjena = $this->inscribirAprobado($socioInscripcion, $this->grupo1);
+
+        try {
+            $this->registrarPagoSimple($socioPago, $inscripcionAjena, '2026-11-01', '2026-11-30');
+            $this->fail('No debe asociarse el pago de un socio a la inscripción de otro.');
+        } catch (\InvalidArgumentException $exception) {
+            $this->assertSame('La inscripción seleccionada no pertenece al socio del pago.', $exception->getMessage());
+        }
+
+        $this->assertDatabaseCount('pagos', 0);
+    }
+
+    public function test_general_membership_cannot_be_used_as_a_new_payment_detail(): void
+    {
+        $socio = $this->crearSocio();
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->pagoService->registrarPago(
+            socio: $socio,
+            detalles: [[
+                'membresia_id' => $this->membresia->id,
+                'concepto' => 'Membresía general',
+                'fecha_inicio' => '2026-11-01',
+                'fecha_fin' => '2026-11-30',
+                'subtotal' => 35000,
+            ]],
+            medioPago: 'efectivo',
+            operador: $this->recepcionista,
+        );
+    }
+
+    public function test_legacy_payment_for_another_member_does_not_grant_coverage(): void
+    {
+        $socioPago = $this->crearSocio();
+        $socioInscripcion = $this->crearSocio();
+        $inscripcion = $this->inscribirAprobado($socioInscripcion, $this->grupo1);
+        $pago = Pago::create([
+            'socio_id' => $socioPago->id,
+            'fecha_pago' => '2026-11-01',
+            'importe' => 35000,
+            'metodo_pago' => 'efectivo',
+            'estado' => Pago::ESTADO_ACTIVO,
+        ]);
+        $pago->detalles()->create([
+            'inscripcion_id' => $inscripcion->id,
+            'concepto' => 'Registro histórico inconsistente',
+            'fecha_inicio_cobertura' => '2026-11-01',
+            'fecha_fin_cobertura' => '2026-11-30',
+            'subtotal' => 35000,
+            'estado_cobertura' => PagoDetalle::COBERTURA_VIGENTE,
+        ]);
+
+        $cobertura = $this->pagoService->consultarCoberturaInscripcion($inscripcion, '2026-11-15');
+
+        $this->assertFalse($cobertura['vigente']);
+        $this->assertSame('sin_cobertura', $cobertura['estado']);
+        $this->assertFalse($inscripcion->fresh()->tieneCoberturaVigente('2026-11-15'));
+        $this->assertFalse($socioInscripcion->fresh()->tieneCuotaVigente());
+    }
+
+    public function test_member_habilitation_is_evaluated_independently_per_discipline(): void
+    {
+        $socio = $this->crearSocio();
+        $socio->update(['decision_medica' => 'no_requerido']);
+        $inscripcionPagada = $this->inscribirAprobado($socio, $this->grupo1);
+        $inscripcionImpaga = $this->inscribirAprobado($socio, $this->grupo2);
+        $this->registrarPagoSimple($socio, $inscripcionPagada, '2026-11-01', '2026-11-30');
+
+        $estado = app(HabilitacionSocioService::class)->evaluar($socio, '2026-11-15');
+
+        $this->assertTrue($estado['habilitado']);
+        $this->assertSame('Habilitado para 1 disciplina', $estado['etiqueta']);
+        $this->assertTrue(collect($estado['por_inscripcion'])->firstWhere('inscripcion_id', $inscripcionPagada->id)['habilitado']);
+        $this->assertFalse(collect($estado['por_inscripcion'])->firstWhere('inscripcion_id', $inscripcionImpaga->id)['habilitado']);
+
+        $this->actingAs($this->duena);
+        Livewire::test(\App\Livewire\Socios\ListarSocios::class)
+            ->assertSee('Habilitado para 1 disciplina')
+            ->assertSee('Kickboxing Test');
+        Livewire::test(\App\Livewire\Pagos\ListarPagos::class)
+            ->assertSee('Kickboxing Test')
+            ->assertSee('$35.000,00');
+        Livewire::test(\App\Livewire\Pagos\CoberturasSocio::class, ['socio' => $socio])
+            ->assertSee('Importe abonado')
+            ->assertSee('$35.000,00')
+            ->assertSee(route('pagos.create', $socio->id));
+        Livewire::test(VerSocio::class, ['socio' => $socio])
+            ->assertSee('Estado de cuota por membresía')
+            ->assertSee('Al día')
+            ->assertSee('Pendiente de pago');
     }
 
     /** 05 – Cuota vigente */

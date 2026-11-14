@@ -1,3 +1,5 @@
+@import './gym-componentes.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -10,12 +12,12 @@
 
     /* Estandarización de Inputs */
     .form-input {
-        @apply w-full px-4 py-2.5 border-2 border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 rounded-xl text-sm text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 shadow-inner transition duration-150;
+        @apply w-full px-4 py-2.5 border-2 border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 rounded-xl text-sm text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500 shadow-inner transition duration-150;
     }
 
-    /* Botón Primario (Indigo) */
+    /* Botón Primario Fénix */
     .btn-primary {
-        @apply inline-flex items-center justify-center px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white text-xs font-black uppercase tracking-widest rounded-xl shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/30 transition duration-150;
+        @apply inline-flex items-center justify-center px-5 py-2.5 bg-orange-600 hover:bg-orange-700 active:bg-orange-800 text-white text-xs font-black uppercase tracking-widest rounded-xl shadow-lg shadow-orange-500/20 hover:shadow-orange-500/30 transition duration-150;
     }
 
     /* Botón Secundario (Slate) */
@@ -25,7 +27,7 @@
 
     /* Botones de acción compactos de tablas */
     .btn-action-view {
-        @apply inline-flex items-center px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/50 dark:text-indigo-400 text-2xs font-extrabold uppercase tracking-wider rounded-lg transition duration-150;
+        @apply inline-flex items-center px-2.5 py-1.5 bg-orange-50 hover:bg-orange-100 text-orange-800 dark:bg-orange-950/40 dark:hover:bg-orange-900/50 dark:text-orange-300 text-2xs font-extrabold uppercase tracking-wider rounded-lg transition duration-150;
     }
 
     .btn-action-edit {
@@ -80,7 +82,7 @@
     }
 
     .badge-info {
-        @apply inline-flex items-center px-2.5 py-1 rounded-full text-2xs font-black uppercase tracking-wider bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-400 border border-indigo-100/60 dark:border-indigo-900/50;
+        @apply inline-flex items-center px-2.5 py-1 rounded-full text-2xs font-black uppercase tracking-wider bg-orange-50 text-orange-800 dark:bg-orange-950/40 dark:text-orange-300 border border-orange-100/60 dark:border-orange-900/50;
     }
 
     /* Contenedor de Tarjeta Principal */

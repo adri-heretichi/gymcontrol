@@ -15,6 +15,7 @@ class PagoDetalle extends Model
 
     public const COBERTURA_VIGENTE    = 'vigente';
     public const COBERTURA_VENCIDA    = 'vencida';
+    public const COBERTURA_PROXIMA    = 'proxima';
     public const COBERTURA_SUSPENDIDA = 'suspendida';
 
     protected $fillable = [
@@ -69,6 +70,20 @@ class PagoDetalle extends Model
             && $this->fecha_fin_cobertura->gte($hoy);
     }
 
+    /** Estado temporal calculado; no modifica el estado administrativo del pago. */
+    public function estadoTemporal(?string $fecha = null): string
+    {
+        $hoy = $fecha ? Carbon::parse($fecha)->startOfDay() : Carbon::now(config('app.timezone'))->startOfDay();
+
+        if ($this->fecha_inicio_cobertura->gt($hoy)) {
+            return self::COBERTURA_PROXIMA;
+        }
+
+        return $this->fecha_fin_cobertura->lt($hoy)
+            ? self::COBERTURA_VENCIDA
+            : self::COBERTURA_VIGENTE;
+    }
+
     /**
      * Días restantes de cobertura (0 si ya está vencida).
      */
@@ -91,7 +106,7 @@ class PagoDetalle extends Model
      */
     public function scopeVigenteEn($query, string $fecha)
     {
-        return $query->where('fecha_inicio_cobertura', '<=', $fecha)
-                     ->where('fecha_fin_cobertura', '>=', $fecha);
+        return $query->whereDate('fecha_inicio_cobertura', '<=', $fecha)
+                     ->whereDate('fecha_fin_cobertura', '>=', $fecha);
     }
 }

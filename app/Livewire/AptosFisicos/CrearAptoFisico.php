@@ -78,7 +78,7 @@ class CrearAptoFisico extends Component
         $this->validate();
 
         $service = app(\App\Services\CertificadoMedicoService::class);
-        $service->registrarCertificado(
+        $apto = $service->registrarCertificado(
             socio: $this->socio,
             fechaEmision: $this->fecha_emision,
             fechaVencimiento: $this->fecha_vencimiento,
@@ -86,12 +86,19 @@ class CrearAptoFisico extends Component
             archivo: $this->archivo_cargado
         );
 
-        session()->flash('message', 'Apto físico médico registrado correctamente.');
+        session()->flash(
+            'message',
+            $apto->estado === \App\Models\AptoFisico::ESTADO_PENDIENTE_REVISION
+                ? 'Certificado registrado. Quedó pendiente de aprobación de la dueña.'
+                : 'Certificado registrado y aprobado por la dueña.'
+        );
         return redirect()->route('socios.show', $this->socio->id);
     }
 
     public function render()
     {
+        $this->authorize('create', \App\Models\AptoFisico::class);
+
         return view('livewire.aptos-fisicos.crear-apto-fisico')
             ->layout('layouts.app');
     }

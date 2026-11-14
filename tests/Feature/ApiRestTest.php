@@ -218,7 +218,7 @@ class ApiRestTest extends TestCase
         $this->assertArrayNotHasKey('archivo', $responseDetail->json('data'));
     }
 
-    public function test_reception_cannot_read_or_download_medical_documents_but_can_register_them()
+    public function test_reception_cannot_read_download_or_register_medical_documents()
     {
         Storage::fake('local');
         $token = $this->recepcionista->createToken('test_token')->plainTextToken;
@@ -235,20 +235,22 @@ class ApiRestTest extends TestCase
             ->getJson(route('api.aptos-fisicos.index'))
             ->assertForbidden();
         $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->getJson(route('api.aptos-fisicos.show', $apto->id))
+            ->assertForbidden();
+        $this->withHeader('Authorization', 'Bearer ' . $token)
             ->getJson(route('api.aptos-fisicos.download', $apto->id))
             ->assertForbidden();
 
-        $upload = $this->withHeader('Authorization', 'Bearer ' . $token)
+        $aptosAntes = AptoFisico::query()->count();
+        $this->withHeader('Authorization', 'Bearer ' . $token)
             ->postJson(route('api.aptos-fisicos.store'), [
                 'socio_id' => $this->socio->id,
                 'fecha_emision' => now()->toDateString(),
                 'fecha_vencimiento' => now()->addYear()->toDateString(),
                 'archivo' => UploadedFile::fake()->create('medical.pdf', 100, 'application/pdf'),
             ])
-            ->assertCreated();
-
-        $upload->assertJsonPath('data.tiene_archivo', true);
-        $this->assertArrayNotHasKey('archivo', $upload->json('data'));
+            ->assertForbidden();
+        $this->assertSame($aptosAntes, AptoFisico::query()->count());
     }
 
     public function test_socio_api_never_exposes_legacy_or_active_credentials_or_medical_details()

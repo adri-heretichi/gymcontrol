@@ -7,6 +7,7 @@ use App\Models\AsistenciaClase;
 use App\Models\Inscripcion;
 use App\Models\Solicitud;
 use App\Models\Socio;
+use App\Services\ControlAccesoService;
 use Carbon\Carbon;
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Broadcasting\PrivateChannel;
@@ -53,7 +54,9 @@ class GymRealtimeUpdate implements ShouldBroadcast, ShouldDispatchAfterCommit
             'source' => in_array($source, ['pin_terminal', 'pin_recepcion', 'qr_movil', 'manual_operador'], true)
                 ? $source
                 : 'operador',
-            'message' => ($result['autorizado'] ?? false) ? 'Operación registrada.' : 'Acceso denegado.',
+            'message' => ($result['autorizado'] ?? false)
+                ? ($operation === 'salida' ? 'Salida registrada.' : 'Acceso autorizado.')
+                : ControlAccesoService::mensajeOperativo((string) ($result['codigo'] ?? '')),
         ]);
     }
 

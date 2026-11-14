@@ -10,6 +10,7 @@ use App\Services\SolicitudService;
 use DomainException;
 use Illuminate\Support\Facades\Gate;
 use Livewire\Attributes\On;
+use Livewire\Attributes\Locked;
 use Livewire\Component;
 use Livewire\WithPagination;
 
@@ -17,10 +18,12 @@ class GestionarSolicitudes extends Component
 {
     use WithPagination;
 
+    #[Locked]
+    public bool $integrado = false;
+
     public string $estadoFiltro = Solicitud::ESTADO_PENDIENTE;
     public string $buscar = '';
     public string $socioId = '';
-    public string $motivo = '';
 
     public ?int $solicitudId = null;
     public string $respuesta = '';
@@ -37,9 +40,10 @@ class GestionarSolicitudes extends Component
         'buscar' => ['except' => ''],
     ];
 
-    public function mount(): void
+    public function mount(bool $integrado = false): void
     {
         Gate::authorize('viewAny', Solicitud::class);
+        $this->integrado = $integrado;
         $this->socioId = (string) request()->query('socio_id', '');
     }
 
@@ -58,17 +62,15 @@ class GestionarSolicitudes extends Component
         Gate::authorize('create', Solicitud::class);
         $datos = $this->validate([
             'socioId' => ['required', 'integer', 'exists:socios,id'],
-            'motivo' => ['required', 'string', 'min:5', 'max:1000'],
         ]);
 
         app(CertificadoMedicoService::class)->informarRevisionADuena(
             Socio::query()->findOrFail($datos['socioId']),
-            auth()->user(),
-            $datos['motivo']
+            auth()->user()
         );
 
-        $this->reset(['motivo']);
         session()->flash('message', 'Solicitud de revisión médica enviada a la dueña. No modifica la decisión ni habilita el acceso.');
+        $this->dispatch('solicitudes-actualizadas');
     }
 
     public function abrirResolucion(int $solicitudId): void
@@ -177,6 +179,7 @@ class GestionarSolicitudes extends Component
                 'correccionHoraClase',
             ]);
             session()->flash('message', 'La solicitud se resolvió y quedó registrada en auditoría.');
+            $this->dispatch('solicitudes-actualizadas');
         } catch (DomainException $exception) {
             $this->addError('respuesta', $exception->getMessage());
         }
@@ -189,6 +192,8 @@ class GestionarSolicitudes extends Component
 
     public function render()
     {
+        Gate::authorize('viewAny', Solicitud::class);
+
         $usuario = auth()->user();
         $query = Solicitud::query()
             ->with(['socio:id,nombre,apellido', 'solicitante:id,name', 'revisadoPor:id,name', 'grupo:id,nombre', 'grupoDestino:id,nombre'])
@@ -208,7 +213,7 @@ class GestionarSolicitudes extends Component
         if ($usuario->esRecepcionista()) {
             $movimientosRecepcion = Auditoria::query()
                 ->where('user_id', $usuario->id)
-                ->whereIn('tipo_evento', ['administrativo', 'acceso', 'asistencia', 'asistencia_fisica', 'asistencia_clase', 'medico'])
+                ->whereIn('tipo_evento', ['administrativo', 'acceso', 'asistencia', 'asistencia_fisica', 'asistencia_clase'])
                 ->latest('created_at')
                 ->limit(50)
                 ->get(['id', 'tipo_evento', 'accion', 'created_at']);

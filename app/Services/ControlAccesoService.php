@@ -15,6 +15,14 @@ use Illuminate\Support\Facades\DB;
 
 class ControlAccesoService
 {
+    private const CODIGOS_DENEGACION_MEDICA = [
+        'decision_medica_pendiente',
+        'certificado_vencido',
+        'certificado_pendiente_aprobacion',
+        'certificado_rechazado',
+        'certificado_faltante',
+    ];
+
     public const METODO_PIN = 'pin';
     public const METODO_QR = 'qr';
 
@@ -138,6 +146,54 @@ class ControlAccesoService
         }
 
         return $this->evaluarSocio($socio, $metodo, $grupoId, $momento);
+    }
+
+    /**
+     * Oculta los detalles médicos en las respuestas operativas y públicas.
+     */
+    public function ocultarDetalleMedico(array $resultado): array
+    {
+        if (in_array($resultado['codigo'], self::CODIGOS_DENEGACION_MEDICA, true)) {
+            $resultado['codigo'] = 'requisitos_pendientes';
+            $resultado['mensaje'] = 'No habilitado. Consultar con la dueña.';
+        }
+
+        return $resultado;
+    }
+
+    public function puedeCerrarPermanenciaPorCredencial(string $identificador, string $metodo): bool
+    {
+        if ($identificador === '' || !in_array($metodo, [self::METODO_PIN, self::METODO_QR], true)) {
+            return false;
+        }
+
+        $socio = $this->resolverCredencial($identificador, $metodo);
+        if (!$socio) {
+            $columna = $metodo === self::METODO_PIN ? 'pin_revocado_hash' : 'qr_token_revocado_hash';
+            $hash = hash_hmac('sha256', $identificador, (string) config('app.key'));
+            $socio = Socio::query()->where($columna, $hash)->first();
+        }
+
+        return $socio !== null
+            && $socio->asistencias()->whereNull('hora_salida')->exists();
+    }
+
+    public static function mensajeOperativo(string $codigo): string
+    {
+        return match ($codigo) {
+            'cuota_vencida' => 'Cuota vencida. Regularizar en recepción.',
+            'sin_cobertura' => 'Falta cobertura vigente para esta actividad. Consultar en recepción.',
+            'inscripcion_inexistente', 'inscripcion_pendiente' => 'No hay una inscripción confirmada para esta actividad. Consultar en recepción.',
+            'fuera_de_horario' => 'Ingreso fuera del día u horario autorizado para esta actividad.',
+            'grupo_inactivo' => 'La actividad no está habilitada. Consultar en recepción.',
+            'decision_medica_pendiente', 'certificado_vencido', 'certificado_pendiente_aprobacion',
+            'certificado_rechazado', 'certificado_faltante', 'requisitos_pendientes' =>
+                'No habilitado. Consultar con la dueña.',
+            'ingreso_duplicado' => 'Ya existe un ingreso abierto para este socio.',
+            'credencial_invalida', 'credencial_revocada', 'credencial_legada' =>
+                'La credencial no es válida para el acceso actual.',
+            default => 'Acceso denegado. Consultar en recepción.',
+        };
     }
 
     /**
@@ -272,6 +328,16 @@ class ControlAccesoService
             }
             $minutos = (int) floor(($momento->getTimestamp() - $fechaIngreso->getTimestamp()) / 60);
 
+            if ($asistencia->requiereRevision($momento)) {
+                $resultado = $this->denegar(
+                    'permanencia_requiere_revision',
+                    'El ingreso lleva más de 24 horas abierto. Requiere revisión mediante una corrección de asistencia; no se registró la salida.',
+                    $socioBloqueado
+                );
+                $this->auditarAcceso($resultado, 'salida', null, $operadorId, $socioBloqueado, $metodoSalida);
+                return $resultado;
+            }
+
             $asistencia->update([
                 'fecha_salida' => $momento->toDateString(),
                 'hora_salida' => $momento->format('H:i:s'),
@@ -361,7 +427,17 @@ class ControlAccesoService
                     return $this->denegar('inscripcion_pendiente', 'La inscripción a esta actividad todavía está pendiente de aprobación.', $socio);
                 }
 
-                return $this->denegar('inscripcion_inexistente', 'No hay una inscripción aprobada para esta actividad.', $socio);
+                $actividadSocio = $aprobadas
+                    ->filter(fn (Inscripcion $item) => $this->grupoHabilitado($item->grupo))
+                    ->first();
+
+                return $this->denegar(
+                    'inscripcion_inexistente',
+                    'No hay una inscripción aprobada para esta actividad.',
+                    $socio,
+                    $actividadSocio ? $this->actividad($actividadSocio->grupo) : null,
+                    $actividadSocio ? $this->proximoHorario($actividadSocio->grupo, $momento) : null
+                );
             }
 
             return $this->evaluarInscripcion($socio, $inscripcion, $metodo, $momento);
@@ -399,7 +475,17 @@ class ControlAccesoService
                 return $this->denegar('inscripcion_pendiente', 'La inscripción todavía está pendiente de aprobación.', $socio);
             }
 
-            return $this->denegar('fuera_de_horario', 'En este momento no hay una actividad inscripta en curso.', $socio);
+            $actividadActual = $aprobadas->filter(
+                fn (Inscripcion $inscripcion) => $this->grupoHabilitado($inscripcion->grupo)
+            )->first();
+
+            return $this->denegar(
+                'fuera_de_horario',
+                'En este momento no hay una actividad inscripta en curso.',
+                $socio,
+                $actividadActual ? $this->actividad($actividadActual->grupo) : null,
+                $actividadActual ? $this->proximoHorario($actividadActual->grupo, $momento) : null
+            );
         }
 
         $gruposHabilitados = $horariosActuales->filter(
@@ -443,7 +529,13 @@ class ControlAccesoService
 
         $horario = $this->horarioActual($grupo, $momento);
         if (!$horario) {
-            return $this->denegar('fuera_de_horario', 'La actividad no corresponde al día u horario actual.', $socio, $actividad);
+            return $this->denegar(
+                'fuera_de_horario',
+                'La actividad no corresponde al día u horario actual.',
+                $socio,
+                $actividad,
+                $this->proximoHorario($grupo, $momento)
+            );
         }
 
         $cobertura = $this->pagoService->consultarCoberturaInscripcion($inscripcion, $momento->toDateString());
@@ -451,9 +543,7 @@ class ControlAccesoService
             $codigo = $cobertura['estado'] === PagoDetalle::COBERTURA_VENCIDA
                 ? 'cuota_vencida'
                 : 'sin_cobertura';
-            $mensaje = $codigo === 'cuota_vencida'
-                ? 'La cobertura de esta actividad está vencida.'
-                : 'No hay una cobertura vigente para esta actividad.';
+            $mensaje = self::mensajeOperativo($codigo);
 
             return $this->denegar($codigo, $mensaje, $socio, $actividad, $horario);
         }
@@ -464,12 +554,13 @@ class ControlAccesoService
         }
 
         if (!$evaluacionMedica['cumple']) {
-            $codigo = $evaluacionMedica['caso'] === 'E'
-                ? 'certificado_vencido'
-                : 'certificado_faltante';
-            $mensaje = $codigo === 'certificado_vencido'
-                ? 'El certificado médico obligatorio está vencido.'
-                : 'Se requiere un certificado médico vigente para esta actividad.';
+            [$codigo, $mensaje] = match ($evaluacionMedica['caso']) {
+                'E' => ['certificado_vencido', 'El certificado médico obligatorio está vencido.'],
+                'F' => ['certificado_pendiente_aprobacion', 'El certificado médico presentado está pendiente de aprobación de la dueña.'],
+                'G' => ['certificado_rechazado', 'El certificado médico presentado no fue aprobado.'],
+                'H' => ['certificado_faltante', 'El certificado médico todavía no está vigente.'],
+                default => ['certificado_faltante', 'Se requiere un certificado médico vigente para esta actividad.'],
+            };
 
             return $this->denegar($codigo, $mensaje, $socio, $actividad, $horario);
         }
@@ -532,10 +623,7 @@ class ControlAccesoService
 
     private function grupoHabilitado(?Grupo $grupo): bool
     {
-        return $grupo !== null
-            && $grupo->estado === 'activo'
-            && $grupo->disciplina !== null
-            && $grupo->disciplina->estado === 'activa';
+        return $grupo?->estaHabilitado() ?? false;
     }
 
     private function horarioActual(?Grupo $grupo, Carbon $momento): ?array
@@ -562,6 +650,55 @@ class ControlAccesoService
             'hora_inicio' => substr($horario->hora_inicio, 0, 5),
             'hora_fin' => substr($horario->hora_fin, 0, 5),
         ];
+    }
+
+    private function proximoHorario(?Grupo $grupo, Carbon $momento): ?array
+    {
+        if (!$grupo) {
+            return null;
+        }
+
+        $dias = [
+            'lunes' => 1,
+            'martes' => 2,
+            'miercoles' => 3,
+            'jueves' => 4,
+            'viernes' => 5,
+            'sabado' => 6,
+            'domingo' => 7,
+        ];
+        $hoy = (int) $momento->format('N');
+        $hora = $momento->format('H:i:s');
+
+        $horario = $grupo->horarios
+            ->map(function (GrupoHorario $horario) use ($dias, $hoy, $hora) {
+                $dia = $this->normalizarDia($horario->dia_semana);
+                $numeroDia = $dias[$dia] ?? null;
+                if ($numeroDia === null) {
+                    return null;
+                }
+
+                $diasHasta = ($numeroDia - $hoy + 7) % 7;
+                if ($diasHasta === 0 && $horario->hora_fin <= $hora) {
+                    $diasHasta = 7;
+                }
+
+                return [
+                    'dias_hasta' => $diasHasta,
+                    'dia' => $dia,
+                    'hora_inicio' => $horario->hora_inicio,
+                    'hora_fin' => $horario->hora_fin,
+                ];
+            })
+            ->filter()
+            ->sortBy([['dias_hasta', 'asc'], ['hora_inicio', 'asc']])
+            ->first();
+
+        return $horario ? [
+            'dia' => $horario['dia'],
+            'hora_inicio' => substr($horario['hora_inicio'], 0, 5),
+            'hora_fin' => substr($horario['hora_fin'], 0, 5),
+        ] : null;
     }
 
     private function actividad(?Grupo $grupo): ?array
@@ -641,6 +778,11 @@ class ControlAccesoService
         ?Socio $socio,
         ?string $origen = null
     ): void {
+        $actividad = $resultado['actividad'] ?? null;
+        $grupoId ??= is_array($actividad) && isset($actividad['grupo_id'])
+            ? (int) $actividad['grupo_id']
+            : null;
+
         Auditoria::registrar(
             tipoEvento: 'acceso',
             accion: $resultado['autorizado'] ? 'acceso_autorizado' : 'acceso_denegado',
@@ -650,6 +792,9 @@ class ControlAccesoService
                 'resultado' => $resultado['codigo'],
                 'metodo' => $metodo,
                 'grupo_id' => $grupoId,
+                'disciplina_id' => is_array($actividad) && isset($actividad['disciplina_id'])
+                    ? (int) $actividad['disciplina_id']
+                    : null,
                 'asistencia_id' => $resultado['asistencia']?->id,
                 'operador_id' => $operadorId,
             ],

@@ -18,12 +18,12 @@
             <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between pb-6 border-b border-slate-200 dark:border-slate-800 gap-4 mb-6">
                 <div>
                     <h2 class="text-3xl font-black text-slate-900 dark:text-white tracking-tight">Gestión de Inscripciones y Cupos</h2>
-                    <p class="text-sm text-slate-500 dark:text-slate-300 mt-1 font-semibold">Aprobaciones de la dueña, listas de espera y control estricto de cupos (hasta 15 alumnos)</p>
+                    <p class="text-sm text-slate-500 dark:text-slate-300 mt-1 font-semibold">Las nuevas inscripciones se confirman si hay vacantes. Las solicitudes pendientes y listas de espera corresponden a registros heredados; máximo 15 socios por grupo.</p>
                 </div>
                 <div class="flex-shrink-0">
                     <a href="{{ route('inscripciones.create') }}" class="btn-primary" wire:navigate>
                         <svg class="w-4 h-4 mr-2 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
-                        Nueva Solicitud
+                        Inscribir socio
                     </a>
                 </div>
             </div>
@@ -35,7 +35,7 @@
                     wire:click="cambiarTab('pendientes')"
                     class="px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition {{ $tab === 'pendientes' ? 'bg-indigo-600 text-white shadow-md shadow-indigo-500/20' : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300' }}"
                 >
-                    Pendientes de Aprobación
+                    Pendientes heredadas
                     <span class="ml-1.5 px-2 py-0.5 rounded-full text-2xs {{ $tab === 'pendientes' ? 'bg-white/20 text-white' : 'bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-300' }}">
                         {{ $conteoPendientes }}
                     </span>
@@ -46,7 +46,7 @@
                     wire:click="cambiarTab('aprobadas')"
                     class="px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition {{ $tab === 'aprobadas' ? 'bg-indigo-600 text-white shadow-md shadow-indigo-500/20' : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300' }}"
                 >
-                    Inscripciones Aprobadas
+                    Inscripciones confirmadas
                     <span class="ml-1.5 px-2 py-0.5 rounded-full text-2xs {{ $tab === 'aprobadas' ? 'bg-white/20 text-white' : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-300' }}">
                         {{ $conteoAprobadas }}
                     </span>
@@ -169,7 +169,7 @@
                                     <div class="space-y-0.5">
                                         @foreach($item->grupo->horarios as $h)
                                             <div class="text-2xs font-semibold">
-                                                {{ ucfirst($h->dia_semana) }} {{ substr($h->hora_inicio, 0, 5) }}-{{ substr($h->hora_fin, 0, 5) }}
+                                                {{ $h->dia_semana_label }} {{ substr($h->hora_inicio, 0, 5) }}-{{ substr($h->hora_fin, 0, 5) }}
                                             </div>
                                         @endforeach
                                     </div>
@@ -193,8 +193,10 @@
                                     @if($tab === 'pendientes')
                                         <span>{{ $item->fecha_inscripcion ? $item->fecha_inscripcion->format('d/m/Y') : '—' }}</span>
                                     @elseif($tab === 'aprobadas')
-                                        <div>{{ $item->aprobado_at ? $item->aprobado_at->format('d/m/Y H:i') : '—' }}</div>
-                                        <div class="text-2xs text-slate-400">Por: {{ $item->aprobadoPor->name ?? 'Dueña' }}</div>
+                                        <div>{{ $item->aprobado_por ? ($item->aprobado_at ? $item->aprobado_at->format('d/m/Y H:i') : '—') : 'Inscripción directa' }}</div>
+                                        @if($item->aprobado_por)
+                                            <div class="text-2xs text-slate-400">Revisada por: {{ $item->aprobadoPor->name ?? 'Dueña' }}</div>
+                                        @endif
                                     @elseif($tab === 'espera')
                                         <span>{{ $item->fecha_solicitud ? $item->fecha_solicitud->format('d/m/Y H:i') : '—' }}</span>
                                     @else
@@ -257,14 +259,24 @@
                                             @if(auth()->user()->rol === 'admin')
                                                 <!-- Dueña: Incorporar si hay vacantes -->
                                                 @if($item->grupo->vacantesDisponibles() > 0)
-                                                    <button
-                                                        wire:click="incorporarDeEspera({{ $item->id }})"
-                                                        wire:confirm="¿Incorporar a '{{ $item->socio->nombre_completo }}' a la vacante liberada en '{{ $item->grupo->nombre }}'?"
-                                                        class="btn-action-success"
-                                                        title="Incorporar a la plaza disponible"
-                                                    >
-                                                        Incorporar
-                                                    </button>
+                                                    @if((int) $primerasEsperas->get($item->grupo_id) === (int) $item->id)
+                                                        <button
+                                                            wire:click="incorporarDeEspera({{ $item->id }})"
+                                                            wire:confirm="¿Incorporar a '{{ $item->socio->nombre_completo }}' a la vacante liberada en '{{ $item->grupo->nombre }}'?"
+                                                            class="btn-action-success"
+                                                            title="Incorporar a la plaza disponible"
+                                                        >
+                                                            Incorporar
+                                                        </button>
+                                                    @else
+                                                        <button
+                                                            disabled
+                                                            class="opacity-40 cursor-not-allowed btn-action-view"
+                                                            title="Debe respetarse el orden de la lista de espera"
+                                                        >
+                                                            Espera #{{ $item->posicion }}
+                                                        </button>
+                                                    @endif
                                                 @else
                                                     <button
                                                         disabled

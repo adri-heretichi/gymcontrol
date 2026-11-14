@@ -12,7 +12,9 @@ class EditarDisciplina extends Component
     public Disciplina $disciplina;
     public $nombre = '';
     public $descripcion = '';
+    public $precio = '';
     public $estado = '';
+    public bool $volverAMembresias = false;
 
     public function mount(Disciplina $disciplina)
     {
@@ -23,7 +25,9 @@ class EditarDisciplina extends Component
         $this->disciplina = $disciplina;
         $this->nombre = $disciplina->nombre;
         $this->descripcion = $disciplina->descripcion ?? '';
+        $this->precio = $disciplina->precio ?? '';
         $this->estado = $disciplina->estado;
+        $this->volverAMembresias = request()->query('origen') === 'membresias';
     }
 
     protected function rules()
@@ -31,6 +35,7 @@ class EditarDisciplina extends Component
         return [
             'nombre' => 'required|string|min:2|max:100|unique:disciplinas,nombre,' . $this->disciplina->id,
             'descripcion' => 'nullable|string|max:500',
+            'precio' => 'nullable|numeric|min:0|max:999999.99',
             'estado' => 'required|in:activo,inactivo',
         ];
     }
@@ -41,6 +46,8 @@ class EditarDisciplina extends Component
         'nombre.min' => 'El nombre debe tener al menos 2 caracteres.',
         'nombre.max' => 'El nombre no puede superar los 100 caracteres.',
         'descripcion.max' => 'La descripción no puede superar los 500 caracteres.',
+        'precio.numeric' => 'El precio debe ser un número válido.',
+        'precio.min' => 'El precio no puede ser negativo.',
         'estado.required' => 'El estado es obligatorio.',
         'estado.in' => 'El estado seleccionado es inválido.',
     ];
@@ -56,12 +63,14 @@ class EditarDisciplina extends Component
         $antes = [
             'nombre' => $this->disciplina->nombre,
             'descripcion' => $this->disciplina->descripcion,
+            'precio' => $this->disciplina->precio,
             'estado' => $this->disciplina->estado,
         ];
         DB::transaction(function () use ($antes) {
             $this->disciplina->update([
                 'nombre' => trim($this->nombre),
                 'descripcion' => $this->descripcion ? trim($this->descripcion) : null,
+                'precio' => $this->precio === '' ? null : $this->precio,
                 'estado' => $this->estado,
             ]);
             Auditoria::registrar(
@@ -72,6 +81,7 @@ class EditarDisciplina extends Component
                 datosDespues: [
                     'nombre' => $this->disciplina->nombre,
                     'descripcion' => $this->disciplina->descripcion,
+                    'precio' => $this->disciplina->precio,
                     'estado' => $this->disciplina->estado,
                 ],
                 userId: auth()->id()
@@ -79,6 +89,10 @@ class EditarDisciplina extends Component
         }, 3);
 
         session()->flash('message', "Disciplina '{$this->disciplina->nombre}' actualizada correctamente.");
+        if ($this->volverAMembresias) {
+            return redirect()->route('membresias.index', ['disciplina' => $this->disciplina->id]);
+        }
+
         return redirect()->route('disciplinas.index');
     }
 

@@ -23,6 +23,7 @@
                             <th class="px-4 py-3 text-left font-semibold text-gray-600">Disciplina / Grupo</th>
                             <th class="px-4 py-3 text-left font-semibold text-gray-600">Inscripción</th>
                             <th class="px-4 py-3 text-left font-semibold text-gray-600">Cobertura</th>
+                            <th class="px-4 py-3 text-right font-semibold text-gray-600">Importe abonado</th>
                             <th class="px-4 py-3 text-left font-semibold text-gray-600">Vence</th>
                             <th class="px-4 py-3 text-left font-semibold text-gray-600">Estado</th>
                             <th class="px-4 py-3 text-left font-semibold text-gray-600">Acción</th>
@@ -50,6 +51,9 @@
                                         <span class="text-gray-400 italic">Sin cobertura</span>
                                     @endif
                                 </td>
+                                <td class="px-4 py-3 text-right text-xs font-semibold text-gray-700 whitespace-nowrap">
+                                    {{ $cob['importe'] !== null ? '$' . number_format((float) $cob['importe'], 2, ',', '.') : '—' }}
+                                </td>
                                 <td class="px-4 py-3 text-xs text-gray-600">
                                     @if($cob['vigente'] && $cob['dias_restantes'] !== null)
                                         {{ $cob['dias_restantes'] }} día{{ $cob['dias_restantes'] != 1 ? 's' : '' }}
@@ -62,6 +66,8 @@
                                         <span class="px-2 py-1 bg-green-100 text-green-700 rounded text-xs font-medium">
                                             ✓ Vigente
                                         </span>
+                                    @elseif($cob['estado'] === 'proxima')
+                                        <span class="rounded bg-blue-100 px-2 py-1 text-xs text-blue-700">Próxima</span>
                                     @elseif($cob['estado'] === 'vencida')
                                         <span class="px-2 py-1 bg-red-100 text-red-700 rounded text-xs font-medium">
                                             Vencida
@@ -74,7 +80,7 @@
                                 </td>
                                 <td class="px-4 py-3">
                                     @can('create', \App\Models\Pago::class)
-                                        <a href="{{ route('pagos.create') }}?inscripcion={{ $inscripcionId }}"
+                                        <a href="{{ route('pagos.create', $socio->id) }}?inscripcion={{ $inscripcionId }}"
                                            class="text-xs text-blue-600 hover:underline">
                                             Cobrar
                                         </a>

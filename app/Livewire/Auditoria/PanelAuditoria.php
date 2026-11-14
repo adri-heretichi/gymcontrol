@@ -107,6 +107,8 @@ class PanelAuditoria extends Component
 
     public function render()
     {
+        Gate::authorize('viewAny', Auditoria::class);
+
         $socioId = trim($this->dniSocio) !== ''
             ? Socio::query()->where('dni', trim($this->dniSocio))->value('id')
             : null;

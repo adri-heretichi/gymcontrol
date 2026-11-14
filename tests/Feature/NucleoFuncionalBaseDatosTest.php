@@ -511,7 +511,6 @@ class NucleoFuncionalBaseDatosTest extends TestCase
     public function test_primera_emision_credenciales_exige_tres_requisitos(): void
     {
         $socio = Socio::create([
-            'membresia_id' => $this->membresia->id,
             'nombre' => 'Romina',
             'apellido' => 'Méndez',
             'dni' => '40999000',
@@ -520,7 +519,7 @@ class NucleoFuncionalBaseDatosTest extends TestCase
             'token' => 'TOK_ROMINA',
             'decision_medica' => 'pendiente',
             'fecha_alta' => now()->toDateString(),
-            'fecha_vencimiento' => null, // Cuota no abonada
+            'fecha_vencimiento' => now()->addMonth()->toDateString(), // Fecha legado no sustituye una cobertura
             'estado' => 'activo',
         ]);
 
@@ -539,8 +538,23 @@ class NucleoFuncionalBaseDatosTest extends TestCase
         ]);
         $this->assertFalse($socio->fresh()->puedeEmitirCredenciales()); // Sigue faltando cuota y apto
 
-        // Caso C: Se registra pago de cuota (vence el próximo mes)
-        $socio->update(['fecha_vencimiento' => now()->addMonth()->toDateString()]);
+        // Caso C: Se registra cobertura para la inscripción aprobada
+        $pago = Pago::create([
+            'socio_id' => $socio->id,
+            'fecha_pago' => now()->toDateString(),
+            'importe' => 15000,
+            'metodo_pago' => 'efectivo',
+            'estado' => Pago::ESTADO_ACTIVO,
+        ]);
+        PagoDetalle::create([
+            'pago_id' => $pago->id,
+            'inscripcion_id' => $socio->inscripciones()->firstOrFail()->id,
+            'concepto' => 'Cobertura de prueba',
+            'fecha_inicio_cobertura' => now()->toDateString(),
+            'fecha_fin_cobertura' => now()->addMonth()->toDateString(),
+            'subtotal' => 15000,
+            'estado_cobertura' => PagoDetalle::COBERTURA_VIGENTE,
+        ]);
         $this->assertFalse($socio->fresh()->puedeEmitirCredenciales()); // Sigue faltando decisión médica
 
         // Caso D: Dueña resuelve decisión médica como 'no_requerido'

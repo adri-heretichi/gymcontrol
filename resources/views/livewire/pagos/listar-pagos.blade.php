@@ -113,19 +113,13 @@
                                                 –
                                                 {{ \Carbon\Carbon::parse($det->fecha_fin_cobertura)->format('d/m/Y') }}
                                             </span>
-                                            @php
-                                                $hoy = now()->toDateString();
-                                                $vigente = $pago->estaActivo()
-                                                    && $det->fecha_inicio_cobertura->toDateString() <= $hoy
-                                                    && $det->fecha_fin_cobertura->toDateString() >= $hoy;
-                                            @endphp
-                                            @if($vigente)
-                                                <span class="text-green-600 ml-1">✓</span>
-                                            @elseif($pago->estaAnulado())
-                                                <span class="text-red-500 ml-1">✕</span>
-                                            @else
-                                                <span class="text-gray-400 ml-1">vencida</span>
-                                            @endif
+                                            <span class="font-semibold text-gray-700 ml-1">
+                                                · ${{ number_format($det->subtotal, 2, ',', '.') }}
+                                            </span>
+                                            @php($estadoTemporal = $det->estadoTemporal())
+                                            <span class="ml-1 {{ $estadoTemporal === 'vigente' ? 'text-green-600' : ($estadoTemporal === 'proxima' ? 'text-blue-600' : 'text-gray-400') }}">
+                                                {{ ['vigente' => 'Vigente', 'proxima' => 'Próxima', 'vencida' => 'Vencida'][$estadoTemporal] }}
+                                            </span>
                                         </div>
                                     @endforeach
                                 @else

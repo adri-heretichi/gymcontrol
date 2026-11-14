@@ -93,7 +93,7 @@ class NucleoFuncionalRolesPermisosTest extends TestCase
         // Rutas web
         $this->get('/operadores')->assertStatus(200);
         $this->get('/operadores/crear')->assertStatus(200);
-        $this->get('/membresias/crear')->assertStatus(200);
+        $this->get('/membresias/crear')->assertNotFound();
         $this->get(route('reportes.pagos'))->assertStatus(200);
     }
 
@@ -118,7 +118,6 @@ class NucleoFuncionalRolesPermisosTest extends TestCase
             ->set('sexo', 'M')
             ->set('correo', 'federico@test.com')
             ->set('celular', '3704112233')
-            ->set('membresia_id', $this->membresia->id)
             ->set('fecha_alta', now()->toDateString())
             ->call('guardar')
             ->assertHasNoErrors();
@@ -194,15 +193,14 @@ class NucleoFuncionalRolesPermisosTest extends TestCase
     }
 
     /**
-     * Requisito 6: La recepcionista no puede modificar precios administrativos de membresías.
+     * Requisito 6: El módulo web legado de membresías no está disponible para los roles.
      */
-    public function test_recepcionista_no_puede_modificar_precios_de_membresias(): void
+    public function test_modulo_web_de_membresias_no_esta_expuesto_a_roles(): void
     {
         $this->actingAs($this->recepcionista);
 
-        // Ruta de edición de membresías denegada (403)
-        $this->get('/membresias/' . $this->membresia->id . '/editar')->assertStatus(403);
-        $this->get('/membresias/crear')->assertStatus(403);
+        $this->get('/membresias/' . $this->membresia->id . '/editar')->assertNotFound();
+        $this->get('/membresias/crear')->assertNotFound();
 
         $this->assertFalse(Gate::forUser($this->recepcionista)->allows('update', $this->membresia));
         $this->assertFalse(Gate::forUser($this->recepcionista)->allows('create', Membresia::class));
@@ -249,7 +247,7 @@ class NucleoFuncionalRolesPermisosTest extends TestCase
         $this->get('/socios')->assertRedirect(route('login'));
         $this->get('/socios/crear')->assertRedirect(route('login'));
         $this->get('/operadores')->assertRedirect(route('login'));
-        $this->get('/membresias/crear')->assertRedirect(route('login'));
+        $this->get('/membresias/crear')->assertNotFound();
     }
 
     /**
@@ -344,7 +342,6 @@ class NucleoFuncionalRolesPermisosTest extends TestCase
             ->set('dni', '35999888')
             ->set('sexo', 'M')
             ->set('correo', 'gabriel@test.com')
-            ->set('membresia_id', $this->membresia->id)
             ->set('fecha_alta', now()->toDateString())
             ->call('guardar')
             ->assertHasNoErrors();

@@ -181,6 +181,52 @@ class NucleoFuncionalDisciplinasGruposTest extends TestCase
         ]);
     }
 
+    public function test_crear_grupo_sin_inventar_horario_predeterminado(): void
+    {
+        $this->actingAs($this->duena);
+
+        Livewire::test(CrearGrupo::class)
+            ->assertSet('horarios.0.dia_semana', '')
+            ->assertSet('horarios.0.hora_inicio', '')
+            ->assertSet('horarios.0.hora_fin', '')
+            ->set('disciplina_id', $this->disciplinaBase->id)
+            ->set('nombre', 'Grupo sin cronograma')
+            ->set('profesor', 'Adriana Heretichi')
+            ->call('guardar')
+            ->assertHasErrors([
+                'horarios.0.dia_semana',
+                'horarios.0.hora_inicio',
+                'horarios.0.hora_fin',
+            ]);
+
+        $this->assertDatabaseMissing('grupos', ['nombre' => 'Grupo sin cronograma']);
+    }
+
+    public function test_editar_grupo_legado_sin_horarios_exige_configuracion_explicita(): void
+    {
+        $grupo = Grupo::create([
+            'disciplina_id' => $this->disciplinaBase->id,
+            'nombre' => 'Grupo legado sin horario',
+            'profesor' => 'Adriana Heretichi',
+            'cupo_maximo' => 15,
+            'estado' => 'activo',
+        ]);
+        $this->actingAs($this->duena);
+
+        Livewire::test(EditarGrupo::class, ['grupo' => $grupo])
+            ->assertSet('horarios.0.dia_semana', '')
+            ->assertSet('horarios.0.hora_inicio', '')
+            ->assertSet('horarios.0.hora_fin', '')
+            ->call('actualizar')
+            ->assertHasErrors([
+                'horarios.0.dia_semana',
+                'horarios.0.hora_inicio',
+                'horarios.0.hora_fin',
+            ]);
+
+        $this->assertSame(0, $grupo->horarios()->count());
+    }
+
     /**
      * Test 5: Rechazo estricto de grupo con capacidad superior a 15 alumnos.
      */
@@ -291,6 +337,40 @@ class NucleoFuncionalDisciplinasGruposTest extends TestCase
         $this->assertEquals(0, $grupo->vacantesDisponibles());
         $this->assertFalse($grupo->tieneCupoDisponible());
         $this->assertEquals('Cupo completo: 15/15', $grupo->texto_cupo);
+    }
+
+    public function test_listado_muestra_disciplina_horarios_y_vacantes_confirmadas(): void
+    {
+        $grupo = Grupo::create([
+            'disciplina_id' => $this->disciplinaBase->id,
+            'nombre' => 'Krav Maga Kids Tarde',
+            'profesor' => 'Adriana Heretichi',
+            'cupo_maximo' => 15,
+            'estado' => 'activo',
+        ]);
+        GrupoHorario::create([
+            'grupo_id' => $grupo->id,
+            'dia_semana' => 'miercoles',
+            'hora_inicio' => '18:00:00',
+            'hora_fin' => '19:00:00',
+        ]);
+
+        for ($i = 1; $i <= 14; $i++) {
+            $socio = $this->crearSocio();
+            Inscripcion::create([
+                'socio_id' => $socio->id,
+                'grupo_id' => $grupo->id,
+                'fecha_inscripcion' => now()->toDateString(),
+                'estado' => Inscripcion::ESTADO_APROBADA,
+            ]);
+        }
+
+        $this->actingAs($this->recepcionista);
+        Livewire::test(ListarGrupos::class)
+            ->assertSee('Krav Maga Kids Tarde')
+            ->assertSee('Krav Maga Kids')
+            ->assertSee('Miércoles 18:00 - 19:00')
+            ->assertSee('14/15 – 1 vacantes');
     }
 
     /**
@@ -478,15 +558,26 @@ class NucleoFuncionalDisciplinasGruposTest extends TestCase
             ->call('guardar')
             ->assertHasErrors(['horarios']);
 
-        // Fuera de horario nocturno (después de las 22:00)
+        // Fuera del turno tarde (después de las 20:00)
         Livewire::test(CrearGrupo::class)
             ->set('disciplina_id', $this->disciplinaBase->id)
-            ->set('nombre', 'Trasnochadores')
+            ->set('nombre', 'Fuera del turno tarde')
             ->set('horarios', [
-                ['dia_semana' => 'lunes', 'hora_inicio' => '21:30', 'hora_fin' => '22:30'],
+                ['dia_semana' => 'lunes', 'hora_inicio' => '20:00', 'hora_fin' => '20:30'],
             ])
             ->call('guardar')
             ->assertHasErrors(['horarios']);
+
+        foreach (['sabado', 'domingo'] as $diaNoHabil) {
+            Livewire::test(CrearGrupo::class)
+                ->set('disciplina_id', $this->disciplinaBase->id)
+                ->set('nombre', 'Grupo fin de semana')
+                ->set('horarios', [
+                    ['dia_semana' => $diaNoHabil, 'hora_inicio' => '09:00', 'hora_fin' => '10:00'],
+                ])
+                ->call('guardar')
+                ->assertHasErrors(['horarios.0.dia_semana']);
+        }
 
         // Cruzando el receso del mediodía (11:30 a 13:00)
         Livewire::test(CrearGrupo::class)

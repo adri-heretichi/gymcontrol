@@ -236,13 +236,15 @@
                                 <div class="flex items-center gap-2 mt-2">
                                     <span class="text-xs text-slate-500 dark:text-slate-300 font-bold">{{ $asistencia->fecha->format('d/m/Y') }} · {{ \Carbon\Carbon::parse($asistencia->hora_ingreso)->format('H:i') }}</span>
                                     <span class="rounded-full px-2 py-0.5 text-[10px] font-black {{ $asistencia->hora_salida ? 'bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-200' : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200' }}">
-                                        {{ $asistencia->hora_salida ? 'Salida registrada' : 'En el gimnasio' }}
+                                        {{ $asistencia->requiereRevision() ? 'Requiere revisión' : ($asistencia->hora_salida ? 'Salida registrada' : 'En el gimnasio') }}
                                     </span>
                                 </div>
-
+                                @if($asistencia->hora_salida)
+                                    <p class="mt-1 text-xs text-slate-500">Salida: {{ ($asistencia->fecha_salida ?? $asistencia->fecha)->format('d/m/Y') }} {{ $asistencia->hora_salida }}</p>
+                                @endif
                             </div>
 
-                            @unless($asistencia->hora_salida)
+                            @if(!$asistencia->hora_salida && !$asistencia->requiereRevision())
                             <button
                                 wire:click="registrarSalidaManual({{ $asistencia->id }})"
                                 wire:loading.attr="disabled"
@@ -251,7 +253,7 @@
                             >
                                 Registrar salida
                             </button>
-                            @endunless
+                            @endif
                         </div>
                     @empty
                         <div class="h-full flex flex-col items-center justify-center text-center text-slate-400 dark:text-slate-500 italic py-12">
@@ -265,6 +267,32 @@
             </div>
 
         </div>
+
+        <section class="mt-8 rounded-2xl border border-slate-200 bg-white p-5 shadow-xl dark:border-slate-800 dark:bg-slate-800">
+            <div class="mb-4 flex items-center justify-between gap-4">
+                <div>
+                    <h3 class="text-lg font-black text-slate-900 dark:text-white">Últimos eventos de acceso</h3>
+                    <p class="text-xs text-slate-500 dark:text-slate-300">Resultado y motivo operativo, sin credenciales ni detalles médicos.</p>
+                </div>
+                <span class="rounded-full border border-slate-200 px-3 py-1 text-xs font-bold text-slate-600 dark:border-slate-700 dark:text-slate-300">
+                    {{ count($ultimosEventosAcceso) }}
+                </span>
+            </div>
+            <div class="max-h-80 space-y-2 overflow-y-auto">
+                @forelse($ultimosEventosAcceso as $evento)
+                    <div class="flex flex-col gap-1 rounded-xl border border-slate-100 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-900/50 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                            <span class="font-bold text-slate-900 dark:text-white">{{ $evento['socio'] }}</span>
+                            <span class="ml-2 text-xs text-slate-500 dark:text-slate-400">{{ $evento['operacion'] }} · {{ $evento['metodo'] }}</span>
+                            <p class="mt-1 text-sm text-slate-700 dark:text-slate-200">{{ $evento['motivo'] }}</p>
+                        </div>
+                        <time class="shrink-0 text-xs text-slate-500">{{ $evento['momento']?->format('d/m/Y H:i') }}</time>
+                    </div>
+                @empty
+                    <p class="text-sm text-slate-500 dark:text-slate-400">Todavía no hay intentos de acceso registrados.</p>
+                @endforelse
+            </div>
+        </section>
 
     </div>
 </div>

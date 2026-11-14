@@ -18,9 +18,9 @@ use DomainException;
 class InscripcionService
 {
     /**
-     * Registra una solicitud de inscripción para un socio en un grupo.
-     * Si el grupo tiene vacantes, genera una inscripción con estado 'pendiente' y su Solicitud.
-     * Si el grupo está completo, registra al socio en la Lista de Espera del grupo.
+     * Confirma una inscripción si el grupo tiene una vacante.
+     * Los datos heredados de lista de espera se conservan, pero no se agregan
+     * automáticamente nuevos socios a un grupo completo.
      */
     public function solicitarInscripcion(
         Socio $socio,
@@ -30,99 +30,80 @@ class InscripcionService
     ): array {
         Gate::forUser($solicitante)->authorize('create', Solicitud::class);
 
-        // 1. Validar que el socio y grupo estén activos
+        // 1. Validar el estado administrativo del socio
         if ($socio->estado !== 'activo') {
             throw new DomainException("El socio '{$socio->nombre_completo}' se encuentra inactivo.");
         }
 
-        if ($grupo->estado !== 'activo') {
-            throw new DomainException("El grupo '{$grupo->nombre}' se encuentra inactivo.");
-        }
-
-        // 2. Validar que no tenga ya una inscripción vigente o pendiente en este mismo grupo
-        $inscripcionExistente = Inscripcion::where('socio_id', $socio->id)
-            ->where('grupo_id', $grupo->id)
-            ->first();
-
-        if ($inscripcionExistente) {
-            if ($inscripcionExistente->estaAprobada()) {
-                throw new DomainException("El socio ya cuenta con una inscripción aprobada y vigente en el grupo '{$grupo->nombre}'.");
-            }
-
-            if ($inscripcionExistente->estaPendiente()) {
-                throw new DomainException("El socio ya tiene una solicitud de inscripción pendiente de aprobación para el grupo '{$grupo->nombre}'.");
-            }
-        }
-
-        // 3. Validar compatibilidad horaria con otros grupos aprobados del socio
-        $conflicto = self::buscarConflictoHorarioSocio($socio, $grupo);
-        if ($conflicto) {
-            $dia = ucfirst($conflicto['dia']);
-            throw new DomainException(
-                "Incompatibilidad horaria: el socio ya cursa en '{$conflicto['grupo']->nombre}' el día {$dia} ({$conflicto['horario_actual']}). No puede superponerse con el nuevo horario ({$conflicto['horario_nuevo']})."
-            );
-        }
-
-        // 4. Evaluar disponibilidad de vacantes en el grupo
-        return DB::transaction(function () use ($socio, $grupo, $solicitante, $observaciones, $inscripcionExistente) {
+        return DB::transaction(function () use ($socio, $grupo, $solicitante, $observaciones) {
             // Bloqueo de fila para verificación de cupo concurrente
-            $grupoLocked = Grupo::where('id', $grupo->id)->lockForUpdate()->first();
+            $grupoLocked = Grupo::where('id', $grupo->id)->lockForUpdate()->firstOrFail();
+            $grupoLocked->load(['disciplina', 'horarios']);
+
+            if ($grupoLocked->estado !== 'activo' || $grupoLocked->disciplina->estado !== 'activo') {
+                throw new DomainException("El grupo o su disciplina se encuentran inactivos.");
+            }
+
+            if ($grupoLocked->horarios->isEmpty()) {
+                throw new DomainException("El grupo '{$grupoLocked->nombre}' no tiene días y horarios configurados.");
+            }
+
+            $socio = Socio::findOrFail($socio->id);
+            if ($socio->estado !== 'activo') {
+                throw new DomainException("El socio '{$socio->nombre_completo}' se encuentra inactivo.");
+            }
+
+            $inscripcionExistente = Inscripcion::where('socio_id', $socio->id)
+                ->where('grupo_id', $grupoLocked->id)
+                ->lockForUpdate()
+                ->first();
+
+            if ($inscripcionExistente?->estaAprobada()) {
+                throw new DomainException("El socio ya cuenta con una inscripción aprobada y vigente en el grupo '{$grupoLocked->nombre}'.");
+            }
+
+            if ($inscripcionExistente?->estaPendiente()) {
+                throw new DomainException("El socio ya tiene una solicitud de inscripción pendiente de aprobación para el grupo '{$grupoLocked->nombre}'.");
+            }
+
+            $esperaExistente = ListaEspera::where('socio_id', $socio->id)
+                ->where('grupo_id', $grupoLocked->id)
+                ->where('estado', ListaEspera::ESTADO_ESPERANDO)
+                ->lockForUpdate()
+                ->first();
+
+            if ($esperaExistente) {
+                throw new DomainException("El socio ya se encuentra registrado en la lista de espera de este grupo (Posición #{$esperaExistente->posicion}).");
+            }
+
+            $conflicto = self::buscarConflictoHorarioSocio($socio, $grupoLocked);
+            if ($conflicto) {
+                $dia = ucfirst($conflicto['dia']);
+                throw new DomainException(
+                    "Incompatibilidad horaria: el socio ya cursa en '{$conflicto['grupo']->nombre}' el día {$dia} ({$conflicto['horario_actual']}). No puede superponerse con el nuevo horario ({$conflicto['horario_nuevo']})."
+                );
+            }
+
             $inscriptosActuales = Inscripcion::where('grupo_id', $grupoLocked->id)
                 ->where('estado', Inscripcion::ESTADO_APROBADA)
                 ->count();
 
-            // Si el grupo ya está completo (15 o cupo_maximo alcanzado), va a Lista de Espera
-            if ($inscriptosActuales >= $grupoLocked->cupo_maximo) {
-                // Verificar si ya está esperando en la lista de espera
-                $esperaExistente = ListaEspera::where('socio_id', $socio->id)
-                    ->where('grupo_id', $grupoLocked->id)
-                    ->where('estado', ListaEspera::ESTADO_ESPERANDO)
-                    ->first();
-
-                if ($esperaExistente) {
-                    throw new DomainException("El socio ya se encuentra registrado en la lista de espera de este grupo (Posición #{$esperaExistente->posicion}).");
-                }
-
-                $ultimaPosicion = ListaEspera::where('grupo_id', $grupoLocked->id)
-                    ->where('estado', ListaEspera::ESTADO_ESPERANDO)
-                    ->max('posicion') ?? 0;
-
-                $nuevaPosicion = $ultimaPosicion + 1;
-
-                $espera = ListaEspera::create([
-                    'socio_id' => $socio->id,
-                    'grupo_id' => $grupoLocked->id,
-                    'posicion' => $nuevaPosicion,
-                    'fecha_solicitud' => now(),
-                    'estado' => ListaEspera::ESTADO_ESPERANDO,
-                    'observaciones' => $observaciones ?: 'Ingreso a lista de espera por cupo colmado.',
-                ]);
-
-                Auditoria::registrar(
-                    'administrativo',
-                    'registro_lista_espera',
-                    $espera,
-                    null,
-                    $espera->toArray(),
-                    $solicitante->id
+            // Una inscripción confirmada ocupa una plaza; un grupo completo no admite altas.
+            if ($inscriptosActuales >= $grupoLocked->limiteCupo()) {
+                throw new DomainException(
+                    "El grupo '{$grupoLocked->nombre}' está completo ({$inscriptosActuales}/{$grupoLocked->limiteCupo()}). Seleccione otro grupo de la disciplina con vacantes."
                 );
-
-                return [
-                    'tipo' => 'lista_espera',
-                    'modelo' => $espera,
-                    'mensaje' => "Grupo completo ({$inscriptosActuales}/{$grupoLocked->cupo_maximo}). Solicitud registrada en lista de espera (Posición #{$nuevaPosicion}).",
-                ];
             }
 
-            // Si hay cupo disponible, se genera la inscripción en estado 'pendiente'
+            // Si hay cupo, la recepción confirma directamente la inscripción.
             if ($inscripcionExistente) {
                 // Reutilizar registro histórico existente (ej. previa baja o rechazo)
                 $datosAntes = $inscripcionExistente->toArray();
                 $inscripcionExistente->update([
                     'fecha_inscripcion' => now()->toDateString(),
-                    'estado' => Inscripcion::ESTADO_PENDIENTE,
+                    'estado' => Inscripcion::ESTADO_APROBADA,
                     'aprobado_por' => null,
-                    'aprobado_at' => null,
+                    'aprobado_at' => now(),
                     'fecha_baja' => null,
                     'motivo_baja' => null,
                     'baja_por' => null,
@@ -137,43 +118,35 @@ class InscripcionService
                     'socio_id' => $socio->id,
                     'grupo_id' => $grupoLocked->id,
                     'fecha_inscripcion' => now()->toDateString(),
-                    'estado' => Inscripcion::ESTADO_PENDIENTE,
+                    'estado' => Inscripcion::ESTADO_APROBADA,
+                    'aprobado_at' => now(),
                 ]);
             }
 
-            // Crear la Solicitud formal para la bandeja de la dueña
-            $solicitud = Solicitud::create([
-                'socio_id' => $socio->id,
-                'solicitante_id' => $solicitante->id,
-                'tipo' => Solicitud::TIPO_INSCRIPCION,
-                'inscripcion_id' => $inscripcion->id,
-                'grupo_id' => $grupoLocked->id,
-                'descripcion' => $observaciones ?: "Solicitud de inscripción al grupo {$grupoLocked->nombre} ({$grupoLocked->disciplina->nombre}).",
-                'estado' => Solicitud::ESTADO_PENDIENTE,
-            ]);
-
             Auditoria::registrar(
                 'administrativo',
-                'solicitud_inscripcion',
-                $solicitud,
+                'inscripcion_confirmada',
+                $inscripcion,
                 $datosAntes ? ['inscripcion' => $datosAntes] : null,
                 [
                     'socio_id' => $socio->id,
                     'inscripcion_id' => $inscripcion->id,
                     'grupo_id' => $grupoLocked->id,
-                    'estado' => $solicitud->estado,
+                    'estado' => $inscripcion->estado,
+                    'registrado_por' => $solicitante->id,
+                    'observaciones' => $observaciones,
                     'inscripcion' => $inscripcion->toArray(),
                 ],
                 $solicitante->id
             );
 
-            event(GymRealtimeUpdate::request($solicitud, 'created'));
+            event(GymRealtimeUpdate::enrollment($inscripcion, 'confirmed'));
 
             return [
-                'tipo' => 'inscripcion_pendiente',
+                'tipo' => 'inscripcion_confirmada',
                 'modelo' => $inscripcion,
-                'solicitud' => $solicitud,
-                'mensaje' => "Solicitud de inscripción registrada con éxito. Queda pendiente de aprobación por la dueña.",
+                'mensaje' => "Inscripción confirmada en {$grupoLocked->nombre}. El socio ocupa una plaza; quedan " .
+                    max(0, $grupoLocked->limiteCupo() - $inscriptosActuales - 1) . ' vacantes.',
             ];
         });
     }
@@ -206,27 +179,43 @@ class InscripcionService
             }
             // 1. Bloquear la fila del grupo para sincronizar concurrentes
             $grupo = Grupo::where('id', $inscripcion->grupo_id)->lockForUpdate()->firstOrFail();
+            $grupo->load(['disciplina', 'horarios']);
 
-            // 2. Recuento transaccional exacto de alumnos con inscripción aprobada
+            // 2. Bloquear y validar la inscripción antes de contabilizar el cupo.
+            $inscripcionLocked = Inscripcion::where('id', $inscripcion->id)->lockForUpdate()->firstOrFail();
+            if ($inscripcionLocked->estaAprobada()) {
+                return $inscripcionLocked;
+            }
+            if (!$inscripcionLocked->estaPendiente()) {
+                throw new DomainException("Solo una inscripción pendiente puede aprobarse.");
+            }
+
+            if ($grupo->estado !== 'activo' || $grupo->disciplina->estado !== 'activo') {
+                throw new DomainException('No se puede aprobar la inscripción porque el grupo o la disciplina están inactivos.');
+            }
+
+            if ($grupo->horarios->isEmpty()) {
+                throw new DomainException("No se puede aprobar: el grupo '{$grupo->nombre}' no tiene horarios configurados.");
+            }
+
+            if ($inscripcionLocked->socio->estado !== 'activo') {
+                throw new DomainException('No se puede aprobar la inscripción de un socio administrativamente inactivo.');
+            }
+
+            // 3. Recuento transaccional exacto de alumnos con inscripción aprobada
             $aprobadosCount = Inscripcion::where('grupo_id', $grupo->id)
                 ->where('estado', Inscripcion::ESTADO_APROBADA)
                 ->lockForUpdate()
                 ->count();
 
             // 3. Control estricto de cupo: no permitir superar cupo_maximo (máx. 15)
-            if ($aprobadosCount >= $grupo->cupo_maximo) {
+            if ($aprobadosCount >= $grupo->limiteCupo()) {
                 throw new DomainException(
-                    "No se puede aprobar la inscripción: el grupo '{$grupo->nombre}' ha alcanzado su cupo máximo de {$grupo->cupo_maximo} alumnos."
+                    "No se puede aprobar la inscripción: el grupo '{$grupo->nombre}' ha alcanzado su cupo máximo de {$grupo->limiteCupo()} alumnos."
                 );
             }
 
-            // 4. Bloquear la fila de la inscripción y validar estado
-            $inscripcionLocked = Inscripcion::where('id', $inscripcion->id)->lockForUpdate()->firstOrFail();
-            if (!$inscripcionLocked->estaPendiente()) {
-                throw new DomainException("Solo una inscripción pendiente puede aprobarse.");
-            }
-
-            // 5. Validar compatibilidad horaria del socio (por si cambió otro grupo)
+            // 4. Validar compatibilidad horaria del socio (por si cambió otro grupo)
             $conflicto = self::buscarConflictoHorarioSocio($inscripcionLocked->socio, $grupo, $grupo->id);
             if ($conflicto) {
                 throw new DomainException(
@@ -234,7 +223,7 @@ class InscripcionService
                 );
             }
 
-            // 6. Efectivizar la aprobación
+            // 5. Efectivizar la aprobación
             $datosAntes = $inscripcionLocked->toArray();
 
             $inscripcionLocked->update([
@@ -495,8 +484,12 @@ class InscripcionService
             throw new DomainException('Solo se puede solicitar el cambio de una inscripción aprobada.');
         }
 
-        if ($grupoDestino->estado !== 'activo') {
-            throw new DomainException("El grupo de destino '{$grupoDestino->nombre}' está inactivo.");
+        $grupoDestino = Grupo::with(['disciplina', 'horarios'])->findOrFail($grupoDestino->id);
+        if ($grupoDestino->estado !== 'activo' || $grupoDestino->disciplina->estado !== 'activo') {
+            throw new DomainException("El grupo de destino '{$grupoDestino->nombre}' o su disciplina están inactivos.");
+        }
+        if ($grupoDestino->horarios->isEmpty()) {
+            throw new DomainException("El grupo de destino '{$grupoDestino->nombre}' no tiene horarios configurados.");
         }
 
         if (!$usuario->esDuena() && !$usuario->esRecepcionista()) {
@@ -577,16 +570,35 @@ class InscripcionService
             if (!$inscripcionActual->estaAprobada()) {
                 throw new DomainException('La inscripción de origen ya no está aprobada.');
             }
-            $grupoOrigenLocked = Grupo::where('id', $inscripcionActual->grupo_id)->lockForUpdate()->firstOrFail();
-            $grupoDestinoLocked = Grupo::where('id', $grupoDestino->id)->lockForUpdate()->firstOrFail();
+            $gruposBloqueados = Grupo::query()
+                ->whereIn('id', [$inscripcionActual->grupo_id, $grupoDestino->id])
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get()
+                ->keyBy('id');
+            $grupoOrigenLocked = $gruposBloqueados->get($inscripcionActual->grupo_id);
+            $grupoDestinoLocked = $gruposBloqueados->get($grupoDestino->id);
+            if (!$grupoOrigenLocked || !$grupoDestinoLocked) {
+                throw new DomainException('No se pudo confirmar el grupo de origen o destino.');
+            }
+            $grupoDestinoLocked->load(['disciplina', 'horarios']);
+            if ($grupoDestinoLocked->estado !== 'activo' || $grupoDestinoLocked->disciplina->estado !== 'activo') {
+                throw new DomainException('No se puede cambiar al grupo porque el grupo o la disciplina están inactivos.');
+            }
+            if ($grupoDestinoLocked->horarios->isEmpty()) {
+                throw new DomainException('No se puede cambiar a un grupo sin horarios configurados.');
+            }
             $socio = $inscripcionActual->socio;
+            if ($socio->estado !== 'activo') {
+                throw new DomainException('No se puede cambiar el grupo de un socio administrativamente inactivo.');
+            }
 
             // Verificar cupo en grupo de destino
             $inscriptosDestino = Inscripcion::where('grupo_id', $grupoDestinoLocked->id)
                 ->where('estado', Inscripcion::ESTADO_APROBADA)
                 ->count();
 
-            if ($inscriptosDestino >= $grupoDestinoLocked->cupo_maximo) {
+            if ($inscriptosDestino >= $grupoDestinoLocked->limiteCupo()) {
                 throw new DomainException(
                     "No se puede realizar el cambio: el grupo destino '{$grupoDestinoLocked->nombre}' no tiene vacantes disponibles."
                 );
@@ -623,6 +635,9 @@ class InscripcionService
                     'fecha_baja' => null,
                     'motivo_baja' => null,
                     'baja_por' => null,
+                    'motivo_rechazo' => null,
+                    'rechazado_por' => null,
+                    'rechazado_at' => null,
                 ]);
                 $nuevaInscripcion = $inscripcionDestinoExistente;
             } else {
@@ -681,9 +696,46 @@ class InscripcionService
         }
 
         return DB::transaction(function () use ($espera, $duena) {
-            $esperaLocked = ListaEspera::where('id', $espera->id)->lockForUpdate()->firstOrFail();
-            $grupoLocked = Grupo::where('id', $esperaLocked->grupo_id)->lockForUpdate()->firstOrFail();
+            $grupoId = ListaEspera::query()->whereKey($espera->id)->value('grupo_id');
+            if ($grupoId === null) {
+                throw new DomainException('El registro de lista de espera ya no existe.');
+            }
+
+            $grupoLocked = Grupo::whereKey($grupoId)->lockForUpdate()->firstOrFail();
+            $esperaLocked = ListaEspera::whereKey($espera->id)->lockForUpdate()->firstOrFail();
+            if ((int) $esperaLocked->grupo_id !== (int) $grupoLocked->id
+                || !$esperaLocked->estaEsperando()) {
+                throw new DomainException('El registro ya no está esperando en este grupo.');
+            }
+
+            $primeraEspera = ListaEspera::query()
+                ->where('grupo_id', $grupoLocked->id)
+                ->where('estado', ListaEspera::ESTADO_ESPERANDO)
+                ->orderBy('posicion')
+                ->orderBy('fecha_solicitud')
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            if ($primeraEspera->id !== $esperaLocked->id) {
+                throw new DomainException(
+                    "Debe respetarse el orden de la lista de espera. El próximo turno corresponde a la posición #{$primeraEspera->posicion}."
+                );
+            }
+
+            $grupoLocked->load(['disciplina', 'horarios']);
+            if ($grupoLocked->estado !== 'activo' || $grupoLocked->disciplina->estado !== 'activo') {
+                throw new DomainException('No se puede incorporar al socio porque el grupo o la disciplina están inactivos.');
+            }
+
+            if ($grupoLocked->horarios->isEmpty()) {
+                throw new DomainException('No se puede incorporar al socio porque el grupo no tiene horarios configurados.');
+            }
+
             $socio = $esperaLocked->socio;
+            if ($socio->estado !== 'activo') {
+                throw new DomainException('No se puede incorporar a un socio administrativamente inactivo.');
+            }
 
             // 1. Verificar cupo disponible
             $inscriptos = Inscripcion::where('grupo_id', $grupoLocked->id)
@@ -691,13 +743,12 @@ class InscripcionService
                 ->lockForUpdate()
                 ->count();
 
-            if ($inscriptos >= $grupoLocked->cupo_maximo) {
+            if ($inscriptos >= $grupoLocked->limiteCupo()) {
                 throw new DomainException(
-                    "No se puede incorporar al socio: el grupo '{$grupoLocked->nombre}' no tiene vacantes libres ({$inscriptos}/{$grupoLocked->cupo_maximo})."
+                    "No se puede incorporar al socio: el grupo '{$grupoLocked->nombre}' no tiene vacantes libres ({$inscriptos}/{$grupoLocked->limiteCupo()})."
                 );
             }
 
-            // 2. Verificar compatibilidad horaria
             $conflicto = self::buscarConflictoHorarioSocio($socio, $grupoLocked);
             if ($conflicto) {
                 throw new DomainException(
@@ -705,11 +756,16 @@ class InscripcionService
                 );
             }
 
-            // 3. Crear o actualizar la inscripción a estado 'aprobada'
             $inscripcionExistente = Inscripcion::where('socio_id', $socio->id)
                 ->where('grupo_id', $grupoLocked->id)
+                ->lockForUpdate()
                 ->first();
 
+            if ($inscripcionExistente?->estaAprobada() || $inscripcionExistente?->estaPendiente()) {
+                throw new DomainException('El socio ya tiene una inscripción aprobada o pendiente para este grupo.');
+            }
+
+            // 3. Crear o actualizar la inscripción a estado 'aprobada'
             if ($inscripcionExistente) {
                 $inscripcionExistente->update([
                     'fecha_inscripcion' => now()->toDateString(),
@@ -719,6 +775,9 @@ class InscripcionService
                     'fecha_baja' => null,
                     'motivo_baja' => null,
                     'baja_por' => null,
+                    'motivo_rechazo' => null,
+                    'rechazado_por' => null,
+                    'rechazado_at' => null,
                 ]);
                 $inscripcion = $inscripcionExistente;
             } else {
@@ -754,8 +813,21 @@ class InscripcionService
      */
     public function cancelarListaEspera(ListaEspera $espera, User $usuario, ?string $motivo = null): ListaEspera
     {
+        if (!$usuario->esDuena()) {
+            throw new AuthorizationException('Solo la dueña puede cancelar un turno de la lista de espera.');
+        }
+
         return DB::transaction(function () use ($espera, $usuario, $motivo) {
-            $esperaLocked = ListaEspera::where('id', $espera->id)->lockForUpdate()->firstOrFail();
+            $grupoId = ListaEspera::query()->whereKey($espera->id)->value('grupo_id');
+            if ($grupoId === null) {
+                throw new DomainException('El registro de lista de espera ya no existe.');
+            }
+
+            Grupo::query()->whereKey($grupoId)->lockForUpdate()->firstOrFail();
+            $esperaLocked = ListaEspera::whereKey($espera->id)->lockForUpdate()->firstOrFail();
+            if ((int) $esperaLocked->grupo_id !== (int) $grupoId || !$esperaLocked->estaEsperando()) {
+                throw new DomainException('El registro ya no está esperando y no puede cancelarse.');
+            }
             $datosAntes = $esperaLocked->toArray();
 
             $esperaLocked->update([
@@ -787,6 +859,7 @@ class InscripcionService
             ->where('estado', ListaEspera::ESTADO_ESPERANDO)
             ->orderBy('posicion', 'asc')
             ->orderBy('fecha_solicitud', 'asc')
+            ->orderBy('id', 'asc')
             ->get();
 
         $pos = 1;

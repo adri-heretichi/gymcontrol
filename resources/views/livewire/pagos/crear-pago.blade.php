@@ -26,19 +26,39 @@
             <div>
                 <h3 class="text-base font-semibold text-gray-700 mb-3">1. Socio</h3>
 
-                @if($deshabilitarSocio && $socioPreseleccionado)
+                @if($socio_id && $socioSeleccionado)
+                    <p class="text-gray-800 font-medium">
+                        {{ $socioSeleccionado->apellido }}, {{ $socioSeleccionado->nombre }}
+                        <span class="text-gray-500 text-sm ml-2">DNI: {{ $socioSeleccionado->dni }}</span>
+                        @unless($deshabilitarSocio)
+                            <button type="button" wire:click="limpiarSocio" class="ml-3 text-sm text-blue-600 hover:underline">
+                                Cambiar socio
+                            </button>
+                        @endunless
+                    </p>
+                @elseif($deshabilitarSocio && $socioPreseleccionado)
                     <p class="text-gray-800 font-medium">
                         {{ $socioPreseleccionado->apellido }}, {{ $socioPreseleccionado->nombre }}
                         <span class="text-gray-500 text-sm ml-2">DNI: {{ $socioPreseleccionado->dni }}</span>
                     </p>
                 @else
-                    <select wire:model.live="socio_id"
-                            class="w-full border-gray-300 rounded shadow-sm focus:ring focus:ring-blue-200">
-                        <option value="">— Seleccioná un socio —</option>
-                        @foreach($socios as $s)
-                            <option value="{{ $s->id }}">{{ $s->apellido }}, {{ $s->nombre }} (DNI {{ $s->dni }})</option>
-                        @endforeach
-                    </select>
+                    <div class="relative">
+                        <input type="search" wire:model.live.debounce.300ms="buscarSocio"
+                               placeholder="Buscar por nombre, apellido o DNI"
+                               class="w-full border-gray-300 rounded shadow-sm focus:ring focus:ring-blue-200">
+                        @if(count($socios))
+                            <div class="absolute z-20 mt-1 w-full overflow-hidden rounded-lg border border-gray-200 bg-white shadow-xl">
+                                @foreach($socios as $s)
+                                    <button type="button" wire:click="seleccionarSocio({{ $s->id }})"
+                                            class="block w-full px-4 py-2 text-left text-sm hover:bg-gray-100">
+                                        {{ $s->apellido }}, {{ $s->nombre }} <span class="text-gray-500">(DNI {{ $s->dni }})</span>
+                                    </button>
+                                @endforeach
+                            </div>
+                        @elseif(mb_strlen(trim($buscarSocio)) >= 2)
+                            <p class="mt-1 text-xs text-gray-500">No se encontraron socios activos con ese dato.</p>
+                        @endif
+                    </div>
                     @error('socio_id') <p class="text-red-600 text-sm mt-1">{{ $message }}</p> @enderror
                 @endif
             </div>
@@ -71,7 +91,7 @@
 
             {{-- ── 3. Conceptos / Detalles ─────────────────────────────────────── --}}
             <div>
-                <h3 class="text-base font-semibold text-gray-700 mb-3">2. Conceptos a pagar</h3>
+                <h3 class="text-base font-semibold text-gray-700 mb-3">2. Membresías / disciplinas a cobrar</h3>
 
                 @if($socio_id && empty($inscripcionesDisponibles))
                     <div class="rounded bg-yellow-50 border border-yellow-300 text-yellow-700 px-4 py-3 text-sm">
@@ -96,11 +116,16 @@
                                 <select wire:model.live="detalles.{{ $i }}.inscripcion_id"
                                         wire:change="actualizarFechasDetalle({{ $i }})"
                                         class="w-full border-gray-300 rounded shadow-sm text-sm">
-                                    <option value="">— Sin inscripción / Concepto libre —</option>
+                                    <option value="">— Seleccioná una membresía / inscripción —</option>
                                     @foreach($inscripcionesDisponibles as $insc)
                                         <option value="{{ $insc['id'] }}">
                                             {{ $insc['label'] }}
                                             ({{ $insc['estado_inscripcion'] }})
+                                            @if($insc['precio'] !== null)
+                                                · ${{ number_format((float) $insc['precio'], 2, ',', '.') }}
+                                            @else
+                                                · Precio sin definir
+                                            @endif
                                             @if($insc['cobertura_vigente'])
                                                 ✓ Vigente hasta {{ \Carbon\Carbon::parse($insc['fecha_fin'])->format('d/m/Y') }}
                                             @else
@@ -111,6 +136,22 @@
                                 </select>
                                 @error("detalles.{$i}.inscripcion_id") <p class="text-red-600 text-xs mt-1">{{ $message }}</p> @enderror
                             </div>
+                        @endif
+
+                        @php
+                            $inscripcionSeleccionada = collect($inscripcionesDisponibles)
+                                ->firstWhere('id', (int) ($detalle['inscripcion_id'] ?? 0));
+                        @endphp
+                        @if($inscripcionSeleccionada)
+                            @if($inscripcionSeleccionada['precio'] !== null)
+                                <p class="rounded bg-blue-50 px-3 py-2 text-xs text-blue-800">
+                                    Precio configurado de la membresía: <strong>${{ number_format((float) $inscripcionSeleccionada['precio'], 2, ',', '.') }}</strong>. Se propone como importe del detalle.
+                                </p>
+                            @else
+                                <p role="alert" class="rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
+                                    Esta membresía no tiene precio configurado. No se puede registrar el pago hasta definirlo desde Membresías.
+                                </p>
+                            @endif
                         @endif
 
                         {{-- Concepto --}}
@@ -184,8 +225,7 @@
 
         {{-- Aviso de política --}}
         <p class="text-xs text-gray-400 text-center">
-            El registro de un pago no aprueba inscripciones ni emite credenciales.
-            La dueña debe autorizar el acceso por separado.
+            El pago no aprueba inscripciones, no emite credenciales y no sustituye los requisitos médicos y de identificación para el ingreso.
         </p>
     </div>
 </div>

@@ -40,6 +40,11 @@ class ListarPagos extends Component
         'filtroEstado' => ['except' => ''],
     ];
 
+    public function mount(): void
+    {
+        $this->authorize('viewAny', Pago::class);
+    }
+
     public function updatingBuscar():       void { $this->resetPage(); }
     public function updatingFiltroMetodo(): void { $this->resetPage(); }
     public function updatingFiltroEstado(): void { $this->resetPage(); }

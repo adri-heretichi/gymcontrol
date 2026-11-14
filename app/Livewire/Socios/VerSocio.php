@@ -4,6 +4,8 @@ namespace App\Livewire\Socios;
 
 use App\Models\Socio;
 use App\Services\CredencialService;
+use App\Services\HabilitacionSocioService;
+use App\Services\PagoService;
 use Carbon\Carbon;
 use InvalidArgumentException;
 use Livewire\Component;
@@ -33,9 +35,8 @@ class VerSocio extends Component
     {
         $this->authorize('view', $socio);
 
-        // 1. Carga optimizada de relaciones: Solo cargamos la membresía mediante Eager Loading, 
-        // ya que los pagos, asistencias y certificados médicos se consultan con queries directos optimizados.
-        $this->socio = $socio->load(['membresia']);
+        // Los pagos, asistencias y certificados se consultan con queries optimizados.
+        $this->socio = $socio;
 
         // 2. Generación ultra defensiva de iniciales para el avatar temporal
         $nombre = trim($this->socio->nombre ?? '');
@@ -56,20 +57,20 @@ class VerSocio extends Component
             ->whereNull('hora_salida')
             ->exists();
 
-        // 4. Permanencia promedio: Calculada directamente en la base de datos omitiendo registros nulos
+        // 4. Promedio de permanencias cerradas, excluyendo valores pendientes de revisión.
         $this->permanenciaPromedio = (int) $this->socio->asistencias()
-            ->whereNotNull('tiempo_permanencia')
+            ->conPermanenciaVerificable()
             ->avg('tiempo_permanencia');
 
-        // 5. Último apto físico: SQL query directo para obtener el registro más reciente por emisión
-        $this->ultimoApto = $this->socio->aptosFisicos()
-            ->latest('fecha_emision')
-            ->first();
-
-        // 5b. Historial completo de aptos físicos
-        $this->historialAptos = $this->socio->aptosFisicos()
-            ->orderByDesc('fecha_emision')
-            ->get();
+        $this->historialAptos = collect();
+        if (auth()->user()->esDuena()) {
+            $this->ultimoApto = $this->socio->aptosFisicos()
+                ->latest('fecha_emision')
+                ->first();
+            $this->historialAptos = $this->socio->aptosFisicos()
+                ->orderByDesc('fecha_emision')
+                ->get();
+        }
 
         // 6. Obtención de los últimos 5 pagos: SQL query con LIMIT 5 ordenado por fecha_pago e id descendente
         // Retorna una colección de Eloquent de forma nativa
@@ -79,17 +80,17 @@ class VerSocio extends Component
             ->take(5)
             ->get();
 
-        // Cargar estado y evaluación médica (Fase 6)
-        $this->decision_medica_seleccionada = $this->socio->decision_medica ?? 'pendiente';
-        $this->decision_medica_observacion  = $this->socio->decision_medica_obs ?? '';
-        $this->evaluacionMedica = app(\App\Services\CertificadoMedicoService::class)->evaluarRequisitoMedico($this->socio);
-        $this->evaluacionCredenciales = app(CredencialService::class)->evaluarRequisitosEmision($this->socio);
+        if (auth()->user()->esDuena()) {
+            $this->decision_medica_seleccionada = $this->socio->decision_medica ?? 'pendiente';
+            $this->decision_medica_observacion = $this->socio->decision_medica_obs ?? '';
+            $this->evaluacionMedica = app(\App\Services\CertificadoMedicoService::class)->evaluarRequisitoMedico($this->socio);
+            $this->evaluacionCredenciales = app(CredencialService::class)->evaluarRequisitosEmision($this->socio);
+        }
     }
 
     // Gestión médica individual (Fase 6)
     public string $decision_medica_seleccionada = '';
     public string $decision_medica_observacion = '';
-    public string $nota_solicitud_medica = '';
     public array $evaluacionMedica = [];
     public string $motivoCredenciales = '';
     public string $pinEmitido = '';
@@ -121,23 +122,14 @@ class VerSocio extends Component
      */
     public function enviarSolicitudRevisionMedica(): void
     {
-        abort_unless(auth()->user()->esDuena() || auth()->user()->esRecepcionista(), 403);
-
-        $this->validate([
-            'nota_solicitud_medica' => 'required|string|min:5|max:500',
-        ], [
-            'nota_solicitud_medica.required' => 'Ingresá el motivo o detalle de la documentación presentada.',
-            'nota_solicitud_medica.min' => 'El mensaje debe tener al menos 5 caracteres.',
-        ]);
+        abort_unless(auth()->user()->esRecepcionista(), 403);
 
         $service = app(\App\Services\CertificadoMedicoService::class);
         $service->informarRevisionADuena(
             socio: $this->socio,
-            recepcionista: auth()->user(),
-            descripcion: $this->nota_solicitud_medica
+            recepcionista: auth()->user()
         );
 
-        $this->nota_solicitud_medica = '';
         session()->flash('mensaje_medico', 'Notificación enviada a la dueña para revisión.');
     }
 
@@ -207,14 +199,49 @@ class VerSocio extends Component
 
     public function render()
     {
+        $this->authorize('view', $this->socio);
+        if (!auth()->user()->esDuena()) {
+            $this->ultimoApto = null;
+            $this->historialAptos = collect();
+            $this->decision_medica_seleccionada = '';
+            $this->decision_medica_observacion = '';
+            $this->evaluacionMedica = [];
+            $this->evaluacionCredenciales = [];
+        }
+
         // 7. Obtención paginada de todas las asistencias del socio
         $asistenciasPaginadas = $this->socio->asistencias()
             ->orderByDesc('fecha')
             ->orderByDesc('hora_ingreso')
             ->paginate(10);
+        $inscripcionesSocio = $this->socio->inscripciones()
+            ->with(['grupo.disciplina', 'grupo.horarios'])
+            ->orderByDesc('fecha_inscripcion')
+            ->get();
+
+        $habilitacionSocio = app(HabilitacionSocioService::class)->evaluar($this->socio);
+        if (!auth()->user()->esDuena()) {
+            $habilitacionSocio['etiqueta'] = $habilitacionSocio['habilitado'] ? 'Habilitado' : 'No habilitado';
+            $habilitacionSocio['detalle'] = $habilitacionSocio['habilitado']
+                ? 'Requisitos operativos completos.'
+                : 'Consultar con la dueña para continuar.';
+            $habilitacionSocio['por_inscripcion'] = array_map(
+                fn (array $inscripcion) => [
+                    'disciplina' => $inscripcion['disciplina'],
+                    'grupo' => $inscripcion['grupo'],
+                    'habilitado' => $inscripcion['habilitado'],
+                    'detalle' => $inscripcion['habilitado'] ? 'Habilitado' : 'Consultar con la dueña',
+                ],
+                $habilitacionSocio['por_inscripcion']
+            );
+        }
 
         return view('livewire.socios.ver-socio', [
-            'asistenciasPaginadas' => $asistenciasPaginadas
+            'asistenciasPaginadas' => $asistenciasPaginadas,
+            'inscripcionesSocio' => $inscripcionesSocio,
+            'habilitacionSocio' => $habilitacionSocio,
+            'coberturasPorInscripcion' => app(PagoService::class)
+                ->consultarCoberturasSocio($this->socio),
         ])->layout('layouts.app');
     }
 }

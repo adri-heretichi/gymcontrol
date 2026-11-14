@@ -11,12 +11,24 @@ class Disciplina extends Model
 {
     use HasFactory;
 
+    public const PLANES_FENIX = [
+        'Krav Maga Kids',
+        'Kapap Krav Maga',
+        'Kickboxing Muay Thai',
+        'Funcional',
+    ];
+
     protected $table = 'disciplinas';
 
     protected $fillable = [
         'nombre',
         'descripcion',
+        'precio',
         'estado',
+    ];
+
+    protected $casts = [
+        'precio' => 'decimal:2',
     ];
 
     /**
