@@ -129,7 +129,7 @@ En una base nueva, `migrate:status` puede indicar que aún falta la tabla de mig
 | Administrador General | admin@gymcontrol.com | admin |
 | Recepcionista de Turno | recep@gymcontrol.com | recepcionista |
 
-La contraseña inicial original de ambos operadores es `password`, almacenada mediante `Hash::make()`. Estas credenciales corresponden a la instalación local. No hay un seeder independiente de roles.
+La contraseña inicial original de ambos operadores es `password`, almacenada mediante `Hash::make()`. Esta contraseña predeterminada es exclusiva del entorno académico/local y no debe utilizarse en producción. No hay un seeder independiente de roles.
 
 Verificar nuevamente la carpeta y base nuevas y ejecutar:
 
