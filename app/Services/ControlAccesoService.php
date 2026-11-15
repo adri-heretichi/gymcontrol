@@ -9,9 +9,11 @@ use App\Models\GrupoHorario;
 use App\Models\Inscripcion;
 use App\Models\PagoDetalle;
 use App\Models\Socio;
-use App\Events\GymRealtimeUpdate;
+use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
+use Illuminate\Validation\ValidationException;
 
 class ControlAccesoService
 {
@@ -24,13 +26,13 @@ class ControlAccesoService
     ];
 
     public const METODO_PIN = 'pin';
+
     public const METODO_QR = 'qr';
 
     public function __construct(
         private readonly PagoService $pagoService,
         private readonly CertificadoMedicoService $certificadoMedicoService,
-    ) {
-    }
+    ) {}
 
     /**
      * Corrige una permanencia existente sin borrar el movimiento ni su auditoría.
@@ -41,9 +43,9 @@ class ControlAccesoService
         string $horaIngreso,
         ?string $fechaSalida,
         ?string $horaSalida,
-        \App\Models\User $duena
+        User $duena
     ): Asistencia {
-        \Illuminate\Support\Facades\Gate::forUser($duena)->authorize('gestionar-asistencias');
+        Gate::forUser($duena)->authorize('gestionar-asistencias');
 
         return DB::transaction(function () use (
             $asistencia,
@@ -57,26 +59,26 @@ class ControlAccesoService
             Socio::query()->lockForUpdate()->findOrFail($actual->socio_id);
 
             if (($fechaSalida === null) !== ($horaSalida === null)) {
-                throw \Illuminate\Validation\ValidationException::withMessages([
+                throw ValidationException::withMessages([
                     'hora_salida' => 'La fecha y la hora de salida deben indicarse juntas.',
                 ]);
             }
 
-            $inicio = Carbon::parse($fechaIngreso . ' ' . $horaIngreso, config('app.timezone'));
+            $inicio = Carbon::parse($fechaIngreso.' '.$horaIngreso, config('app.timezone'));
             $fin = $fechaSalida !== null
-                ? Carbon::parse($fechaSalida . ' ' . $horaSalida, config('app.timezone'))
+                ? Carbon::parse($fechaSalida.' '.$horaSalida, config('app.timezone'))
                 : null;
             if ($fin && $fin->lte($inicio)) {
-                throw \Illuminate\Validation\ValidationException::withMessages([
+                throw ValidationException::withMessages([
                     'hora_salida' => 'La salida debe ser posterior al ingreso.',
                 ]);
             }
-            if (!$fin && Asistencia::query()
+            if (! $fin && Asistencia::query()
                 ->where('socio_id', $actual->socio_id)
                 ->whereNull('hora_salida')
                 ->where('id', '<>', $actual->id)
                 ->exists()) {
-                throw \Illuminate\Validation\ValidationException::withMessages([
+                throw ValidationException::withMessages([
                     'hora_salida' => 'El socio ya tiene otra permanencia abierta.',
                 ]);
             }
@@ -134,7 +136,7 @@ class ControlAccesoService
         $momento = $this->momentoLocal($momento);
         $socio = $this->resolverCredencial($identificador, $metodo);
 
-        if (!$socio) {
+        if (! $socio) {
             $revocada = $this->credencialRevocada($identificador, $metodo);
             $legada = $metodo === self::METODO_QR
                 && Socio::query()->where('token', $identificador)->exists();
@@ -163,12 +165,12 @@ class ControlAccesoService
 
     public function puedeCerrarPermanenciaPorCredencial(string $identificador, string $metodo): bool
     {
-        if ($identificador === '' || !in_array($metodo, [self::METODO_PIN, self::METODO_QR], true)) {
+        if ($identificador === '' || ! in_array($metodo, [self::METODO_PIN, self::METODO_QR], true)) {
             return false;
         }
 
         $socio = $this->resolverCredencial($identificador, $metodo);
-        if (!$socio) {
+        if (! $socio) {
             $columna = $metodo === self::METODO_PIN ? 'pin_revocado_hash' : 'qr_token_revocado_hash';
             $hash = hash_hmac('sha256', $identificador, (string) config('app.key'));
             $socio = Socio::query()->where($columna, $hash)->first();
@@ -187,11 +189,9 @@ class ControlAccesoService
             'fuera_de_horario' => 'Ingreso fuera del día u horario autorizado para esta actividad.',
             'grupo_inactivo' => 'La actividad no está habilitada. Consultar en recepción.',
             'decision_medica_pendiente', 'certificado_vencido', 'certificado_pendiente_aprobacion',
-            'certificado_rechazado', 'certificado_faltante', 'requisitos_pendientes' =>
-                'No habilitado. Consultar con la dueña.',
+            'certificado_rechazado', 'certificado_faltante', 'requisitos_pendientes' => 'No habilitado. Consultar con la dueña.',
             'ingreso_duplicado' => 'Ya existe un ingreso abierto para este socio.',
-            'credencial_invalida', 'credencial_revocada', 'credencial_legada' =>
-                'La credencial no es válida para el acceso actual.',
+            'credencial_invalida', 'credencial_revocada', 'credencial_legada' => 'La credencial no es válida para el acceso actual.',
             default => 'Acceso denegado. Consultar en recepción.',
         };
     }
@@ -214,16 +214,17 @@ class ControlAccesoService
         $momento = $this->momentoLocal($momento);
         $socioInicial = $this->resolverCredencial($identificador, $metodo);
 
-        if (!$socioInicial) {
+        if (! $socioInicial) {
             return DB::transaction(function () use ($identificador, $metodo, $grupoId, $momento, $operadorId, $origen) {
                 $resultado = $this->evaluarAcceso($identificador, $metodo, $grupoId, $momento);
                 $this->auditarAcceso($resultado, $metodo, $grupoId, $operadorId, null, $origen);
+
                 return $resultado;
             }, 3);
         }
 
         return DB::transaction(function () use (
-            $identificador,
+
             $metodo,
             $grupoId,
             $operadorId,
@@ -233,15 +234,17 @@ class ControlAccesoService
             $socioInicial
         ) {
             $socio = Socio::query()->lockForUpdate()->find($socioInicial->id);
-            if (!$socio) {
+            if (! $socio) {
                 $resultado = $this->denegar('credencial_invalida', 'La credencial no es válida para el acceso actual.');
                 $this->auditarAcceso($resultado, $metodo, $grupoId, $operadorId, null, $origen);
+
                 return $resultado;
             }
 
             $resultado = $this->evaluarSocio($socio, $metodo, $grupoId, $momento);
-            if (!$resultado['autorizado']) {
+            if (! $resultado['autorizado']) {
                 $this->auditarAcceso($resultado, $metodo, $grupoId, $operadorId, $socio, $origen);
+
                 return $resultado;
             }
 
@@ -259,6 +262,7 @@ class ControlAccesoService
                     $resultado['actividad']
                 );
                 $this->auditarAcceso($resultado, $metodo, $grupoId, $operadorId, $socio, $origen);
+
                 return $resultado;
             }
 
@@ -295,9 +299,10 @@ class ControlAccesoService
 
         return DB::transaction(function () use ($socio, $operadorId, $momento, $metodoSalida) {
             $socioBloqueado = Socio::query()->lockForUpdate()->find($socio->id);
-            if (!$socioBloqueado) {
+            if (! $socioBloqueado) {
                 $resultado = $this->denegar('socio_inexistente', 'No se encontró el socio.');
                 $this->auditarAcceso($resultado, 'salida', null, $operadorId, null, $metodoSalida);
+
                 return $resultado;
             }
 
@@ -307,14 +312,15 @@ class ControlAccesoService
                 ->lockForUpdate()
                 ->first();
 
-            if (!$asistencia) {
+            if (! $asistencia) {
                 $resultado = $this->denegar('sin_ingreso_abierto', 'No hay un ingreso abierto para registrar la salida.', $socioBloqueado);
                 $this->auditarAcceso($resultado, 'salida', null, $operadorId, $socioBloqueado, $metodoSalida);
+
                 return $resultado;
             }
 
             $fechaIngreso = Carbon::parse(
-                $asistencia->fecha->toDateString() . ' ' . $asistencia->hora_ingreso,
+                $asistencia->fecha->toDateString().' '.$asistencia->hora_ingreso,
                 config('app.timezone')
             );
             if ($momento->lte($fechaIngreso)) {
@@ -324,6 +330,7 @@ class ControlAccesoService
                     $socioBloqueado
                 );
                 $this->auditarAcceso($resultado, 'salida', null, $operadorId, $socioBloqueado, $metodoSalida);
+
                 return $resultado;
             }
             $minutos = (int) floor(($momento->getTimestamp() - $fechaIngreso->getTimestamp()) / 60);
@@ -335,6 +342,7 @@ class ControlAccesoService
                     $socioBloqueado
                 );
                 $this->auditarAcceso($resultado, 'salida', null, $operadorId, $socioBloqueado, $metodoSalida);
+
                 return $resultado;
             }
 
@@ -376,13 +384,13 @@ class ControlAccesoService
     ): array {
         $socio = $this->resolverCredencial($identificador, $metodo);
 
-        if (!$socio && in_array($metodo, [self::METODO_PIN, self::METODO_QR], true)) {
+        if (! $socio && in_array($metodo, [self::METODO_PIN, self::METODO_QR], true)) {
             $columna = $metodo === self::METODO_PIN ? 'pin_revocado_hash' : 'qr_token_revocado_hash';
             $hash = hash_hmac('sha256', $identificador, (string) config('app.key'));
             $socio = Socio::query()->where($columna, $hash)->first();
         }
 
-        if (!$socio) {
+        if (! $socio) {
             $resultado = $this->evaluarAcceso($identificador, $metodo, null, $momento);
             $resultado['autorizado'] = false;
             $resultado['codigo'] = 'credencial_invalida';
@@ -395,6 +403,7 @@ class ControlAccesoService
                 null,
                 $metodoSalida ?? ($metodo === self::METODO_QR ? 'qr_movil' : 'pin_recepcion')
             );
+
             return $resultado;
         }
 
@@ -408,7 +417,7 @@ class ControlAccesoService
 
     private function evaluarSocio(Socio $socio, string $metodo, ?int $grupoId, Carbon $momento): array
     {
-        if (!$this->credencialActivaPerteneceAlSocio($socio, $metodo)) {
+        if (! $this->credencialActivaPerteneceAlSocio($socio, $metodo)) {
             return $this->denegar('credencial_revocada', 'La credencial no es válida para el acceso actual.');
         }
 
@@ -422,7 +431,7 @@ class ControlAccesoService
 
         if ($grupoId !== null) {
             $inscripcion = $aprobadas->firstWhere('grupo_id', $grupoId);
-            if (!$inscripcion) {
+            if (! $inscripcion) {
                 if ($pendientes->firstWhere('grupo_id', $grupoId)) {
                     return $this->denegar('inscripcion_pendiente', 'La inscripción a esta actividad todavía está pendiente de aprobación.', $socio);
                 }
@@ -457,7 +466,7 @@ class ControlAccesoService
 
         if ($horariosActuales->isEmpty()) {
             $grupoInactivo = $aprobadas->first(
-                fn (Inscripcion $inscripcion) => !$this->grupoHabilitado($inscripcion->grupo)
+                fn (Inscripcion $inscripcion) => ! $this->grupoHabilitado($inscripcion->grupo)
             );
             if ($grupoInactivo) {
                 return $this->denegar(
@@ -523,12 +532,12 @@ class ControlAccesoService
         $grupo = $inscripcion->grupo;
         $actividad = $this->actividad($grupo);
 
-        if (!$this->grupoHabilitado($grupo)) {
+        if (! $this->grupoHabilitado($grupo)) {
             return $this->denegar('grupo_inactivo', 'La actividad seleccionada no está habilitada.', $socio, $actividad);
         }
 
         $horario = $this->horarioActual($grupo, $momento);
-        if (!$horario) {
+        if (! $horario) {
             return $this->denegar(
                 'fuera_de_horario',
                 'La actividad no corresponde al día u horario actual.',
@@ -539,7 +548,7 @@ class ControlAccesoService
         }
 
         $cobertura = $this->pagoService->consultarCoberturaInscripcion($inscripcion, $momento->toDateString());
-        if (!$cobertura['vigente']) {
+        if (! $cobertura['vigente']) {
             $codigo = $cobertura['estado'] === PagoDetalle::COBERTURA_VENCIDA
                 ? 'cuota_vencida'
                 : 'sin_cobertura';
@@ -553,7 +562,7 @@ class ControlAccesoService
             return $this->denegar('decision_medica_pendiente', 'El acceso requiere que la decisión médica esté resuelta.', $socio, $actividad, $horario);
         }
 
-        if (!$evaluacionMedica['cumple']) {
+        if (! $evaluacionMedica['cumple']) {
             [$codigo, $mensaje] = match ($evaluacionMedica['caso']) {
                 'E' => ['certificado_vencido', 'El certificado médico obligatorio está vencido.'],
                 'F' => ['certificado_pendiente_aprobacion', 'El certificado médico presentado está pendiente de aprobación de la dueña.'],
@@ -589,7 +598,7 @@ class ControlAccesoService
 
     private function resolverCredencial(string $identificador, string $metodo): ?Socio
     {
-        if ($identificador === '' || !in_array($metodo, [self::METODO_PIN, self::METODO_QR], true)) {
+        if ($identificador === '' || ! in_array($metodo, [self::METODO_PIN, self::METODO_QR], true)) {
             return null;
         }
 
@@ -611,7 +620,7 @@ class ControlAccesoService
 
     private function credencialRevocada(string $identificador, string $metodo): bool
     {
-        if (!in_array($metodo, [self::METODO_PIN, self::METODO_QR], true) || $identificador === '') {
+        if (! in_array($metodo, [self::METODO_PIN, self::METODO_QR], true) || $identificador === '') {
             return false;
         }
 
@@ -628,7 +637,7 @@ class ControlAccesoService
 
     private function horarioActual(?Grupo $grupo, Carbon $momento): ?array
     {
-        if (!$grupo) {
+        if (! $grupo) {
             return null;
         }
 
@@ -641,7 +650,7 @@ class ControlAccesoService
                 && $horario->hora_fin > $hora;
         });
 
-        if (!$horario) {
+        if (! $horario) {
             return null;
         }
 
@@ -654,7 +663,7 @@ class ControlAccesoService
 
     private function proximoHorario(?Grupo $grupo, Carbon $momento): ?array
     {
-        if (!$grupo) {
+        if (! $grupo) {
             return null;
         }
 
@@ -703,7 +712,7 @@ class ControlAccesoService
 
     private function actividad(?Grupo $grupo): ?array
     {
-        if (!$grupo) {
+        if (! $grupo) {
             return null;
         }
 
@@ -801,6 +810,5 @@ class ControlAccesoService
             userId: $operadorId
         );
 
-        event(GymRealtimeUpdate::access($resultado, $metodo, $socio, $origen));
     }
 }

@@ -2,7 +2,6 @@
 
 namespace App\Services;
 
-use App\Events\GymRealtimeUpdate;
 use App\Models\Auditoria;
 use App\Models\Grupo;
 use App\Models\Inscripcion;
@@ -10,10 +9,10 @@ use App\Models\ListaEspera;
 use App\Models\Socio;
 use App\Models\Solicitud;
 use App\Models\User;
+use DomainException;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
-use DomainException;
 
 class InscripcionService
 {
@@ -41,7 +40,7 @@ class InscripcionService
             $grupoLocked->load(['disciplina', 'horarios']);
 
             if ($grupoLocked->estado !== 'activo' || $grupoLocked->disciplina->estado !== 'activo') {
-                throw new DomainException("El grupo o su disciplina se encuentran inactivos.");
+                throw new DomainException('El grupo o su disciplina se encuentran inactivos.');
             }
 
             if ($grupoLocked->horarios->isEmpty()) {
@@ -140,15 +139,61 @@ class InscripcionService
                 $solicitante->id
             );
 
-            event(GymRealtimeUpdate::enrollment($inscripcion, 'confirmed'));
-
             return [
                 'tipo' => 'inscripcion_confirmada',
                 'modelo' => $inscripcion,
-                'mensaje' => "Inscripción confirmada en {$grupoLocked->nombre}. El socio ocupa una plaza; quedan " .
-                    max(0, $grupoLocked->limiteCupo() - $inscriptosActuales - 1) . ' vacantes.',
+                'mensaje' => "Inscripción confirmada en {$grupoLocked->nombre}. El socio ocupa una plaza; quedan ".
+                    max(0, $grupoLocked->limiteCupo() - $inscriptosActuales - 1).' vacantes.',
             ];
-        });
+        }, 5);
+    }
+
+    /** Registra una espera explícita sin ocupar una plaza ni promover automáticamente. */
+    public function registrarEnListaEspera(Socio $socio, Grupo $grupo, User $solicitante, ?string $observaciones = null): ListaEspera
+    {
+        Gate::forUser($solicitante)->authorize('create', Solicitud::class);
+        if ($observaciones !== null && mb_strlen($observaciones) > 500) {
+            throw new DomainException('Las observaciones no pueden superar los 500 caracteres.');
+        }
+
+        return DB::transaction(function () use ($socio, $grupo, $solicitante, $observaciones) {
+            // El mismo bloqueo de grupo utilizado por altas y promociones serializa el cupo y las posiciones.
+            $grupo = Grupo::query()->lockForUpdate()->findOrFail($grupo->id);
+            $grupo->load(['disciplina', 'horarios']);
+            $socio = Socio::query()->lockForUpdate()->findOrFail($socio->id);
+            if ($socio->estado !== 'activo' || $grupo->estado !== 'activo' || $grupo->disciplina->estado !== 'activo') {
+                throw new DomainException('El socio, grupo y disciplina deben estar activos para registrar una espera.');
+            }
+            if ($grupo->horarios->isEmpty()) {
+                throw new DomainException('El grupo debe tener días y horarios configurados.');
+            }
+            if (Inscripcion::where('socio_id', $socio->id)->where('grupo_id', $grupo->id)
+                ->whereIn('estado', [Inscripcion::ESTADO_APROBADA, Inscripcion::ESTADO_PENDIENTE])->exists()) {
+                throw new DomainException('El socio ya tiene una inscripción aprobada o pendiente en este grupo.');
+            }
+            $existente = ListaEspera::where('socio_id', $socio->id)->where('grupo_id', $grupo->id)
+                ->where('estado', ListaEspera::ESTADO_ESPERANDO)->first();
+            if ($existente) {
+                return $existente;
+            }
+            if ($grupo->vacantesDisponibles() > 0) {
+                throw new DomainException('El grupo tiene vacantes. Utilice Confirmar inscripción.');
+            }
+            if (self::buscarConflictoHorarioSocio($socio, $grupo)) {
+                throw new DomainException('El horario del grupo se superpone con otra inscripción del socio.');
+            }
+            $posicion = (int) ListaEspera::where('grupo_id', $grupo->id)
+                ->where('estado', ListaEspera::ESTADO_ESPERANDO)->max('posicion') + 1;
+            $espera = ListaEspera::create([
+                'socio_id' => $socio->id, 'grupo_id' => $grupo->id, 'posicion' => $posicion,
+                'fecha_solicitud' => now(), 'estado' => ListaEspera::ESTADO_ESPERANDO,
+                'observaciones' => $observaciones,
+            ]);
+            Auditoria::registrar('administrativo', 'registro_lista_espera', $espera, null,
+                ['socio_id' => $socio->id, 'grupo_id' => $grupo->id, 'posicion' => $posicion, 'estado' => $espera->estado], $solicitante->id);
+
+            return $espera;
+        }, 5);
     }
 
     /**
@@ -162,8 +207,8 @@ class InscripcionService
         ?string $respuesta = null,
         ?Solicitud $solicitud = null
     ): Inscripcion {
-        if (!$duena->esDuena()) {
-            throw new AuthorizationException("Solo la dueña del gimnasio tiene permisos para aprobar inscripciones.");
+        if (! $duena->esDuena()) {
+            throw new AuthorizationException('Solo la dueña del gimnasio tiene permisos para aprobar inscripciones.');
         }
 
         return DB::transaction(function () use ($inscripcion, $duena, $respuesta, $solicitud) {
@@ -186,8 +231,8 @@ class InscripcionService
             if ($inscripcionLocked->estaAprobada()) {
                 return $inscripcionLocked;
             }
-            if (!$inscripcionLocked->estaPendiente()) {
-                throw new DomainException("Solo una inscripción pendiente puede aprobarse.");
+            if (! $inscripcionLocked->estaPendiente()) {
+                throw new DomainException('Solo una inscripción pendiente puede aprobarse.');
             }
 
             if ($grupo->estado !== 'activo' || $grupo->disciplina->estado !== 'activo') {
@@ -219,7 +264,7 @@ class InscripcionService
             $conflicto = self::buscarConflictoHorarioSocio($inscripcionLocked->socio, $grupo, $grupo->id);
             if ($conflicto) {
                 throw new DomainException(
-                    "No se puede aprobar: existe incompatibilidad horaria con el grupo '{$conflicto['grupo']->nombre}' el día " . ucfirst($conflicto['dia']) . "."
+                    "No se puede aprobar: existe incompatibilidad horaria con el grupo '{$conflicto['grupo']->nombre}' el día ".ucfirst($conflicto['dia']).'.'
                 );
             }
 
@@ -264,8 +309,7 @@ class InscripcionService
                 $duena->id
             );
 
-            if (!$solicitud) {
-                event(GymRealtimeUpdate::enrollment($inscripcionLocked, 'approved'));
+            if (! $solicitud) {
             }
 
             return $inscripcionLocked;
@@ -281,12 +325,12 @@ class InscripcionService
         string $motivo,
         ?Solicitud $solicitud = null
     ): Inscripcion {
-        if (!$duena->esDuena()) {
-            throw new AuthorizationException("Solo la dueña del gimnasio tiene permisos para rechazar inscripciones.");
+        if (! $duena->esDuena()) {
+            throw new AuthorizationException('Solo la dueña del gimnasio tiene permisos para rechazar inscripciones.');
         }
 
         if (empty(trim($motivo))) {
-            throw new DomainException("Debe especificar el motivo del rechazo de la inscripción.");
+            throw new DomainException('Debe especificar el motivo del rechazo de la inscripción.');
         }
 
         return DB::transaction(function () use ($inscripcion, $duena, $motivo, $solicitud) {
@@ -302,7 +346,7 @@ class InscripcionService
             }
 
             $inscripcionLocked = Inscripcion::where('id', $inscripcion->id)->lockForUpdate()->firstOrFail();
-            if (!$inscripcionLocked->estaPendiente()) {
+            if (! $inscripcionLocked->estaPendiente()) {
                 throw new DomainException('La inscripción ya fue resuelta.');
             }
             $datosAntes = $inscripcionLocked->toArray();
@@ -333,8 +377,7 @@ class InscripcionService
                 $duena->id
             );
 
-            if (!$solicitud) {
-                event(GymRealtimeUpdate::enrollment($inscripcionLocked, 'rejected'));
+            if (! $solicitud) {
             }
 
             return $inscripcionLocked;
@@ -354,27 +397,41 @@ class InscripcionService
         ?Solicitud $solicitud = null
     ): array {
         if (empty(trim($motivo))) {
-            throw new DomainException("Debe indicar el motivo de la baja.");
+            throw new DomainException('Debe indicar el motivo de la baja.');
         }
 
         // Si la ejecuta recepción sin ser dueña, genera Solicitud pendiente
-        if (!$usuario->esDuena() && !$usuario->esRecepcionista()) {
+        if (! $usuario->esDuena() && ! $usuario->esRecepcionista()) {
             throw new AuthorizationException('El usuario no puede gestionar solicitudes de baja.');
         }
 
-        if (!$usuario->esDuena() && !$esAprobacionDirecta) {
+        if (! $usuario->esDuena() && ! $esAprobacionDirecta) {
             Gate::forUser($usuario)->authorize('create', Solicitud::class);
-            if (!$inscripcion->estaAprobada()) {
+            if (! $inscripcion->estaAprobada()) {
                 throw new DomainException('Solo se puede solicitar la baja de una inscripción aprobada.');
             }
+
             return DB::transaction(function () use ($inscripcion, $usuario, $motivo) {
+                $inscripcion = Inscripcion::query()->whereKey($inscripcion->id)->lockForUpdate()->firstOrFail();
+                if (! $inscripcion->estaAprobada()) {
+                    throw new DomainException('Solo se puede solicitar la baja de una inscripción aprobada.');
+                }
+                $existente = Solicitud::query()->where('inscripcion_id', $inscripcion->id)
+                    ->where('solicitante_id', $usuario->id)->where('tipo', Solicitud::TIPO_BAJA_INSCRIPCION)
+                    ->where('descripcion', 'Solicitud de baja: '.trim($motivo))
+                    ->where('estado', Solicitud::ESTADO_PENDIENTE)->oldest('id')->first();
+                if ($existente) {
+                    return ['tipo' => 'solicitud_baja_pendiente', 'solicitud' => $existente,
+                        'mensaje' => 'Ya existe una solicitud de baja pendiente con estos datos.'];
+                }
+
                 $solicitud = Solicitud::create([
                     'socio_id' => $inscripcion->socio_id,
                     'solicitante_id' => $usuario->id,
                     'tipo' => Solicitud::TIPO_BAJA_INSCRIPCION,
                     'inscripcion_id' => $inscripcion->id,
                     'grupo_id' => $inscripcion->grupo_id,
-                    'descripcion' => 'Solicitud de baja: ' . trim($motivo),
+                    'descripcion' => 'Solicitud de baja: '.trim($motivo),
                     'estado' => Solicitud::ESTADO_PENDIENTE,
                 ]);
 
@@ -386,8 +443,6 @@ class InscripcionService
                     ['socio_id' => $solicitud->socio_id, 'inscripcion_id' => $solicitud->inscripcion_id, 'estado' => $solicitud->estado],
                     $usuario->id
                 );
-
-                event(GymRealtimeUpdate::request($solicitud, 'created'));
 
                 return [
                     'tipo' => 'solicitud_baja_pendiente',
@@ -411,7 +466,7 @@ class InscripcionService
             }
 
             $inscripcionLocked = Inscripcion::where('id', $inscripcion->id)->lockForUpdate()->firstOrFail();
-            if (!$inscripcionLocked->estaAprobada()) {
+            if (! $inscripcionLocked->estaAprobada()) {
                 throw new DomainException('Solo se puede dar de baja una inscripción aprobada.');
             }
             $grupoLocked = Grupo::where('id', $inscripcionLocked->grupo_id)->lockForUpdate()->firstOrFail();
@@ -433,7 +488,7 @@ class InscripcionService
                 ->update([
                     'estado' => Solicitud::ESTADO_APROBADA,
                     'revisado_por' => $usuario->id,
-                    'respuesta_duena' => 'Baja confirmada: ' . trim($motivo),
+                    'respuesta_duena' => 'Baja confirmada: '.trim($motivo),
                     'fecha_decision' => now(),
                 ]);
 
@@ -452,8 +507,7 @@ class InscripcionService
                 $usuario->id
             );
 
-            if (!$solicitud) {
-                event(GymRealtimeUpdate::enrollment($inscripcionLocked, 'cancelled'));
+            if (! $solicitud) {
             }
 
             return [
@@ -461,8 +515,8 @@ class InscripcionService
                 'inscripcion' => $inscripcionLocked,
                 'vacante_disponible' => true,
                 'siguiente_espera' => $siguienteEnEspera,
-                'mensaje' => "Baja efectivizada correctamente. Se liberó una vacante en el grupo '{$grupoLocked->nombre}'." .
-                    ($siguienteEnEspera ? " Hay candidatos en lista de espera (Siguiente: {$siguienteEnEspera->socio->nombre_completo})." : ""),
+                'mensaje' => "Baja efectivizada correctamente. Se liberó una vacante en el grupo '{$grupoLocked->nombre}'.".
+                    ($siguienteEnEspera ? " Hay candidatos en lista de espera (Siguiente: {$siguienteEnEspera->socio->nombre_completo})." : ''),
             ];
         });
     }
@@ -477,10 +531,10 @@ class InscripcionService
         ?string $motivo = null
     ): array {
         if ($inscripcionActual->grupo_id === $grupoDestino->id) {
-            throw new DomainException("El grupo de destino es el mismo que el actual.");
+            throw new DomainException('El grupo de destino es el mismo que el actual.');
         }
 
-        if (!$inscripcionActual->estaAprobada()) {
+        if (! $inscripcionActual->estaAprobada()) {
             throw new DomainException('Solo se puede solicitar el cambio de una inscripción aprobada.');
         }
 
@@ -492,14 +546,26 @@ class InscripcionService
             throw new DomainException("El grupo de destino '{$grupoDestino->nombre}' no tiene horarios configurados.");
         }
 
-        if (!$usuario->esDuena() && !$usuario->esRecepcionista()) {
+        if (! $usuario->esDuena() && ! $usuario->esRecepcionista()) {
             throw new AuthorizationException('El usuario no puede solicitar cambios de grupo.');
         }
 
         // Si recepción lo solicita, crea Solicitud de cambio
-        if (!$usuario->esDuena()) {
+        if (! $usuario->esDuena()) {
             Gate::forUser($usuario)->authorize('create', Solicitud::class);
+
             return DB::transaction(function () use ($inscripcionActual, $grupoDestino, $usuario, $motivo) {
+                Inscripcion::query()->whereKey($inscripcionActual->id)->lockForUpdate()->firstOrFail();
+                $existente = Solicitud::query()->where('inscripcion_id', $inscripcionActual->id)
+                    ->where('solicitante_id', $usuario->id)->where('tipo', Solicitud::TIPO_CAMBIO_GRUPO)
+                    ->where('grupo_destino_id', $grupoDestino->id)
+                    ->where('descripcion', "Solicitud de cambio a {$grupoDestino->nombre}: ".($motivo ?: 'Sin observaciones'))
+                    ->where('estado', Solicitud::ESTADO_PENDIENTE)->oldest('id')->first();
+                if ($existente) {
+                    return ['tipo' => 'solicitud_cambio_pendiente', 'solicitud' => $existente,
+                        'mensaje' => 'Ya existe una solicitud de cambio pendiente con estos datos.'];
+                }
+
                 $solicitud = Solicitud::create([
                     'socio_id' => $inscripcionActual->socio_id,
                     'solicitante_id' => $usuario->id,
@@ -507,7 +573,7 @@ class InscripcionService
                     'inscripcion_id' => $inscripcionActual->id,
                     'grupo_id' => $inscripcionActual->grupo_id,
                     'grupo_destino_id' => $grupoDestino->id,
-                    'descripcion' => "Solicitud de cambio a {$grupoDestino->nombre}: " . ($motivo ?: 'Sin observaciones'),
+                    'descripcion' => "Solicitud de cambio a {$grupoDestino->nombre}: ".($motivo ?: 'Sin observaciones'),
                     'estado' => Solicitud::ESTADO_PENDIENTE,
                 ]);
 
@@ -519,8 +585,6 @@ class InscripcionService
                     ['socio_id' => $solicitud->socio_id, 'inscripcion_id' => $solicitud->inscripcion_id, 'grupo_id' => $solicitud->grupo_id, 'grupo_destino_id' => $solicitud->grupo_destino_id, 'estado' => $solicitud->estado],
                     $usuario->id
                 );
-
-                event(GymRealtimeUpdate::request($solicitud, 'created'));
 
                 return [
                     'tipo' => 'solicitud_cambio_pendiente',
@@ -549,8 +613,8 @@ class InscripcionService
         ?string $motivo = null,
         ?Solicitud $solicitud = null
     ): array {
-        if (!$duena->esDuena()) {
-            throw new AuthorizationException("Solo la dueña puede autorizar el cambio de grupo.");
+        if (! $duena->esDuena()) {
+            throw new AuthorizationException('Solo la dueña puede autorizar el cambio de grupo.');
         }
 
         return DB::transaction(function () use ($inscripcionActual, $grupoDestino, $duena, $motivo, $solicitud) {
@@ -567,7 +631,7 @@ class InscripcionService
             }
 
             $inscripcionActual = Inscripcion::query()->lockForUpdate()->findOrFail($inscripcionActual->id);
-            if (!$inscripcionActual->estaAprobada()) {
+            if (! $inscripcionActual->estaAprobada()) {
                 throw new DomainException('La inscripción de origen ya no está aprobada.');
             }
             $gruposBloqueados = Grupo::query()
@@ -578,7 +642,7 @@ class InscripcionService
                 ->keyBy('id');
             $grupoOrigenLocked = $gruposBloqueados->get($inscripcionActual->grupo_id);
             $grupoDestinoLocked = $gruposBloqueados->get($grupoDestino->id);
-            if (!$grupoOrigenLocked || !$grupoDestinoLocked) {
+            if (! $grupoOrigenLocked || ! $grupoDestinoLocked) {
                 throw new DomainException('No se pudo confirmar el grupo de origen o destino.');
             }
             $grupoDestinoLocked->load(['disciplina', 'horarios']);
@@ -608,7 +672,7 @@ class InscripcionService
             $conflicto = self::buscarConflictoHorarioSocio($socio, $grupoDestinoLocked, $grupoOrigenLocked->id);
             if ($conflicto) {
                 throw new DomainException(
-                    "No se puede realizar el cambio: el horario de '{$grupoDestinoLocked->nombre}' colisiona con el grupo '{$conflicto['grupo']->nombre}' el día " . ucfirst($conflicto['dia']) . "."
+                    "No se puede realizar el cambio: el horario de '{$grupoDestinoLocked->nombre}' colisiona con el grupo '{$conflicto['grupo']->nombre}' el día ".ucfirst($conflicto['dia']).'.'
                 );
             }
 
@@ -617,7 +681,7 @@ class InscripcionService
             $inscripcionActual->update([
                 'estado' => Inscripcion::ESTADO_BAJA,
                 'fecha_baja' => now()->toDateString(),
-                'motivo_baja' => "Cambio de grupo autorizado hacia '{$grupoDestinoLocked->nombre}'. " . ($motivo ? "Motivo: {$motivo}" : ""),
+                'motivo_baja' => "Cambio de grupo autorizado hacia '{$grupoDestinoLocked->nombre}'. ".($motivo ? "Motivo: {$motivo}" : ''),
                 'baja_por' => $duena->id,
             ]);
 
@@ -659,7 +723,7 @@ class InscripcionService
                 ->update([
                     'estado' => Solicitud::ESTADO_APROBADA,
                     'revisado_por' => $duena->id,
-                    'respuesta_duena' => 'Cambio de grupo aprobado: ' . ($motivo ?: 'Aprobado'),
+                    'respuesta_duena' => 'Cambio de grupo aprobado: '.($motivo ?: 'Aprobado'),
                     'fecha_decision' => now(),
                 ]);
 
@@ -672,8 +736,7 @@ class InscripcionService
                 $duena->id
             );
 
-            if (!$solicitud) {
-                event(GymRealtimeUpdate::enrollment($nuevaInscripcion, 'group-changed'));
+            if (! $solicitud) {
             }
 
             return [
@@ -691,8 +754,8 @@ class InscripcionService
      */
     public function incorporarDesdeListaEspera(ListaEspera $espera, User $duena): Inscripcion
     {
-        if (!$duena->esDuena()) {
-            throw new AuthorizationException("Solo la dueña puede incorporar alumnos desde la lista de espera.");
+        if (! $duena->esDuena()) {
+            throw new AuthorizationException('Solo la dueña puede incorporar alumnos desde la lista de espera.');
         }
 
         return DB::transaction(function () use ($espera, $duena) {
@@ -704,7 +767,7 @@ class InscripcionService
             $grupoLocked = Grupo::whereKey($grupoId)->lockForUpdate()->firstOrFail();
             $esperaLocked = ListaEspera::whereKey($espera->id)->lockForUpdate()->firstOrFail();
             if ((int) $esperaLocked->grupo_id !== (int) $grupoLocked->id
-                || !$esperaLocked->estaEsperando()) {
+                || ! $esperaLocked->estaEsperando()) {
                 throw new DomainException('El registro ya no está esperando en este grupo.');
             }
 
@@ -752,7 +815,7 @@ class InscripcionService
             $conflicto = self::buscarConflictoHorarioSocio($socio, $grupoLocked);
             if ($conflicto) {
                 throw new DomainException(
-                    "No se puede incorporar: incompatibilidad horaria con el grupo '{$conflicto['grupo']->nombre}' el día " . ucfirst($conflicto['dia']) . "."
+                    "No se puede incorporar: incompatibilidad horaria con el grupo '{$conflicto['grupo']->nombre}' el día ".ucfirst($conflicto['dia']).'.'
                 );
             }
 
@@ -813,7 +876,7 @@ class InscripcionService
      */
     public function cancelarListaEspera(ListaEspera $espera, User $usuario, ?string $motivo = null): ListaEspera
     {
-        if (!$usuario->esDuena()) {
+        if (! $usuario->esDuena()) {
             throw new AuthorizationException('Solo la dueña puede cancelar un turno de la lista de espera.');
         }
 
@@ -825,14 +888,14 @@ class InscripcionService
 
             Grupo::query()->whereKey($grupoId)->lockForUpdate()->firstOrFail();
             $esperaLocked = ListaEspera::whereKey($espera->id)->lockForUpdate()->firstOrFail();
-            if ((int) $esperaLocked->grupo_id !== (int) $grupoId || !$esperaLocked->estaEsperando()) {
+            if ((int) $esperaLocked->grupo_id !== (int) $grupoId || ! $esperaLocked->estaEsperando()) {
                 throw new DomainException('El registro ya no está esperando y no puede cancelarse.');
             }
             $datosAntes = $esperaLocked->toArray();
 
             $esperaLocked->update([
                 'estado' => ListaEspera::ESTADO_CANCELADO,
-                'observaciones' => $motivo ? ($esperaLocked->observaciones . " | Cancelado: " . $motivo) : $esperaLocked->observaciones,
+                'observaciones' => $motivo ? ($esperaLocked->observaciones.' | Cancelado: '.$motivo) : $esperaLocked->observaciones,
             ]);
 
             self::reordenarListaEspera($esperaLocked->grupo_id);
@@ -883,11 +946,11 @@ class InscripcionService
     ): ?array {
         $gruposActuales = Grupo::whereHas('inscripciones', function ($q) use ($socio) {
             $q->where('socio_id', $socio->id)
-              ->where('estado', Inscripcion::ESTADO_APROBADA);
+                ->where('estado', Inscripcion::ESTADO_APROBADA);
         })
-        ->when($grupoIdIgnorar, fn($q) => $q->where('id', '!=', $grupoIdIgnorar))
-        ->with('horarios')
-        ->get();
+            ->when($grupoIdIgnorar, fn ($q) => $q->where('id', '!=', $grupoIdIgnorar))
+            ->with('horarios')
+            ->get();
 
         $horariosNuevos = $grupoNuevo->horarios;
 
@@ -909,8 +972,8 @@ class InscripcionService
                             return [
                                 'grupo' => $gActual,
                                 'dia' => $hActual->dia_semana,
-                                'horario_actual' => substr($inicioActual, 0, 5) . " a " . substr($finActual, 0, 5) . " hs",
-                                'horario_nuevo' => substr($inicioNuevo, 0, 5) . " a " . substr($finNuevo, 0, 5) . " hs",
+                                'horario_actual' => substr($inicioActual, 0, 5).' a '.substr($finActual, 0, 5).' hs',
+                                'horario_nuevo' => substr($inicioNuevo, 0, 5).' a '.substr($finNuevo, 0, 5).' hs',
                             ];
                         }
                     }

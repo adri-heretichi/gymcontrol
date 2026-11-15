@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Asistencias;
 
+use App\Livewire\Concerns\SyncsGymState;
 use App\Models\Asistencia;
 use App\Models\AsistenciaClase;
 use App\Models\ConfiguracionGimnasio;
@@ -10,51 +11,84 @@ use App\Services\AsistenciaClaseService;
 use App\Services\ControlAccesoService;
 use App\Services\SolicitudService;
 use Carbon\Carbon;
-use Livewire\Component;
-use Livewire\WithPagination;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Validator;
 use Livewire\Attributes\On;
+use Livewire\Component;
+use Livewire\WithPagination;
 
 class ListarAsistencias extends Component
 {
+    use SyncsGymState;
+
+    protected array $gymSyncResources = ['access', 'members', 'groups', 'requests', 'clock'];
+
     use WithPagination;
 
     // Filtros de búsqueda
     public $search = '';
+
     public $fechaDesde = '';
+
     public $fechaHasta = '';
+
     public $estado = 'todos'; // 'todos', 'en_sala', 'finalizados'
+
     public string $estadoClase = 'todos';
 
     // Propiedades para modal de edición (Solo Admin)
     public $showEditModal = false;
+
     public $editingId = null;
+
     public $fecha = '';
+
     public $hora_ingreso = '';
+
     public $fecha_salida = '';
+
     public $hora_salida = '';
+
     public $socioNombre = '';
+
     public bool $showClassEditModal = false;
+
     public ?int $editingClassId = null;
+
     public string $classAttendanceStatus = AsistenciaClaseService::ESTADO_PUNTUAL;
+
     public ?string $classAttendanceTime = null;
+
     public ?int $grupoClaseSeleccionado = null;
+
     public ?int $grupoAusenciaSeleccionado = null;
+
     public string $horaInicioAusencia = '';
+
     public string $mensajeClase = '';
+
     public string $mensajeCorreccion = '';
+
     public string $toleranciaTardanzaMinutos = '';
+
     public string $tipoCorreccion = '';
+
     public ?int $registroCorreccionId = null;
+
     public string $descripcionCorreccion = '';
 
     // Propiedades para la consulta del clima
     public $temperatura;
+
     public $humedad;
+
     public $viento;
+
     public $iconoClima;
+
     public $descripcionClima;
+
     public $climaCargado = false;
 
     protected $queryString = [
@@ -93,13 +127,11 @@ class ListarAsistencias extends Component
     }
 
     #[On('gym-realtime-updated')]
-    public function refreshRealtimeAttendance(): void
-    {
-    }
+    public function refreshRealtimeAttendance(): void {}
 
     public function mount()
     {
-        if (!auth()->check()) {
+        if (! auth()->check()) {
             return redirect()->route('login');
         }
         Gate::authorize('controlar-acceso');
@@ -114,7 +146,7 @@ class ListarAsistencias extends Component
     public function cargarClima()
     {
         try {
-            $response = \Illuminate\Support\Facades\Http::timeout(5)->get('https://api.open-meteo.com/v1/forecast?latitude=-26.18&longitude=-58.18&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m&timezone=America%2FArgentina%2FSalta');
+            $response = Http::timeout(5)->get('https://api.open-meteo.com/v1/forecast?latitude=-26.18&longitude=-58.18&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m&timezone=America%2FArgentina%2FSalta');
 
             if ($response->successful()) {
                 $data = $response->json();
@@ -182,7 +214,7 @@ class ListarAsistencias extends Component
             ? ($asistencia->fecha_salida?->format('Y-m-d') ?? $asistencia->fecha->format('Y-m-d'))
             : '';
         $this->hora_salida = $asistencia->hora_salida;
-        $this->socioNombre = $asistencia->socio->nombre . ' ' . $asistencia->socio->apellido;
+        $this->socioNombre = $asistencia->socio->nombre.' '.$asistencia->socio->apellido;
         $this->showEditModal = true;
     }
 
@@ -196,7 +228,7 @@ class ListarAsistencias extends Component
     public function save()
     {
         Gate::authorize('gestionar-asistencias');
-        if ($this->hora_salida && !$this->fecha_salida) {
+        if ($this->hora_salida && ! $this->fecha_salida) {
             $this->fecha_salida = $this->fecha;
         }
 
@@ -239,8 +271,9 @@ class ListarAsistencias extends Component
             auth()->user()->esRecepcionista() ? 'recepcion' : 'administracion'
         );
 
-        if (!$resultado['autorizado']) {
+        if (! $resultado['autorizado']) {
             $this->addError('grupoClaseSeleccionado', $resultado['mensaje']);
+
             return;
         }
 
@@ -352,21 +385,21 @@ class ListarAsistencias extends Component
         $query = Asistencia::query()->with(['socio']);
 
         // Filtro por búsqueda de socio (Nombre, Apellido o DNI)
-        if (!empty($this->search)) {
+        if (! empty($this->search)) {
             $query->whereHas('socio', function ($q) {
-                $q->where('nombre', 'like', '%' . $this->search . '%')
-                  ->orWhere('apellido', 'like', '%' . $this->search . '%')
-                  ->orWhere('dni', 'like', '%' . $this->search . '%');
+                $q->where('nombre', 'like', '%'.$this->search.'%')
+                    ->orWhere('apellido', 'like', '%'.$this->search.'%')
+                    ->orWhere('dni', 'like', '%'.$this->search.'%');
             });
         }
 
         // Filtro por fecha desde
-        if (!empty($this->fechaDesde)) {
+        if (! empty($this->fechaDesde)) {
             $query->where('fecha', '>=', $this->fechaDesde);
         }
 
         // Filtro por fecha hasta
-        if (!empty($this->fechaHasta)) {
+        if (! empty($this->fechaHasta)) {
             $query->where('fecha', '<=', $this->fechaHasta);
         }
 
@@ -379,7 +412,7 @@ class ListarAsistencias extends Component
 
         // Ordenar cronológicamente descendente
         $query->orderBy('fecha', 'desc')
-              ->orderBy('hora_ingreso', 'desc');
+            ->orderBy('hora_ingreso', 'desc');
 
         return view('livewire.asistencias.listar-asistencias', [
             'asistencias' => $query->paginate(10),
@@ -394,9 +427,9 @@ class ListarAsistencias extends Component
                 ->with(['socio', 'grupo.disciplina', 'marcadoPor'])
                 ->when($this->search !== '', function ($classQuery) {
                     $classQuery->whereHas('socio', function ($socioQuery) {
-                        $socioQuery->where('nombre', 'like', '%' . $this->search . '%')
-                            ->orWhere('apellido', 'like', '%' . $this->search . '%')
-                            ->orWhere('dni', 'like', '%' . $this->search . '%');
+                        $socioQuery->where('nombre', 'like', '%'.$this->search.'%')
+                            ->orWhere('apellido', 'like', '%'.$this->search.'%')
+                            ->orWhere('dni', 'like', '%'.$this->search.'%');
                     });
                 })
                 ->when($this->fechaDesde !== '', fn ($classQuery) => $classQuery->whereDate('fecha', '>=', $this->fechaDesde))

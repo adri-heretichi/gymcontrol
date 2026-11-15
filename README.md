@@ -247,3 +247,11 @@ Se conservan exportación PDF, tarjeta de socio, API autenticada con Laravel San
 | Adriana Heretichi | Integración y desarrollo Full Stack |
 
 Proyecto académico — 2026. Laravel · Livewire · Tailwind CSS.
+
+## Revisión local de tiempo real
+
+La auditoría y los límites de la verificación en el clon aislado están en [AUDITORIA_TIEMPO_REAL_FENIX.md](AUDITORIA_TIEMPO_REAL_FENIX.md). Las pruebas de ingreso autorizado y salida real requieren un horario válido y no están aprobadas visualmente todavía.
+
+Validación final del clon aislado: 460 pruebas Laravel y 2.257 aserciones, seis pruebas JavaScript y compilación Vite aprobadas. La auditoría distingue las comprobaciones reales de Chrome y los recorridos de tiempo controlado; el ingreso autorizado y la salida real siguen pendientes de un horario válido.
+
+Presentación médica: el documento cargado queda pendiente; su aprobación o rechazo es un paso explícito exclusivo de la dueña. Recepción sólo ve la habilitación operativa. En grupos llenos, el formulario de inscripción permite registrar una espera explícita sin ocupar plaza; la incorporación posterior requiere autorización de la dueña.

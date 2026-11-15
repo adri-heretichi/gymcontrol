@@ -2,16 +2,30 @@
 
 namespace App\Livewire\Operadores;
 
+use App\Livewire\Concerns\SyncsGymState;
+use App\Models\Auditoria;
 use App\Models\User;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Hash;
 use Livewire\Component;
 
 class EditarOperador extends Component
 {
+    use SyncsGymState;
+
+    protected array $gymSyncResources = ['operators'];
+
+    protected bool $gymSyncOwnerOnly = true;
+
     public User $user;
+
     public $name = '';
+
     public $email = '';
+
     public $rol = '';
+
     public $password = ''; // Opcional para restablecer la contraseña
 
     /**
@@ -19,7 +33,7 @@ class EditarOperador extends Component
      */
     public function mount(User $user)
     {
-        if (!auth()->check() || auth()->user()->rol !== 'admin') {
+        if (! auth()->check() || auth()->user()->rol !== 'admin') {
             abort(403, 'No tienes los permisos necesarios para acceder a esta sección.');
         }
 
@@ -36,7 +50,7 @@ class EditarOperador extends Component
     {
         return [
             'name' => 'required|string|min:2|max:255',
-            'email' => 'required|email|max:255|unique:users,email,' . $this->user->id,
+            'email' => 'required|email|max:255|unique:users,email,'.$this->user->id,
             'rol' => 'required|in:admin,recepcionista',
             'password' => 'nullable|string|min:8',
         ];
@@ -61,6 +75,7 @@ class EditarOperador extends Component
      */
     public function actualizar()
     {
+        Gate::authorize('administrar-operadores');
         $this->validate();
 
         $datos = [
@@ -74,9 +89,15 @@ class EditarOperador extends Component
             $datos['password'] = Hash::make($this->password);
         }
 
-        $this->user->update($datos);
+        DB::transaction(function () use ($datos) {
+            $operador = User::lockForUpdate()->findOrFail($this->user->id);
+            $antes = $operador->only(['id', 'name', 'email', 'rol']);
+            $operador->update($datos);
+            Auditoria::registrar('administrativo', 'operador_actualizado', $operador, datosAntes: $antes, datosDespues: $operador->only(['id', 'name', 'email', 'rol']));
+        });
 
         session()->flash('message', 'Operador actualizado correctamente.');
+
         return redirect()->route('operadores.index');
     }
 

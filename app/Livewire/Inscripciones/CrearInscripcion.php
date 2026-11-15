@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Inscripciones;
 
+use App\Livewire\Concerns\SyncsGymState;
 use App\Models\Disciplina;
 use App\Models\Grupo;
 use App\Models\Socio;
@@ -11,15 +12,23 @@ use Livewire\Component;
 
 class CrearInscripcion extends Component
 {
+    use SyncsGymState;
+
+    protected array $gymSyncResources = ['members', 'groups'];
+
     public $socio_id = '';
+
     public $buscarSocio = '';
+
     public $disciplina_id = '';
+
     public $grupo_id = '';
+
     public $observaciones = '';
 
     public function mount()
     {
-        if (!auth()->check()) {
+        if (! auth()->check()) {
             abort(403, 'Sesión requerida.');
         }
 
@@ -85,8 +94,9 @@ class CrearInscripcion extends Component
             ->whereHas('horarios')
             ->first();
 
-        if (!$grupo) {
+        if (! $grupo) {
             $this->addError('grupo_id', 'El grupo debe pertenecer a la disciplina seleccionada, estar activo y tener horarios configurados.');
+
             return;
         }
 
@@ -101,23 +111,45 @@ class CrearInscripcion extends Component
             );
 
             session()->flash('message', $resultado['mensaje']);
+
             return redirect()->route('inscripciones.index');
         } catch (DomainException $e) {
             $this->addError('grupo_id', $e->getMessage());
         } catch (\Exception $e) {
-            $this->addError('grupo_id', 'Ocurrió un error al procesar la solicitud: ' . $e->getMessage());
+            $this->addError('grupo_id', 'Ocurrió un error al procesar la solicitud: '.$e->getMessage());
+        }
+    }
+
+    public function registrarEspera()
+    {
+        $this->validate();
+        $grupo = Grupo::whereKey($this->grupo_id)->where('disciplina_id', $this->disciplina_id)->first();
+        if (! $grupo) {
+            $this->addError('grupo_id', 'El grupo debe pertenecer a la disciplina seleccionada.');
+
+            return;
+        }
+        try {
+            $espera = app(InscripcionService::class)->registrarEnListaEspera(
+                Socio::findOrFail($this->socio_id), $grupo, auth()->user(), $this->observaciones
+            );
+            session()->flash('message', 'Socio registrado en lista de espera. Posición #'.$espera->posicion.'. No ocupa una plaza; la incorporación requiere autorización de la dueña.');
+
+            return redirect()->route('inscripciones.index', ['tab' => 'espera']);
+        } catch (DomainException $e) {
+            $this->addError('grupo_id', $e->getMessage());
         }
     }
 
     public function render()
     {
         $sociosSugeridos = [];
-        if (!$this->socio_id && strlen(trim($this->buscarSocio)) >= 2) {
+        if (! $this->socio_id && strlen(trim($this->buscarSocio)) >= 2) {
             $sociosSugeridos = Socio::where('estado', 'activo')
                 ->where(function ($q) {
-                    $q->where('nombre', 'like', '%' . $this->buscarSocio . '%')
-                      ->orWhere('apellido', 'like', '%' . $this->buscarSocio . '%')
-                      ->orWhere('dni', 'like', '%' . $this->buscarSocio . '%');
+                    $q->where('nombre', 'like', '%'.$this->buscarSocio.'%')
+                        ->orWhere('apellido', 'like', '%'.$this->buscarSocio.'%')
+                        ->orWhere('dni', 'like', '%'.$this->buscarSocio.'%');
                 })
                 ->limit(6)
                 ->get();

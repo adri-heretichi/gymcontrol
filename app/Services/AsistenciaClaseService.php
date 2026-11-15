@@ -2,7 +2,6 @@
 
 namespace App\Services;
 
-use App\Events\GymRealtimeUpdate;
 use App\Models\Asistencia;
 use App\Models\AsistenciaClase;
 use App\Models\Auditoria;
@@ -20,15 +19,17 @@ use Illuminate\Validation\ValidationException;
 class AsistenciaClaseService
 {
     public const ESTADO_PUNTUAL = AsistenciaClase::ESTADO_PUNTUAL;
+
     public const ESTADO_TARDE = AsistenciaClase::ESTADO_TARDE;
+
     public const ESTADO_PENDIENTE = AsistenciaClase::ESTADO_PENDIENTE;
+
     public const ESTADO_AUSENCIA_CONFIRMADA = AsistenciaClase::ESTADO_AUSENCIA_CONFIRMADA;
 
     public function __construct(
         private readonly PagoService $pagoService,
         private readonly CertificadoMedicoService $certificadoMedicoService,
-    ) {
-    }
+    ) {}
 
     /**
      * Registra una presentación a una sesión concreta del horario del grupo.
@@ -48,14 +49,14 @@ class AsistenciaClaseService
 
         return DB::transaction(function () use ($socio, $grupo, $operador, $momento, $permanencia, $origen) {
             $socioBloqueado = Socio::query()->lockForUpdate()->find($socio->id);
-            if (!$socioBloqueado || $socioBloqueado->estado !== 'activo') {
+            if (! $socioBloqueado || $socioBloqueado->estado !== 'activo') {
                 return $this->denegar('socio_inactivo', 'El socio no está habilitado.', $socioBloqueado, $grupo, $operador);
             }
 
             $grupoActual = Grupo::query()->with(['disciplina', 'horarios'])
                 ->lockForUpdate()
                 ->find($grupo->id);
-            if (!$grupoActual || $grupoActual->estado !== 'activo' || $grupoActual->disciplina?->estado !== 'activa') {
+            if (! $grupoActual || $grupoActual->estado !== 'activo' || $grupoActual->disciplina?->estado !== 'activa') {
                 return $this->denegar('grupo_inactivo', 'El grupo no está habilitado.', $socioBloqueado, $grupoActual, $operador);
             }
 
@@ -64,15 +65,16 @@ class AsistenciaClaseService
                 ->where('grupo_id', $grupoActual->id)
                 ->where('estado', Inscripcion::ESTADO_APROBADA)
                 ->first();
-            if (!$inscripcion) {
+            if (! $inscripcion) {
                 return $this->denegar('inscripcion_no_aprobada', 'No hay una inscripción aprobada para este grupo.', $socioBloqueado, $grupoActual, $operador);
             }
 
             $cobertura = $this->pagoService->consultarCoberturaInscripcion($inscripcion, $momento->toDateString());
-            if (!$cobertura['vigente']) {
+            if (! $cobertura['vigente']) {
                 $codigo = $cobertura['estado'] === PagoDetalle::COBERTURA_VENCIDA
                     ? 'cuota_vencida'
                     : 'sin_cobertura';
+
                 return $this->denegar($codigo, 'No hay cobertura vigente para este grupo.', $socioBloqueado, $grupoActual, $operador);
             }
 
@@ -80,7 +82,7 @@ class AsistenciaClaseService
                 $socioBloqueado,
                 $momento->toDateString()
             );
-            if (!$evaluacionMedica['cumple']) {
+            if (! $evaluacionMedica['cumple']) {
                 return $this->denegar('requisito_medico_pendiente', 'El acceso a esta clase no está habilitado.', $socioBloqueado, $grupoActual, $operador);
             }
 
@@ -115,7 +117,7 @@ class AsistenciaClaseService
                     ->lockForUpdate()
                     ->first();
 
-            if (!$asistenciaFisica) {
+            if (! $asistenciaFisica) {
                 return $this->denegar('sin_permanencia_abierta', 'Se requiere una permanencia física abierta.', $socioBloqueado, $grupoActual, $operador);
             }
 
@@ -130,7 +132,7 @@ class AsistenciaClaseService
             }
 
             $inicioProgramado = Carbon::parse(
-                $momento->toDateString() . ' ' . $horario->hora_inicio,
+                $momento->toDateString().' '.$horario->hora_inicio,
                 config('app.timezone')
             );
             $estado = $this->estadoDePresentacion($momento, $inicioProgramado);
@@ -164,15 +166,6 @@ class AsistenciaClaseService
                 ],
                 userId: $operador->id
             );
-
-            event(GymRealtimeUpdate::classAttendance(
-                $asistenciaClase,
-                $socioBloqueado,
-                [
-                    'grupo' => $grupoActual->nombre,
-                    'disciplina' => $grupoActual->disciplina?->nombre,
-                ]
-            ));
 
             return [
                 'autorizado' => true,
@@ -225,12 +218,11 @@ class AsistenciaClaseService
         string $horaInicio,
         User $duena,
         ?Carbon $ahora = null
-    ): int
-    {
+    ): int {
         Gate::forUser($duena)->authorize('gestionar-asistencias');
         $ahora = ($ahora ?? Carbon::now(config('app.timezone')))->copy()->setTimezone(config('app.timezone'));
         $fechaClase = Carbon::parse($fecha, config('app.timezone'));
-        if (!$fechaClase->isSameDay($ahora)) {
+        if (! $fechaClase->isSameDay($ahora)) {
             throw ValidationException::withMessages([
                 'fecha' => 'Solo se pueden confirmar ausencias para una clase de hoy y después de su finalización.',
             ]);
@@ -245,8 +237,8 @@ class AsistenciaClaseService
             $horario = $grupoActual->horarios
                 ->first(fn ($item) => $item->hora_inicio === $horaInicio
                     && $this->normalizarDia($item->dia_semana) === $this->diaSemana($ahora)
-                    && Carbon::parse($fecha . ' ' . $item->hora_fin, config('app.timezone'))->lte($ahora));
-            if (!$horario) {
+                    && Carbon::parse($fecha.' '.$item->hora_fin, config('app.timezone'))->lte($ahora));
+            if (! $horario) {
                 throw ValidationException::withMessages(['grupo' => 'No hay una clase de hoy finalizada para este grupo.']);
             }
 
@@ -258,7 +250,7 @@ class AsistenciaClaseService
                 ->get();
 
             foreach ($inscripciones as $inscripcion) {
-                if (!$this->socioHabilitadoParaClase($inscripcion, $fecha)) {
+                if (! $this->socioHabilitadoParaClase($inscripcion, $fecha)) {
                     continue;
                 }
 
@@ -318,7 +310,7 @@ class AsistenciaClaseService
             'ausente_justificado',
             'cancelado',
         ];
-        if (!in_array($estado, $estadosValidos, true)) {
+        if (! in_array($estado, $estadosValidos, true)) {
             throw ValidationException::withMessages(['estado' => 'El estado de asistencia no es válido.']);
         }
         if ($estado !== self::ESTADO_AUSENCIA_CONFIRMADA && $horaMarcado === null) {
@@ -372,7 +364,7 @@ class AsistenciaClaseService
 
     private function socioHabilitadoParaClase(Inscripcion $inscripcion, string $fecha): bool
     {
-        if (!$inscripcion->socio || $inscripcion->socio->estado !== 'activo') {
+        if (! $inscripcion->socio || $inscripcion->socio->estado !== 'activo') {
             return false;
         }
 
@@ -412,8 +404,7 @@ class AsistenciaClaseService
         ?Socio $socio,
         ?Grupo $grupo,
         User $operador
-    ): array
-    {
+    ): array {
         Auditoria::registrar(
             tipoEvento: 'asistencia_clase',
             accion: 'asistencia_clase_denegada',

@@ -2,19 +2,30 @@
 
 namespace App\Livewire\AptosFisicos;
 
+use App\Livewire\Concerns\SyncsGymState;
+use App\Models\AptoFisico;
 use App\Models\Socio;
+use App\Services\CertificadoMedicoService;
 use Carbon\Carbon;
 use Livewire\Component;
 use Livewire\WithFileUploads;
 
 class CrearAptoFisico extends Component
 {
+    use SyncsGymState;
+
+    protected array $gymSyncResources = ['medical', 'members'];
+
+    protected bool $gymSyncOwnerOnly = true;
+
     use WithFileUploads;
 
     public Socio $socio;
 
     public $fecha_emision = '';
+
     public $fecha_vencimiento = '';
+
     public $archivo_cargado;
 
     /**
@@ -22,7 +33,7 @@ class CrearAptoFisico extends Component
      */
     public function mount(Socio $socio)
     {
-        $this->authorize('create', \App\Models\AptoFisico::class);
+        $this->authorize('create', AptoFisico::class);
 
         $this->socio = $socio;
         $this->fecha_emision = Carbon::today()->format('Y-m-d');
@@ -74,11 +85,11 @@ class CrearAptoFisico extends Component
      */
     public function guardar()
     {
-        $this->authorize('create', \App\Models\AptoFisico::class);
+        $this->authorize('create', AptoFisico::class);
         $this->validate();
 
-        $service = app(\App\Services\CertificadoMedicoService::class);
-        $apto = $service->registrarCertificado(
+        $service = app(CertificadoMedicoService::class);
+        $apto = $service->presentarCertificado(
             socio: $this->socio,
             fechaEmision: $this->fecha_emision,
             fechaVencimiento: $this->fecha_vencimiento,
@@ -88,16 +99,17 @@ class CrearAptoFisico extends Component
 
         session()->flash(
             'message',
-            $apto->estado === \App\Models\AptoFisico::ESTADO_PENDIENTE_REVISION
+            $apto->estado === AptoFisico::ESTADO_PENDIENTE_REVISION
                 ? 'Certificado registrado. Quedó pendiente de aprobación de la dueña.'
                 : 'Certificado registrado y aprobado por la dueña.'
         );
+
         return redirect()->route('socios.show', $this->socio->id);
     }
 
     public function render()
     {
-        $this->authorize('create', \App\Models\AptoFisico::class);
+        $this->authorize('create', AptoFisico::class);
 
         return view('livewire.aptos-fisicos.crear-apto-fisico')
             ->layout('layouts.app');

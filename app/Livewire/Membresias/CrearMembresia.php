@@ -2,13 +2,22 @@
 
 namespace App\Livewire\Membresias;
 
+use App\Livewire\Concerns\SyncsGymState;
 use App\Models\Membresia;
 use Livewire\Component;
 
 class CrearMembresia extends Component
 {
+    use SyncsGymState;
+
+    protected array $gymSyncResources = ['groups'];
+
+    protected bool $gymSyncOwnerOnly = true;
+
     public $nombre = '';
+
     public $precio = '';
+
     public $horas_mensuales = '';
 
     /**
@@ -16,7 +25,7 @@ class CrearMembresia extends Component
      */
     public function mount()
     {
-        if (!auth()->check() || auth()->user()->rol !== 'admin') {
+        if (! auth()->check() || auth()->user()->rol !== 'admin') {
             abort(403, 'No tienes los permisos necesarios para acceder a esta sección.');
         }
     }
@@ -57,11 +66,12 @@ class CrearMembresia extends Component
         Membresia::create([
             'nombre' => trim($this->nombre),
             'precio' => $this->precio,
-            'horas_mensuales' => $this->horas_mensuales ? (int)$this->horas_mensuales : null,
+            'horas_mensuales' => $this->horas_mensuales ? (int) $this->horas_mensuales : null,
             'estado' => 'activo',
         ]);
 
         session()->flash('message', 'Plan de membresía creado correctamente.');
+
         return redirect()->route('membresias.index');
     }
 

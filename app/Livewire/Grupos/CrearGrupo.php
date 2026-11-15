@@ -2,32 +2,45 @@
 
 namespace App\Livewire\Grupos;
 
+use App\Livewire\Concerns\SyncsGymState;
+use App\Models\Auditoria;
 use App\Models\Disciplina;
 use App\Models\Grupo;
 use App\Models\GrupoHorario;
-use App\Models\Auditoria;
+use App\Models\User;
 use App\Services\HorarioGimnasioService;
 use Illuminate\Support\Facades\DB;
 use Livewire\Component;
 
 class CrearGrupo extends Component
 {
+    use SyncsGymState;
+
+    protected array $gymSyncResources = ['groups'];
+
+    protected bool $gymSyncOwnerOnly = true;
+
     public $disciplina_id = '';
+
     public $nombre = '';
+
     public $profesor = '';
+
     public $cupo_maximo = 15;
+
     public $estado = 'activo';
 
     public $horarios = [];
+
     public bool $volverAMembresias = false;
 
     public function mount()
     {
-        if (!auth()->check() || auth()->user()->rol !== 'admin') {
+        if (! auth()->check() || auth()->user()->rol !== 'admin') {
             abort(403, 'No tienes los permisos necesarios para acceder a esta sección.');
         }
 
-        $this->profesor = \App\Models\User::nombreProfesora();
+        $this->profesor = User::nombreProfesora();
         $this->volverAMembresias = request()->query('origen') === 'membresias';
         $disciplinaId = request()->query('disciplina_id');
         if ($disciplinaId && Disciplina::whereKey($disciplinaId)->where('estado', 'activo')->exists()) {
@@ -68,7 +81,7 @@ class CrearGrupo extends Component
             'cupo_maximo' => 'required|integer|min:1|max:15',
             'estado' => 'required|in:activo,inactivo',
             'horarios' => 'required|array|min:1',
-            'horarios.*.dia_semana' => 'required|string|in:' . implode(',', array_keys(HorarioGimnasioService::DIAS_SEMANA)),
+            'horarios.*.dia_semana' => 'required|string|in:'.implode(',', array_keys(HorarioGimnasioService::DIAS_SEMANA)),
             'horarios.*.hora_inicio' => 'required|date_format:H:i',
             'horarios.*.hora_fin' => 'required|date_format:H:i',
         ];
@@ -98,14 +111,15 @@ class CrearGrupo extends Component
 
     public function guardar()
     {
-        if (!auth()->check() || auth()->user()->rol !== 'admin') {
+        if (! auth()->check() || auth()->user()->rol !== 'admin') {
             abort(403, 'No tienes permisos para crear grupos.');
         }
 
         $this->validate();
 
-        if (!Disciplina::query()->whereKey($this->disciplina_id)->where('estado', 'activo')->exists()) {
+        if (! Disciplina::query()->whereKey($this->disciplina_id)->where('estado', 'activo')->exists()) {
             $this->addError('disciplina_id', 'La disciplina seleccionada debe estar activa.');
+
             return;
         }
 
@@ -113,6 +127,7 @@ class CrearGrupo extends Component
         $errorHorarios = HorarioGimnasioService::validarColeccionHorarios($this->horarios);
         if ($errorHorarios) {
             $this->addError('horarios', $errorHorarios);
+
             return;
         }
 
@@ -131,6 +146,7 @@ class CrearGrupo extends Component
                         'horarios',
                         "Existe superposición horaria con el grupo '{$conflicto->nombre}' de la disciplina '{$conflicto->disciplina->nombre}' el día {$diaNombre} en el rango indicado. La profesora no puede dictar dos clases a la vez."
                     );
+
                     return;
                 }
             }

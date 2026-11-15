@@ -2,15 +2,28 @@
 
 namespace App\Livewire\Operadores;
 
+use App\Livewire\Concerns\SyncsGymState;
+use App\Models\Auditoria;
 use App\Models\User;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Hash;
 use Livewire\Component;
 
 class CrearOperador extends Component
 {
+    use SyncsGymState;
+
+    protected array $gymSyncResources = ['operators'];
+
+    protected bool $gymSyncOwnerOnly = true;
+
     public $name = '';
+
     public $email = '';
+
     public $password = '';
+
     public $rol = 'recepcionista'; // Por defecto Recepcionista
 
     /**
@@ -18,7 +31,7 @@ class CrearOperador extends Component
      */
     public function mount()
     {
-        if (!auth()->check() || auth()->user()->rol !== 'admin') {
+        if (! auth()->check() || auth()->user()->rol !== 'admin') {
             abort(403, 'No tienes los permisos necesarios para acceder a esta sección.');
         }
     }
@@ -56,16 +69,21 @@ class CrearOperador extends Component
      */
     public function guardar()
     {
+        Gate::authorize('administrar-operadores');
         $this->validate();
 
-        User::create([
-            'name' => trim($this->name),
-            'email' => trim($this->email),
-            'password' => Hash::make($this->password),
-            'rol' => $this->rol,
-        ]);
+        DB::transaction(function () {
+            $operador = User::create([
+                'name' => trim($this->name),
+                'email' => trim($this->email),
+                'password' => Hash::make($this->password),
+                'rol' => $this->rol,
+            ]);
+            Auditoria::registrar('administrativo', 'operador_creado', $operador, datosDespues: $operador->only(['id', 'name', 'email', 'rol']));
+        });
 
         session()->flash('message', 'Operador registrado correctamente.');
+
         return redirect()->route('operadores.index');
     }
 

@@ -2,11 +2,13 @@
 
 namespace App\Livewire\Pagos;
 
+use App\Livewire\Concerns\SyncsGymState;
 use App\Models\Inscripcion;
 use App\Models\Pago;
 use App\Models\Socio;
 use App\Services\PagoService;
 use Carbon\Carbon;
+use Illuminate\View\View;
 use Livewire\Component;
 
 /**
@@ -30,22 +32,33 @@ use Livewire\Component;
  */
 class CrearPago extends Component
 {
+    use SyncsGymState;
+
+    protected array $gymSyncResources = ['payments', 'members', 'groups', 'clock'];
+
     // ── Datos del pago ──────────────────────────────────────────────────────────
-    public ?int   $socio_id       = null;
-    public string $buscarSocio    = '';
-    public string $fecha_pago     = '';
-    public string $metodo_pago    = 'efectivo';
-    public string $referencia     = '';
+    public ?int $socio_id = null;
+
+    public string $buscarSocio = '';
+
+    public string $fecha_pago = '';
+
+    public string $metodo_pago = 'efectivo';
+
+    public string $referencia = '';
 
     // ── Detalles multi-concepto ─────────────────────────────────────────────────
     // Cada elemento: ['inscripcion_id', 'concepto', 'fecha_inicio', 'fecha_fin', 'subtotal']
     public array $detalles = [];
 
     // ── Estado UI ───────────────────────────────────────────────────────────────
-    public bool   $deshabilitarSocio     = false;
-    public ?Socio $socioPreseleccionado  = null;
-    public array  $inscripcionesDisponibles = [];
-    public array  $coberturaActual          = [];
+    public bool $deshabilitarSocio = false;
+
+    public ?Socio $socioPreseleccionado = null;
+
+    public array $inscripcionesDisponibles = [];
+
+    public array $coberturaActual = [];
 
     // ── Errores UI ──────────────────────────────────────────────────────────────
     public ?string $errorGeneral = null;
@@ -55,13 +68,13 @@ class CrearPago extends Component
         $this->authorize('create', Pago::class);
 
         $this->fecha_pago = Carbon::now(config('app.timezone'))->format('Y-m-d');
-        $this->detalles   = [$this->detalleVacio()];
+        $this->detalles = [$this->detalleVacio()];
 
         if ($socio && $socio->exists) {
-            $this->socio_id             = $socio->id;
+            $this->socio_id = $socio->id;
             $this->socioPreseleccionado = $socio;
-            $this->deshabilitarSocio    = true;
-            $this->buscarSocio          = "{$socio->apellido}, {$socio->nombre} (DNI {$socio->dni})";
+            $this->deshabilitarSocio = true;
+            $this->buscarSocio = "{$socio->apellido}, {$socio->nombre} (DNI {$socio->dni})";
             $this->cargarInscripciones();
 
             $inscripcionId = (int) request()->query('inscripcion', 0);
@@ -140,7 +153,7 @@ class CrearPago extends Component
     public function actualizarFechasDetalle(int $index): void
     {
         $inscripcionId = $this->detalles[$index]['inscripcion_id'] ?? null;
-        if (!$inscripcionId) {
+        if (! $inscripcionId) {
             return;
         }
 
@@ -149,20 +162,20 @@ class CrearPago extends Component
             ->where('socio_id', $this->socio_id)
             ->whereIn('estado', [Inscripcion::ESTADO_APROBADA, Inscripcion::ESTADO_PENDIENTE])
             ->find($inscripcionId);
-        if (!$inscripcion) {
+        if (! $inscripcion) {
             return;
         }
 
         $service = app(PagoService::class);
-        $inicio  = $service->obtenerProximaFechaInicio($inscripcion);
+        $inicio = $service->obtenerProximaFechaInicio($inscripcion);
         // Fin sugerido: último día del mes del inicio (guía, no regla fija)
         $finSugerido = Carbon::parse($inicio)->endOfMonth()->toDateString();
 
         $this->detalles[$index]['fecha_inicio'] = $inicio;
-        $this->detalles[$index]['fecha_fin']    = $finSugerido;
+        $this->detalles[$index]['fecha_fin'] = $finSugerido;
         $this->detalles[$index]['subtotal'] = $inscripcion->grupo?->disciplina?->precio ?? '';
         $disciplina = $inscripcion->grupo?->disciplina?->nombre ?? 'Membresía';
-        $this->detalles[$index]['concepto'] = 'Cuota ' . Carbon::parse($inicio)->format('m/Y') . ' - ' . $disciplina;
+        $this->detalles[$index]['concepto'] = 'Cuota '.Carbon::parse($inicio)->format('m/Y').' - '.$disciplina;
 
         // Mostrar cobertura actual de esta inscripción
         $service = app(PagoService::class);
@@ -191,6 +204,7 @@ class CrearPago extends Component
 
             if ($inscripcionesSinPrecio) {
                 $this->errorGeneral = "La membresía '{$inscripcionesSinPrecio->grupo?->disciplina?->nombre}' no tiene precio configurado. Defina el precio desde Membresías antes de registrar el pago.";
+
                 return;
             }
         }
@@ -228,25 +242,25 @@ class CrearPago extends Component
 
             session()->flash('message',
                 "✓ Pago registrado para {$socio->nombre} {$socio->apellido}. "
-                . "Total: \$" . number_format($pago->importe, 2, ',', '.') . "."
+                .'Total: $'.number_format($pago->importe, 2, ',', '.').'.'
             );
 
             $this->dispatch('pagoRegistrado');
             $this->redirect(route('pagos.index'), navigate: true);
 
-        } catch (\InvalidArgumentException | \DomainException | \RuntimeException $e) {
+        } catch (\InvalidArgumentException|\DomainException|\RuntimeException $e) {
             $this->errorGeneral = $e->getMessage();
         }
     }
 
     // ── Render ──────────────────────────────────────────────────────────────────
 
-    public function render(): \Illuminate\View\View
+    public function render(): View
     {
         $socios = [];
-        if (!$this->deshabilitarSocio) {
+        if (! $this->deshabilitarSocio) {
             $termino = trim($this->buscarSocio);
-            if (!$this->socio_id && mb_strlen($termino) >= 2) {
+            if (! $this->socio_id && mb_strlen($termino) >= 2) {
                 $socios = Socio::query()
                     ->where('estado', 'activo')
                     ->where(function ($query) use ($termino) {
@@ -262,9 +276,9 @@ class CrearPago extends Component
         }
 
         return view('livewire.pagos.crear-pago', [
-            'socios'       => $socios,
+            'socios' => $socios,
             'socioSeleccionado' => $this->socio_id ? Socio::find($this->socio_id) : null,
-            'mediosPago'   => Pago::MEDIOS_PAGO,
+            'mediosPago' => Pago::MEDIOS_PAGO,
             'importeTotal' => $this->importeTotal,
         ])->layout('layouts.app');
     }
@@ -275,17 +289,27 @@ class CrearPago extends Component
     {
         return [
             'inscripcion_id' => '',
-            'concepto'       => '',
-            'fecha_inicio'   => $this->fecha_pago ?: Carbon::now(config('app.timezone'))->toDateString(),
-            'fecha_fin'      => '',
-            'subtotal'       => '',
+            'concepto' => '',
+            'fecha_inicio' => $this->fecha_pago ?: Carbon::now(config('app.timezone'))->toDateString(),
+            'fecha_fin' => '',
+            'subtotal' => '',
         ];
+    }
+
+    protected function refreshGymReadState(): void
+    {
+        $this->socioPreseleccionado?->refresh();
+        $this->cargarInscripciones();
+        foreach (array_keys($this->coberturaActual) as $id) {
+            $inscripcion = Inscripcion::where('socio_id', $this->socio_id)->find($id);
+            $this->coberturaActual[$id] = $inscripcion ? app(PagoService::class)->consultarCoberturaInscripcion($inscripcion) : [];
+        }
     }
 
     private function cargarInscripciones(): void
     {
         $this->inscripcionesDisponibles = [];
-        if (!$this->socio_id) {
+        if (! $this->socio_id) {
             return;
         }
 
@@ -298,14 +322,15 @@ class CrearPago extends Component
 
         $this->inscripcionesDisponibles = $inscripciones->map(function (Inscripcion $insc) use ($service) {
             $cobertura = $service->consultarCoberturaInscripcion($insc);
+
             return [
-                'id'         => $insc->id,
-                'label'      => ($insc->grupo?->disciplina?->nombre ?? 'Sin disciplina')
-                    . ' – ' . ($insc->grupo?->nombre ?? ''),
+                'id' => $insc->id,
+                'label' => ($insc->grupo?->disciplina?->nombre ?? 'Sin disciplina')
+                    .' – '.($insc->grupo?->nombre ?? ''),
                 'precio' => $insc->grupo?->disciplina?->precio,
                 'estado_inscripcion' => $insc->estado,
-                'cobertura_vigente'  => $cobertura['vigente'],
-                'fecha_fin'          => $cobertura['fecha_fin'],
+                'cobertura_vigente' => $cobertura['vigente'],
+                'fecha_fin' => $cobertura['fecha_fin'],
             ];
         })->toArray();
     }
@@ -313,18 +338,18 @@ class CrearPago extends Component
     protected function rules(): array
     {
         $rules = [
-            'socio_id'    => 'required|exists:socios,id',
-            'fecha_pago'  => 'required|date',
+            'socio_id' => 'required|exists:socios,id',
+            'fecha_pago' => 'required|date',
             'metodo_pago' => 'required|in:efectivo,debito,credito,mercadopago,tarjeta,transferencia',
-            'referencia'  => 'nullable|string|max:100',
-            'detalles'    => 'required|array|min:1',
+            'referencia' => 'nullable|string|max:100',
+            'detalles' => 'required|array|min:1',
         ];
 
         foreach ($this->detalles as $i => $det) {
-            $rules["detalles.{$i}.concepto"]       = 'required|string|max:150';
-            $rules["detalles.{$i}.fecha_inicio"]   = 'required|date';
-            $rules["detalles.{$i}.fecha_fin"]      = "required|date|after_or_equal:detalles.{$i}.fecha_inicio";
-            $rules["detalles.{$i}.subtotal"]       = 'required|numeric|min:0';
+            $rules["detalles.{$i}.concepto"] = 'required|string|max:150';
+            $rules["detalles.{$i}.fecha_inicio"] = 'required|date';
+            $rules["detalles.{$i}.fecha_fin"] = "required|date|after_or_equal:detalles.{$i}.fecha_inicio";
+            $rules["detalles.{$i}.subtotal"] = 'required|numeric|min:0';
             $rules["detalles.{$i}.inscripcion_id"] = 'required|integer|exists:inscripciones,id';
         }
 
@@ -334,24 +359,24 @@ class CrearPago extends Component
     protected function messages(): array
     {
         $msgs = [
-            'socio_id.required'   => 'Seleccioná un socio.',
-            'socio_id.exists'     => 'El socio seleccionado no existe.',
+            'socio_id.required' => 'Seleccioná un socio.',
+            'socio_id.exists' => 'El socio seleccionado no existe.',
             'fecha_pago.required' => 'La fecha de pago es obligatoria.',
-            'fecha_pago.date'     => 'La fecha de pago no es válida.',
-            'metodo_pago.required'=> 'Seleccioná un medio de pago.',
-            'metodo_pago.in'      => 'Medio de pago no reconocido.',
-            'detalles.required'   => 'Agregá al menos un concepto.',
-            'detalles.min'        => 'Agregá al menos un concepto.',
+            'fecha_pago.date' => 'La fecha de pago no es válida.',
+            'metodo_pago.required' => 'Seleccioná un medio de pago.',
+            'metodo_pago.in' => 'Medio de pago no reconocido.',
+            'detalles.required' => 'Agregá al menos un concepto.',
+            'detalles.min' => 'Agregá al menos un concepto.',
         ];
 
         foreach ($this->detalles as $i => $det) {
             $n = $i + 1;
-            $msgs["detalles.{$i}.concepto.required"]     = "El concepto del ítem #{$n} es obligatorio.";
+            $msgs["detalles.{$i}.concepto.required"] = "El concepto del ítem #{$n} es obligatorio.";
             $msgs["detalles.{$i}.fecha_inicio.required"] = "La fecha de inicio del ítem #{$n} es obligatoria.";
-            $msgs["detalles.{$i}.fecha_fin.required"]    = "La fecha de fin del ítem #{$n} es obligatoria.";
+            $msgs["detalles.{$i}.fecha_fin.required"] = "La fecha de fin del ítem #{$n} es obligatoria.";
             $msgs["detalles.{$i}.fecha_fin.after_or_equal"] = "La fecha de fin del ítem #{$n} no puede ser anterior al inicio.";
-            $msgs["detalles.{$i}.subtotal.required"]     = "El importe del ítem #{$n} es obligatorio.";
-            $msgs["detalles.{$i}.subtotal.min"]          = "El importe del ítem #{$n} no puede ser negativo.";
+            $msgs["detalles.{$i}.subtotal.required"] = "El importe del ítem #{$n} es obligatorio.";
+            $msgs["detalles.{$i}.subtotal.min"] = "El importe del ítem #{$n} no puede ser negativo.";
         }
 
         return $msgs;

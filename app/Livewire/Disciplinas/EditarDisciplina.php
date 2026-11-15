@@ -2,23 +2,35 @@
 
 namespace App\Livewire\Disciplinas;
 
-use App\Models\Disciplina;
+use App\Livewire\Concerns\SyncsGymState;
 use App\Models\Auditoria;
-use Livewire\Component;
+use App\Models\Disciplina;
 use Illuminate\Support\Facades\DB;
+use Livewire\Component;
 
 class EditarDisciplina extends Component
 {
+    use SyncsGymState;
+
+    protected array $gymSyncResources = ['groups'];
+
+    protected bool $gymSyncOwnerOnly = true;
+
     public Disciplina $disciplina;
+
     public $nombre = '';
+
     public $descripcion = '';
+
     public $precio = '';
+
     public $estado = '';
+
     public bool $volverAMembresias = false;
 
     public function mount(Disciplina $disciplina)
     {
-        if (!auth()->check() || auth()->user()->rol !== 'admin') {
+        if (! auth()->check() || auth()->user()->rol !== 'admin') {
             abort(403, 'No tienes los permisos necesarios para acceder a esta sección.');
         }
 
@@ -33,7 +45,7 @@ class EditarDisciplina extends Component
     protected function rules()
     {
         return [
-            'nombre' => 'required|string|min:2|max:100|unique:disciplinas,nombre,' . $this->disciplina->id,
+            'nombre' => 'required|string|min:2|max:100|unique:disciplinas,nombre,'.$this->disciplina->id,
             'descripcion' => 'nullable|string|max:500',
             'precio' => 'nullable|numeric|min:0|max:999999.99',
             'estado' => 'required|in:activo,inactivo',
@@ -54,7 +66,7 @@ class EditarDisciplina extends Component
 
     public function actualizar()
     {
-        if (!auth()->check() || auth()->user()->rol !== 'admin') {
+        if (! auth()->check() || auth()->user()->rol !== 'admin') {
             abort(403, 'No tienes permisos para modificar disciplinas.');
         }
 

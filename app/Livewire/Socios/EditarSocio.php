@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Socios;
 
+use App\Livewire\Concerns\SyncsGymState;
 use App\Models\Auditoria;
 use App\Models\Socio;
 use Illuminate\Support\Facades\DB;
@@ -9,21 +10,33 @@ use Livewire\Component;
 
 class EditarSocio extends Component
 {
+    use SyncsGymState;
+
+    protected array $gymSyncResources = ['members', 'groups'];
+
+    protected bool $gymSyncOwnerOnly = true;
+
     // Instancia del socio inyectada automáticamente
     public Socio $socio;
 
     // Propiedades del formulario
     public $nombre = '';
+
     public $apellido = '';
+
     public $dni = '';
+
     public $sexo = '';
+
     public $correo = '';
+
     public $celular = '';
+
     public $fecha_alta = '';
-    
+
     // El estado del socio
     public $estado = '';
-    
+
     // Propiedad foto preparada
     public $foto = null;
 
@@ -32,7 +45,7 @@ class EditarSocio extends Component
      */
     public function mount(Socio $socio)
     {
-        if (!auth()->check() || auth()->user()->rol !== 'admin') {
+        if (! auth()->check() || auth()->user()->rol !== 'admin') {
             abort(403, 'No tienes los permisos necesarios para acceder a esta sección.');
         }
         $this->socio = $socio;
@@ -55,9 +68,9 @@ class EditarSocio extends Component
         $rules = [
             'nombre' => 'required|string|min:2|max:255',
             'apellido' => 'required|string|min:2|max:255',
-            'dni' => 'required|digits_between:7,10|unique:socios,dni,' . $this->socio->id,
+            'dni' => 'required|digits_between:7,10|unique:socios,dni,'.$this->socio->id,
             'sexo' => 'required|in:M,F',
-            'correo' => 'nullable|email|unique:socios,correo,' . $this->socio->id . '|max:255',
+            'correo' => 'nullable|email|unique:socios,correo,'.$this->socio->id.'|max:255',
             'celular' => 'nullable|string|max:50',
             'fecha_alta' => 'required|date',
             'foto' => 'nullable', // Preparado para futuras integraciones
@@ -138,6 +151,7 @@ class EditarSocio extends Component
 
         // Redireccionamos a la ficha del socio con un mensaje flash
         session()->flash('mensaje', 'Socio actualizado correctamente.');
+
         return redirect()->route('socios.show', $this->socio->id);
     }
 

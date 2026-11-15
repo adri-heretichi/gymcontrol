@@ -1,4 +1,4 @@
-<div>
+<div data-gym-sync="payments members groups clock permissions">
     {{-- ── Título ──────────────────────────────────────────────────────────────── --}}
     <x-slot name="header">
         <div class="flex items-center justify-between">

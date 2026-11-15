@@ -2,12 +2,19 @@
 
 namespace App\Livewire\Operadores;
 
+use App\Livewire\Concerns\SyncsGymState;
 use App\Models\User;
 use Livewire\Component;
 use Livewire\WithPagination;
 
 class ListarOperadores extends Component
 {
+    use SyncsGymState;
+
+    protected array $gymSyncResources = ['operators'];
+
+    protected bool $gymSyncOwnerOnly = true;
+
     use WithPagination;
 
     // Propiedad para el buscador
@@ -30,7 +37,7 @@ class ListarOperadores extends Component
      */
     public function mount()
     {
-        if (!auth()->check() || auth()->user()->rol !== 'admin') {
+        if (! auth()->check() || auth()->user()->rol !== 'admin') {
             abort(403, 'No tienes los permisos necesarios para acceder a esta sección.');
         }
     }
@@ -53,8 +60,8 @@ class ListarOperadores extends Component
         // Aplicamos buscador por nombre o email
         if ($this->buscar !== '') {
             $query->where(function ($q) {
-                $q->where('name', 'like', '%' . $this->buscar . '%')
-                  ->orWhere('email', 'like', '%' . $this->buscar . '%');
+                $q->where('name', 'like', '%'.$this->buscar.'%')
+                    ->orWhere('email', 'like', '%'.$this->buscar.'%');
             });
         }
 
@@ -66,7 +73,7 @@ class ListarOperadores extends Component
         $operadores = $query->orderBy('name', 'asc')->paginate(10);
 
         return view('livewire.operadores.listar-operadores', [
-            'operadores' => $operadores
+            'operadores' => $operadores,
         ])->layout('layouts.app');
     }
 }

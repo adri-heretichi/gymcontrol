@@ -61,6 +61,11 @@ class Socio extends Model
         'decision_medica_at' => 'datetime',
     ];
 
+    public function getNombreCompletoAttribute(): string
+    {
+        return trim(trim((string) $this->nombre).' '.trim((string) $this->apellido));
+    }
+
     // Relación de Muchos a Uno: Un socio pertenece a una membresía
     public function membresia(): BelongsTo
     {

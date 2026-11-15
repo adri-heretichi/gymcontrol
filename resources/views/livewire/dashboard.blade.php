@@ -1,4 +1,4 @@
-<div class="py-10 bg-slate-50 dark:bg-slate-900 min-h-screen">
+<div data-gym-sync="members groups payments medical access requests clock permissions" class="py-10 bg-slate-50 dark:bg-slate-900 min-h-screen">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
         <header class="border-b border-slate-200 dark:border-slate-700 pb-5">
             <h1 class="text-3xl font-black text-slate-900 dark:text-white">
@@ -8,6 +8,8 @@
                 Indicadores operativos actualizados desde los registros del gimnasio.
             </p>
         </header>
+
+        @include('livewire.realtime.recent-access-events')
 
         @unless($esDuena)
             <section class="rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-5 space-y-4">
@@ -42,6 +44,7 @@
                 ['Solicitudes pendientes', $solicitudesPendientes],
                 ['Decisiones médicas pendientes', $decisionesMedicasPendientes],
                 ['Certificados faltantes o vencidos', $certificadosFaltantesOVencidos],
+                ['Certificados pendientes de revisión', $certificadosPendientesRevision],
                 ['Accesos denegados (7 días)', $accesosDenegadosRecientes],
             ] : [
                 ['Socios activos', $sociosActivos],

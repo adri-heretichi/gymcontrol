@@ -2,9 +2,10 @@
 
 namespace App\Livewire\Pagos;
 
+use App\Livewire\Concerns\SyncsGymState;
 use App\Models\Pago;
-use App\Models\Socio;
 use App\Services\PagoService;
+use Illuminate\View\View;
 use Livewire\Component;
 use Livewire\WithPagination;
 
@@ -18,24 +19,35 @@ use Livewire\WithPagination;
  */
 class ListarPagos extends Component
 {
+    use SyncsGymState;
+
+    protected array $gymSyncResources = ['payments', 'members', 'groups', 'clock'];
+
     use WithPagination;
 
-    public string $buscar       = '';
+    public string $buscar = '';
+
     public string $filtroMetodo = '';
+
     public string $filtroEstado = '';  // '' | 'activo' | 'anulado'
-    public string $filtroDesde  = '';
-    public string $filtroHasta  = '';
+
+    public string $filtroDesde = '';
+
+    public string $filtroHasta = '';
 
     // Anulación modal (solo dueña)
-    public bool   $modalAnular   = false;
-    public ?int   $pagoAnularId  = null;
+    public bool $modalAnular = false;
+
+    public ?int $pagoAnularId = null;
+
     public string $motivoAnulacion = '';
-    public ?string $errorAnulacion  = null;
+
+    public ?string $errorAnulacion = null;
 
     protected $paginationTheme = 'tailwind';
 
     protected $queryString = [
-        'buscar'       => ['except' => ''],
+        'buscar' => ['except' => ''],
         'filtroMetodo' => ['except' => ''],
         'filtroEstado' => ['except' => ''],
     ];
@@ -45,27 +57,38 @@ class ListarPagos extends Component
         $this->authorize('viewAny', Pago::class);
     }
 
-    public function updatingBuscar():       void { $this->resetPage(); }
-    public function updatingFiltroMetodo(): void { $this->resetPage(); }
-    public function updatingFiltroEstado(): void { $this->resetPage(); }
+    public function updatingBuscar(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatingFiltroMetodo(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatingFiltroEstado(): void
+    {
+        $this->resetPage();
+    }
 
     // ── Anulación ───────────────────────────────────────────────────────────────
 
     public function abrirModalAnular(int $pagoId): void
     {
         $this->authorize('anular', Pago::findOrFail($pagoId));
-        $this->pagoAnularId    = $pagoId;
+        $this->pagoAnularId = $pagoId;
         $this->motivoAnulacion = '';
-        $this->errorAnulacion  = null;
-        $this->modalAnular     = true;
+        $this->errorAnulacion = null;
+        $this->modalAnular = true;
     }
 
     public function cerrarModalAnular(): void
     {
-        $this->modalAnular     = false;
-        $this->pagoAnularId    = null;
+        $this->modalAnular = false;
+        $this->pagoAnularId = null;
         $this->motivoAnulacion = '';
-        $this->errorAnulacion  = null;
+        $this->errorAnulacion = null;
     }
 
     public function confirmarAnulacion(): void
@@ -74,7 +97,7 @@ class ListarPagos extends Component
             'motivoAnulacion' => 'required|string|min:10|max:500',
         ], [
             'motivoAnulacion.required' => 'El motivo de anulación es obligatorio.',
-            'motivoAnulacion.min'      => 'El motivo debe tener al menos 10 caracteres.',
+            'motivoAnulacion.min' => 'El motivo debe tener al menos 10 caracteres.',
         ]);
 
         $pago = Pago::findOrFail($this->pagoAnularId);
@@ -92,7 +115,7 @@ class ListarPagos extends Component
 
     // ── Render ──────────────────────────────────────────────────────────────────
 
-    public function render(): \Illuminate\View\View
+    public function render(): View
     {
         $user = auth()->user();
 
@@ -106,8 +129,8 @@ class ListarPagos extends Component
         if ($this->buscar !== '') {
             $query->whereHas('socio', function ($q) {
                 $q->where('nombre', 'like', "%{$this->buscar}%")
-                  ->orWhere('apellido', 'like', "%{$this->buscar}%")
-                  ->orWhere('dni', 'like', "%{$this->buscar}%");
+                    ->orWhere('apellido', 'like', "%{$this->buscar}%")
+                    ->orWhere('dni', 'like', "%{$this->buscar}%");
             });
         }
 
@@ -136,10 +159,10 @@ class ListarPagos extends Component
         $pagos = $query->orderByDesc('fecha_pago')->orderByDesc('id')->paginate(15);
 
         return view('livewire.pagos.listar-pagos', [
-            'pagos'      => $pagos,
-            'sumaTotal'  => $sumaTotal,
+            'pagos' => $pagos,
+            'sumaTotal' => $sumaTotal,
             'mediosPago' => Pago::MEDIOS_PAGO,
-            'esDuena'    => $user->esDuena(),
+            'esDuena' => $user->esDuena(),
         ])->layout('layouts.app');
     }
 }

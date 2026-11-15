@@ -2,9 +2,10 @@
 
 namespace App\Livewire\Auditoria;
 
+use App\Livewire\Concerns\SyncsGymState;
+use App\Models\AptoFisico;
 use App\Models\Asistencia;
 use App\Models\AsistenciaClase;
-use App\Models\AptoFisico;
 use App\Models\Auditoria;
 use App\Models\Disciplina;
 use App\Models\Grupo;
@@ -15,22 +16,35 @@ use App\Models\Socio;
 use App\Models\Solicitud;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use Livewire\Attributes\On;
 use Livewire\Component;
 use Livewire\WithPagination;
 
 class PanelAuditoria extends Component
 {
+    use SyncsGymState;
+
+    protected array $gymSyncResources = ['audit'];
+
+    protected bool $gymSyncOwnerOnly = true;
+
     use WithPagination;
 
     public string $fechaDesde = '';
+
     public string $fechaHasta = '';
+
     public string $tipoEvento = '';
+
     public string $accion = '';
+
     public string $usuarioId = '';
+
     public string $dniSocio = '';
+
     public string $resultado = '';
 
     public function mount(): void
@@ -89,15 +103,13 @@ class PanelAuditoria extends Component
     }
 
     #[On('gym-realtime-updated')]
-    public function refreshRealtimeAudit(): void
-    {
-    }
+    public function refreshRealtimeAudit(): void {}
 
     public function updated(string $property): void
     {
         if (in_array($property, ['fechaDesde', 'fechaHasta'], true)) {
             $value = $this->{$property};
-            if ($value !== '' && !$this->esFechaValida($value)) {
+            if ($value !== '' && ! $this->esFechaValida($value)) {
                 $this->addError($property, 'Ingresá una fecha válida.');
             } else {
                 $this->resetValidation($property);
@@ -156,6 +168,7 @@ class PanelAuditoria extends Component
         }
 
         $fechaAnalizada = \DateTimeImmutable::createFromFormat('!Y-m-d', $fecha);
+
         return $fechaAnalizada instanceof \DateTimeImmutable
             && $fechaAnalizada->format('Y-m-d') === $fecha;
     }
@@ -185,7 +198,7 @@ class PanelAuditoria extends Component
         });
     }
 
-    private function agregarSociosRelacionados(\Illuminate\Support\Collection $eventos, ?int $socioFiltrado): void
+    private function agregarSociosRelacionados(Collection $eventos, ?int $socioFiltrado): void
     {
         $tablasRelacionadas = [
             Inscripcion::class => 'inscripciones',
@@ -206,6 +219,7 @@ class PanelAuditoria extends Component
                 foreach ($ids as $id) {
                     $socioPorAuditable[$tipo][$id] = $id;
                 }
+
                 continue;
             }
             if (in_array($tipo, [Grupo::class, Disciplina::class], true)) {
@@ -215,9 +229,10 @@ class PanelAuditoria extends Component
                         $socioPorAuditable[$tipo][$id] = $socioFiltrado;
                     }
                 }
+
                 continue;
             }
-            if (!isset($tablasRelacionadas[$tipo])) {
+            if (! isset($tablasRelacionadas[$tipo])) {
                 continue;
             }
             $relaciones = DB::table($tablasRelacionadas[$tipo])
@@ -230,7 +245,7 @@ class PanelAuditoria extends Component
         $nombres = Socio::query()
             ->whereIn('id', array_unique($socioIds))
             ->get(['id', 'nombre', 'apellido'])
-            ->mapWithKeys(fn (Socio $socio) => [$socio->id => trim($socio->nombre . ' ' . $socio->apellido)]);
+            ->mapWithKeys(fn (Socio $socio) => [$socio->id => trim($socio->nombre.' '.$socio->apellido)]);
 
         foreach ($eventos as $evento) {
             $socioId = $socioPorAuditable[$evento->auditable_type][$evento->auditable_id] ?? null;

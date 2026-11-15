@@ -2,15 +2,26 @@
 
 namespace App\Livewire\Membresias;
 
+use App\Livewire\Concerns\SyncsGymState;
 use App\Models\Membresia;
 use Livewire\Component;
 
 class EditarMembresia extends Component
 {
+    use SyncsGymState;
+
+    protected array $gymSyncResources = ['groups'];
+
+    protected bool $gymSyncOwnerOnly = true;
+
     public Membresia $membresia;
+
     public $nombre = '';
+
     public $precio = '';
+
     public $horas_mensuales = '';
+
     public $estado = '';
 
     /**
@@ -18,7 +29,7 @@ class EditarMembresia extends Component
      */
     public function mount(Membresia $membresia)
     {
-        if (!auth()->check() || auth()->user()->rol !== 'admin') {
+        if (! auth()->check() || auth()->user()->rol !== 'admin') {
             abort(403, 'No tienes los permisos necesarios para acceder a esta sección.');
         }
 
@@ -35,7 +46,7 @@ class EditarMembresia extends Component
     protected function rules()
     {
         return [
-            'nombre' => 'required|string|min:2|max:255|unique:membresias,nombre,' . $this->membresia->id,
+            'nombre' => 'required|string|min:2|max:255|unique:membresias,nombre,'.$this->membresia->id,
             'precio' => 'required|numeric|min:0|max:999999.99',
             'horas_mensuales' => 'nullable|integer|min:1|max:9999',
             'estado' => 'required|in:activo,inactivo',
@@ -68,11 +79,12 @@ class EditarMembresia extends Component
         $this->membresia->update([
             'nombre' => trim($this->nombre),
             'precio' => $this->precio,
-            'horas_mensuales' => $this->horas_mensuales ? (int)$this->horas_mensuales : null,
+            'horas_mensuales' => $this->horas_mensuales ? (int) $this->horas_mensuales : null,
             'estado' => $this->estado,
         ]);
 
         session()->flash('message', 'Plan de membresía actualizado correctamente.');
+
         return redirect()->route('membresias.index');
     }
 

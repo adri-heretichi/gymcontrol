@@ -2,7 +2,8 @@
 
 namespace App\Livewire\Socios;
 
-use App\Events\GymRealtimeUpdate;
+use App\Livewire\Concerns\SyncsGymState;
+use App\Models\Auditoria;
 use App\Models\Disciplina;
 use App\Models\Grupo;
 use App\Models\Pago;
@@ -21,21 +22,34 @@ use Livewire\Component;
 
 class CrearSocio extends Component
 {
+    use SyncsGymState;
+
+    protected array $gymSyncResources = ['groups'];
+
     // Propiedades vinculadas al formulario
     public $nombre = '';
+
     public $apellido = '';
+
     public $dni = '';
+
     public $sexo = 'M'; // Por defecto Masculino
+
     public $correo = '';
+
     public $celular = '';
+
     public $fecha_alta = '';
+
     public $estado = 'activo'; // Activo por defecto al registrarse
-    
+
     // Propiedad foto preparada para futura carga de archivos (temporalmente nula)
     public $foto = null;
 
     public array $inscripciones = [];
+
     public string $decision_medica = 'pendiente';
+
     public string $metodo_pago = 'efectivo';
 
     /**
@@ -43,7 +57,7 @@ class CrearSocio extends Component
      */
     public function mount()
     {
-        if (!auth()->check() || (!auth()->user()->esDuena() && !auth()->user()->esRecepcionista())) {
+        if (! auth()->check() || (! auth()->user()->esDuena() && ! auth()->user()->esRecepcionista())) {
             abort(403, 'No tienes los permisos necesarios para acceder a esta sección.');
         }
         $this->fecha_alta = Carbon::today()->format('Y-m-d');
@@ -128,12 +142,12 @@ class CrearSocio extends Component
     {
         $this->authorize('create', Socio::class);
         $data = $this->validate();
-        if (!auth()->user()->esDuena() && $this->decision_medica !== 'pendiente') {
+        if (! auth()->user()->esDuena() && $this->decision_medica !== 'pendiente') {
             throw ValidationException::withMessages(['decision_medica' => 'Solo la dueña puede resolver el requisito médico.']);
         }
         $selected = array_filter($data['inscripciones'], fn ($row) => filled($row['disciplina_id'] ?? null) || filled($row['grupo_id'] ?? null));
         foreach ($data['inscripciones'] as $index => $row) {
-            if (!empty($row['confirmar_cobro']) && empty($row['grupo_id'])) {
+            if (! empty($row['confirmar_cobro']) && empty($row['grupo_id'])) {
                 throw ValidationException::withMessages(["inscripciones.{$index}.grupo_id" => 'Seleccione una inscripción antes de confirmar su cobro.']);
             }
         }
@@ -144,11 +158,11 @@ class CrearSocio extends Component
                 ->orderBy('id')->lockForUpdate()->get()->keyBy('id');
             foreach ($selected as $index => $row) {
                 $group = $groups->get((int) $row['grupo_id']);
-                if (!$group || (int) $group->disciplina_id !== (int) $row['disciplina_id']
+                if (! $group || (int) $group->disciplina_id !== (int) $row['disciplina_id']
                     || $group->estado !== 'activo' || $group->disciplina?->estado !== 'activo' || $group->horarios->isEmpty()) {
                     throw ValidationException::withMessages(["inscripciones.{$index}.grupo_id" => 'El grupo debe pertenecer a la disciplina elegida, estar activo y tener horarios.']);
                 }
-                if (!empty($row['confirmar_cobro']) && ($group->disciplina->precio === null || (float) $group->disciplina->precio <= 0)) {
+                if (! empty($row['confirmar_cobro']) && ($group->disciplina->precio === null || (float) $group->disciplina->precio <= 0)) {
                     throw ValidationException::withMessages(["inscripciones.{$index}.confirmar_cobro" => 'Defina un precio válido para esta disciplina antes de cobrar.']);
                 }
             }
@@ -164,7 +178,7 @@ class CrearSocio extends Component
                 'estado_credencial' => 'sin_emitir', 'decision_medica' => 'pendiente',
                 'fecha_alta' => $this->fecha_alta, 'fecha_vencimiento' => null, 'estado' => $this->estado,
             ]);
-            \App\Models\Auditoria::registrar(
+            Auditoria::registrar(
                 tipoEvento: 'administrativo', accion: 'alta_socio', entidad: $member,
                 datosDespues: ['id' => $member->id, 'nombre' => $member->nombre, 'apellido' => $member->apellido,
                     'dni' => $member->dni, 'estado' => $member->estado]
@@ -174,12 +188,12 @@ class CrearSocio extends Component
                 $group = $groups->get((int) $row['grupo_id']);
                 try {
                     $result = app(InscripcionService::class)->solicitarInscripcion($member, $group, auth()->user());
-                    if (!empty($row['confirmar_cobro'])) {
+                    if (! empty($row['confirmar_cobro'])) {
                         app(PagoService::class)->registrarPago(
                             socio: $member,
                             detalles: [[
                                 'inscripcion_id' => $result['modelo']->id,
-                                'concepto' => 'Cuota - ' . $group->disciplina->nombre,
+                                'concepto' => 'Cuota - '.$group->disciplina->nombre,
                                 'fecha_inicio' => $row['fecha_inicio'], 'fecha_fin' => $row['fecha_fin'],
                                 'subtotal' => $group->disciplina->precio,
                             ]],
@@ -187,7 +201,7 @@ class CrearSocio extends Component
                             fechaPago: Carbon::today(config('app.timezone'))->toDateString(),
                         );
                     }
-                } catch (DomainException | \InvalidArgumentException $exception) {
+                } catch (DomainException|\InvalidArgumentException $exception) {
                     throw ValidationException::withMessages(["inscripciones.{$index}.grupo_id" => $exception->getMessage()]);
                 }
             }
@@ -199,12 +213,12 @@ class CrearSocio extends Component
             if (auth()->user()->esDuena() && $credentials->evaluarRequisitosEmision($member)['habilitado']) {
                 $credentials->emitirPrimeraVez($member, auth()->user());
             }
-            event(GymRealtimeUpdate::operationalChange('member-created'));
 
             return $member;
         });
 
         session()->flash('message', 'Datos del socio registrados. Las inscripciones, pagos y requisitos de acceso se consultan por separado en su ficha.');
+
         return redirect()->route('socios.show', $created->id);
     }
 

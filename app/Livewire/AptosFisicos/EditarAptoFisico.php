@@ -2,22 +2,32 @@
 
 namespace App\Livewire\AptosFisicos;
 
+use App\Livewire\Concerns\SyncsGymState;
 use App\Models\AptoFisico;
 use App\Models\Auditoria;
-use Livewire\Component;
-use Livewire\WithFileUploads;
 use App\Services\CertificadoMedicoService;
 use Illuminate\Support\Facades\DB;
+use Livewire\Component;
+use Livewire\WithFileUploads;
 
 class EditarAptoFisico extends Component
 {
+    use SyncsGymState;
+
+    protected array $gymSyncResources = ['medical', 'members'];
+
+    protected bool $gymSyncOwnerOnly = true;
+
     use WithFileUploads;
 
     public AptoFisico $aptoFisico;
 
     public $fecha_emision = '';
+
     public $fecha_vencimiento = '';
+
     public $estado = '';
+
     public $archivo_cargado;
 
     /**
@@ -78,11 +88,12 @@ class EditarAptoFisico extends Component
             )
         ) {
             $this->addError('estado', 'Solo se puede aprobar un certificado ya emitido y todavía vigente.');
+
             return;
         }
 
         if ($this->archivo_cargado) {
-            app(CertificadoMedicoService::class)->registrarCertificado(
+            app(CertificadoMedicoService::class)->presentarCertificado(
                 socio: $this->aptoFisico->socio,
                 fechaEmision: $this->fecha_emision,
                 fechaVencimiento: $this->fecha_vencimiento,
@@ -91,6 +102,7 @@ class EditarAptoFisico extends Component
             );
 
             session()->flash('message', 'El nuevo certificado se registró y el documento histórico se conservó.');
+
             return redirect()->route('socios.show', $this->aptoFisico->socio_id);
         }
 
@@ -128,6 +140,7 @@ class EditarAptoFisico extends Component
         });
 
         session()->flash('message', 'Certificado médico actualizado correctamente.');
+
         return redirect()->route('socios.show', $this->aptoFisico->socio_id);
     }
 

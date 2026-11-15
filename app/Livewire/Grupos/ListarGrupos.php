@@ -2,18 +2,24 @@
 
 namespace App\Livewire\Grupos;
 
-use App\Models\Disciplina;
+use App\Livewire\Concerns\SyncsGymState;
 use App\Models\Auditoria;
+use App\Models\Disciplina;
 use App\Models\Grupo;
+use Illuminate\Support\Facades\DB;
 use Livewire\Component;
 use Livewire\WithPagination;
-use Illuminate\Support\Facades\DB;
 
 class ListarGrupos extends Component
 {
+    use SyncsGymState;
+
+    protected array $gymSyncResources = ['groups', 'members'];
+
     use WithPagination;
 
     public $buscar = '';
+
     public $disciplinaId = '';
 
     protected $paginationTheme = 'tailwind';
@@ -38,12 +44,13 @@ class ListarGrupos extends Component
      */
     public function alternarEstado($grupoId)
     {
-        if (!auth()->check()) {
+        if (! auth()->check()) {
             abort(403, 'Sesión no activa.');
         }
 
         if (auth()->user()->rol !== 'admin') {
             session()->flash('error', 'No tienes permisos para modificar el estado del grupo.');
+
             return;
         }
 
@@ -60,10 +67,11 @@ class ListarGrupos extends Component
                 datosDespues: ['estado' => $grupo->estado],
                 userId: auth()->id()
             );
+
             return $grupo;
         }, 3);
 
-        session()->flash('message', "El estado del grupo '{$grupo->nombre}' ahora es: " . strtoupper($grupo->estado));
+        session()->flash('message', "El estado del grupo '{$grupo->nombre}' ahora es: ".strtoupper($grupo->estado));
     }
 
     /**
@@ -71,18 +79,19 @@ class ListarGrupos extends Component
      */
     public function eliminar($grupoId)
     {
-        if (!auth()->check()) {
+        if (! auth()->check()) {
             abort(403, 'Sesión no activa.');
         }
 
         if (auth()->user()->rol !== 'admin') {
             session()->flash('error', 'No tienes permisos para eliminar grupos.');
+
             return;
         }
 
         $nombre = DB::transaction(function () use ($grupoId) {
             $grupo = Grupo::query()->lockForUpdate()->findOrFail($grupoId);
-            if (!$grupo->puedeEliminarse()) {
+            if (! $grupo->puedeEliminarse()) {
                 return null;
             }
 
@@ -104,11 +113,13 @@ class ListarGrupos extends Component
             );
             $grupo->horarios()->delete();
             $grupo->delete();
+
             return $grupo->nombre;
         }, 3);
         if ($nombre === null) {
             $grupo = Grupo::findOrFail($grupoId);
             session()->flash('error', "No es posible eliminar el grupo '{$grupo->nombre}' porque registra inscripciones o asistencias históricas. Se sugiere desactivarlo para conservar el historial.");
+
             return;
         }
 
@@ -125,10 +136,10 @@ class ListarGrupos extends Component
             })
             ->when($this->buscar, function ($q) {
                 $q->where(function ($sub) {
-                    $sub->where('nombre', 'like', '%' . $this->buscar . '%')
-                        ->orWhere('profesor', 'like', '%' . $this->buscar . '%')
+                    $sub->where('nombre', 'like', '%'.$this->buscar.'%')
+                        ->orWhere('profesor', 'like', '%'.$this->buscar.'%')
                         ->orWhereHas('disciplina', function ($d) {
-                            $d->where('nombre', 'like', '%' . $this->buscar . '%');
+                            $d->where('nombre', 'like', '%'.$this->buscar.'%');
                         });
                 });
             })
