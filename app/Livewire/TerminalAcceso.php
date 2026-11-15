@@ -2,31 +2,59 @@
 
 namespace App\Livewire;
 
-use App\Models\Asistencia;
+use App\Livewire\Concerns\SyncsGymState;
 use App\Services\ControlAccesoService;
-use Carbon\Carbon;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Livewire\Component;
 
 class TerminalAcceso extends Component
 {
+    use SyncsGymState;
+
+    protected array $gymSyncResources = ['availability'];
+
+    protected bool $gymSyncPublic = true;
+
     public $pin = '';
+
+    public bool $datosOperativosActualizados = false;
+
+    protected function refreshGymReadState(): void
+    {
+        if (in_array('availability', $this->gymSyncIncomingResources, true) || (in_array('*', $this->gymSyncIncomingResources, true) && $this->estadoAcceso !== null)) {
+            $this->datosOperativosActualizados = true;
+        }
+    }
 
     // Estados para la respuesta visual
     public $mensajeAcceso = null;
+
     public $estadoAcceso = null; // 'exito' (verde), 'salida' (azul), 'error' (rojo)
+
     public $socioInfo = null;
+
     public $motivoRechazo = '';
+
     public $actividadAcceso = null;
+
     public $horarioAcceso = null;
+
     public array $opcionesActividad = [];
+
     public $grupoSeleccionado = null;
 
     // Propiedades para la consulta del clima
     public $temperatura;
+
     public $humedad;
+
     public $viento;
+
     public $iconoClima;
+
     public $descripcionClima;
+
     public $climaCargado = false;
 
     /**
@@ -43,7 +71,7 @@ class TerminalAcceso extends Component
     public function cargarClima()
     {
         try {
-            $response = \Illuminate\Support\Facades\Http::timeout(15)->get('https://api.open-meteo.com/v1/forecast?latitude=-26.18&longitude=-58.18&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m&timezone=America%2FArgentina%2FSalta');
+            $response = Http::timeout(15)->get('https://api.open-meteo.com/v1/forecast?latitude=-26.18&longitude=-58.18&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m&timezone=America%2FArgentina%2FSalta');
 
             if ($response->successful()) {
                 $data = $response->json();
@@ -62,11 +90,11 @@ class TerminalAcceso extends Component
                 }
             } else {
                 $this->climaCargado = false;
-                \Illuminate\Support\Facades\Log::warning('Clima: respuesta no exitosa. Status: ' . $response->status());
+                Log::warning('Clima: respuesta no exitosa. Status: '.$response->status());
             }
         } catch (\Exception $e) {
             $this->climaCargado = false;
-             \Illuminate\Support\Facades\Log::error('Error clima terminal: ' . $e->getMessage());
+            Log::error('Error clima terminal: '.$e->getMessage());
         }
     }
 
@@ -120,12 +148,13 @@ class TerminalAcceso extends Component
 
     public function appendDigit(string $digit): void
     {
-        if (!preg_match('/^\d$/', $digit)) {
+        if (! preg_match('/^\d$/', $digit)) {
             $this->addError('pin', 'El teclado solo admite números.');
+
             return;
         }
 
-        if (!preg_match('/^\d{0,6}$/', $this->pin)) {
+        if (! preg_match('/^\d{0,6}$/', $this->pin)) {
             $this->pin = '';
         }
 
@@ -154,6 +183,7 @@ class TerminalAcceso extends Component
      */
     public function procesar()
     {
+        $this->datosOperativosActualizados = false;
         $term = trim($this->pin);
         $this->pin = '';
         $this->resetErrorBag('pin');
@@ -162,8 +192,9 @@ class TerminalAcceso extends Component
             return;
         }
 
-        if (!preg_match('/^\d{6}$/', $term)) {
+        if (! preg_match('/^\d{6}$/', $term)) {
             $this->addError('pin', 'Ingresá un PIN válido de seis números.');
+
             return;
         }
 

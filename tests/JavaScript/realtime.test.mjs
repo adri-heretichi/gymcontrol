@@ -1,0 +1,9 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { SyncBatch, affects } from '../../resources/js/gym-sync.js';
+test('duplicate deliveries do not request duplicate refreshes',()=>{const b=new SyncBatch();assert.equal(b.push({change_id:'one',resources:['members']}),true);assert.equal(b.push({change_id:'one',resources:['members']}),false);assert.deepEqual(b.take(),['members']);assert.deepEqual(b.take(),[]);});
+test('operational and individual channels merge complementary resources',()=>{const b=new SyncBatch();b.push({change_id:'same',resources:['members']});b.push({change_id:'same',resources:['requests','members']});assert.deepEqual(b.take(),['members','requests']);});
+test('invalid payloads and private field names are ignored',()=>{const b=new SyncBatch();assert.equal(b.push({change_id:'invalid',resources:['password','pin','archivo']}),false);assert.deepEqual(b.take(),[]);assert.equal(b.push(null),false);});
+test('reconnect invalidates visible queries without replaying operations',()=>{const b=new SyncBatch();b.push({change_id:'old',resources:['payments']});b.take();b.invalidate(['*']);assert.deepEqual(b.take(),['*']);assert.equal(b.push({change_id:'old',resources:['payments']}),false);});
+test('resource matching avoids unrelated queries',()=>{assert.equal(affects(['members','groups'],['access']),false);assert.equal(affects(['members','clock'],['clock']),true);assert.equal(affects(['members'],['*']),true);});
+test('deduplication memory has a bounded size',()=>{const b=new SyncBatch(2);for(const id of ['one','two','three'])b.push({change_id:id,resources:['members']});assert.equal(b.seen.size,2);assert.equal(b.seen.has('one'),false);});

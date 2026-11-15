@@ -2,9 +2,9 @@
 
 namespace App\Livewire;
 
+use App\Livewire\Concerns\SyncsGymState;
 use App\Models\Asistencia;
-use App\Models\Auditoria;
-use App\Models\Socio;
+use App\Services\AccessActivityService;
 use App\Services\ControlAccesoService;
 use Illuminate\Support\Facades\Gate;
 use Livewire\Attributes\On;
@@ -12,16 +12,30 @@ use Livewire\Component;
 
 class ControlAcceso extends Component
 {
+    use SyncsGymState;
+
+    protected array $gymSyncResources = ['access', 'members', 'groups', 'payments', 'clock'];
+
     public string $identificador = '';
+
     public ?int $grupoSeleccionado = null;
+
     public bool $puedeConfirmarIngreso = false;
+
     public bool $requiereSeleccionGrupo = false;
+
     public array $opcionesActividad = [];
+
     public $mensajeAcceso = null;
+
     public $estadoAcceso = null;
+
     public $socioInfo = null;
+
     public $motivosDenegacion = [];
+
     public $actividadAcceso = null;
+
     public $horarioAcceso = null;
 
     public function mount()
@@ -40,10 +54,11 @@ class ControlAcceso extends Component
 
         $this->resetErrorBag();
         $pin = trim($this->identificador);
-        if (!preg_match('/^\d{6}$/', $pin)) {
+        if (! preg_match('/^\d{6}$/', $pin)) {
             $this->addError('identificador', 'Ingresá un PIN válido de seis números.');
             $this->identificador = '';
             $this->limpiarEvaluacion();
+
             return;
         }
 
@@ -71,9 +86,10 @@ class ControlAcceso extends Component
         Gate::authorize('controlar-acceso');
 
         $pin = trim($this->identificador);
-        if (!preg_match('/^\d{6}$/', $pin)) {
+        if (! preg_match('/^\d{6}$/', $pin)) {
             $this->addError('identificador', 'Volvé a ingresar el PIN de seis números para confirmar.');
             $this->identificador = '';
+
             return;
         }
 
@@ -107,9 +123,7 @@ class ControlAcceso extends Component
     }
 
     #[On('gym-realtime-updated')]
-    public function refreshRealtimeMovements(): void
-    {
-    }
+    public function refreshRealtimeMovements(): void {}
 
     public function render()
     {
@@ -119,41 +133,10 @@ class ControlAcceso extends Component
             ->orderByDesc('hora_ingreso')
             ->limit(12)
             ->get();
-        $ultimosEventosAcceso = Auditoria::query()
-            ->where('tipo_evento', 'acceso')
-            ->latest('created_at')
-            ->limit(12)
-            ->with(['auditable' => fn ($query) => $query->select(['id', 'nombre', 'apellido'])])
-            ->get(['id', 'accion', 'auditable_type', 'auditable_id', 'datos_despues', 'created_at'])
-            ->map(function (Auditoria $evento) {
-                $datos = $evento->datos_despues ?? [];
-                $codigo = (string) ($datos['resultado'] ?? '');
-                $metodo = (string) ($datos['metodo'] ?? '');
-                $operacion = $metodo === 'salida' ? 'Salida' : (
-                    $evento->accion === 'acceso_autorizado' ? 'Autorizado' : 'Denegado'
-                );
-
-                return [
-                    'socio' => $evento->auditable instanceof Socio
-                        ? trim($evento->auditable->nombre . ' ' . $evento->auditable->apellido)
-                        : 'Credencial no identificada',
-                    'momento' => $evento->created_at,
-                    'operacion' => $operacion,
-                    'metodo' => match ($metodo) {
-                        'pin' => 'PIN',
-                        'qr' => 'QR',
-                        'salida' => 'Salida',
-                        default => 'Acceso',
-                    },
-                    'motivo' => $evento->accion === 'acceso_autorizado'
-                        ? 'Acceso autorizado.'
-                        : ControlAccesoService::mensajeOperativo($codigo),
-                ];
-            });
 
         return view('livewire.control-acceso', [
             'ultimosMovimientos' => $ultimosMovimientos,
-            'ultimosEventosAcceso' => $ultimosEventosAcceso,
+            'ultimosEventosAcceso' => app(AccessActivityService::class)->recent(),
         ])->layout('layouts.app');
     }
 

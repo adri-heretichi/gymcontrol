@@ -3,15 +3,22 @@
 namespace App\Providers;
 
 use App\Models\AptoFisico;
+use App\Models\Asistencia;
+use App\Models\AsistenciaClase;
 use App\Models\Auditoria;
+use App\Models\ConfiguracionGimnasio;
 use App\Models\Disciplina;
 use App\Models\Grupo;
+use App\Models\GrupoHorario;
 use App\Models\Inscripcion;
+use App\Models\ListaEspera;
 use App\Models\Membresia;
 use App\Models\Pago;
+use App\Models\PagoDetalle;
 use App\Models\Socio;
 use App\Models\Solicitud;
 use App\Models\User;
+use App\Observers\GymStateObserver;
 use App\Policies\AptoFisicoPolicy;
 use App\Policies\AuditoriaPolicy;
 use App\Policies\DisciplinaPolicy;
@@ -22,8 +29,12 @@ use App\Policies\PagoPolicy;
 use App\Policies\SocioPolicy;
 use App\Policies\SolicitudPolicy;
 use App\Policies\UserPolicy;
+use App\Services\RealtimeChanges;
 use Carbon\Carbon;
+use Illuminate\Console\Events\CommandFinished;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
 
@@ -50,11 +61,17 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        $this->app->scoped(RealtimeChanges::class);
     }
 
     public function boot(): void
     {
+        foreach ([Socio::class, Disciplina::class, Grupo::class, GrupoHorario::class, Inscripcion::class, ListaEspera::class, Pago::class, PagoDetalle::class, AptoFisico::class, Asistencia::class, AsistenciaClase::class, Solicitud::class, User::class, Membresia::class, ConfiguracionGimnasio::class, Auditoria::class] as $model) {
+            $model::observe(GymStateObserver::class);
+        }
+        Event::listen(CommandFinished::class, fn () => app(RealtimeChanges::class)->flush());
+        Queue::after(fn () => app(RealtimeChanges::class)->flush());
+
         Carbon::setLocale('es');
         date_default_timezone_set('America/Argentina/Buenos_Aires');
 
@@ -72,20 +89,20 @@ class AppServiceProvider extends ServiceProvider
         }
 
         // Definición de Gates centralizados
-        Gate::define('administrar-operadores', fn(User $user) => $user->esDuena());
-        Gate::define('gestionar-disciplinas', fn(User $user) => $user->esDuena());
-        Gate::define('gestionar-grupos', fn(User $user) => $user->esDuena());
-        Gate::define('aprobar-inscripciones', fn(User $user) => $user->esDuena());
-        Gate::define('gestionar-decision-medica', fn(User $user) => $user->esDuena());
-        Gate::define('controlar-acceso', fn(User $user) => $user->esDuena() || $user->esRecepcionista());
-        Gate::define('registrar-asistencia-clase', fn(User $user) => $user->esDuena() || $user->esRecepcionista());
-        Gate::define('gestionar-asistencias', fn(User $user) => $user->esDuena());
-        Gate::define('resolver-solicitudes', fn(User $user) => $user->esDuena());
-        Gate::define('ver-auditoria', fn(User $user) => $user->esDuena());
-        Gate::define('ver-recaudacion', fn(User $user) => $user->esDuena());
+        Gate::define('administrar-operadores', fn (User $user) => $user->esDuena());
+        Gate::define('gestionar-disciplinas', fn (User $user) => $user->esDuena());
+        Gate::define('gestionar-grupos', fn (User $user) => $user->esDuena());
+        Gate::define('aprobar-inscripciones', fn (User $user) => $user->esDuena());
+        Gate::define('gestionar-decision-medica', fn (User $user) => $user->esDuena());
+        Gate::define('controlar-acceso', fn (User $user) => $user->esDuena() || $user->esRecepcionista());
+        Gate::define('registrar-asistencia-clase', fn (User $user) => $user->esDuena() || $user->esRecepcionista());
+        Gate::define('gestionar-asistencias', fn (User $user) => $user->esDuena());
+        Gate::define('resolver-solicitudes', fn (User $user) => $user->esDuena());
+        Gate::define('ver-auditoria', fn (User $user) => $user->esDuena());
+        Gate::define('ver-recaudacion', fn (User $user) => $user->esDuena());
 
-        Gate::define('registrar-socio', fn(User $user) => $user->esDuena() || $user->esRecepcionista());
-        Gate::define('registrar-pago', fn(User $user) => $user->esDuena() || $user->esRecepcionista());
-        Gate::define('crear-solicitud', fn(User $user) => $user->esDuena() || $user->esRecepcionista());
+        Gate::define('registrar-socio', fn (User $user) => $user->esDuena() || $user->esRecepcionista());
+        Gate::define('registrar-pago', fn (User $user) => $user->esDuena() || $user->esRecepcionista());
+        Gate::define('crear-solicitud', fn (User $user) => $user->esDuena() || $user->esRecepcionista());
     }
 }

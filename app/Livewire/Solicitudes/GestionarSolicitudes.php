@@ -2,37 +2,54 @@
 
 namespace App\Livewire\Solicitudes;
 
+use App\Livewire\Concerns\SyncsGymState;
+use App\Models\Asistencia;
+use App\Models\AsistenciaClase;
 use App\Models\Auditoria;
-use App\Models\Solicitud;
 use App\Models\Socio;
+use App\Models\Solicitud;
 use App\Services\CertificadoMedicoService;
 use App\Services\SolicitudService;
 use DomainException;
 use Illuminate\Support\Facades\Gate;
-use Livewire\Attributes\On;
 use Livewire\Attributes\Locked;
+use Livewire\Attributes\On;
 use Livewire\Component;
 use Livewire\WithPagination;
 
 class GestionarSolicitudes extends Component
 {
+    use SyncsGymState;
+
+    protected array $gymSyncResources = ['requests', 'members', 'groups'];
+
     use WithPagination;
 
     #[Locked]
     public bool $integrado = false;
 
     public string $estadoFiltro = Solicitud::ESTADO_PENDIENTE;
+
     public string $buscar = '';
+
     public string $socioId = '';
 
     public ?int $solicitudId = null;
+
     public string $respuesta = '';
+
     public string $decisionMedica = '';
+
     public string $correccionFechaIngreso = '';
+
     public string $correccionHoraIngreso = '';
+
     public string $correccionFechaSalida = '';
+
     public string $correccionHoraSalida = '';
+
     public string $correccionEstadoClase = '';
+
     public string $correccionHoraClase = '';
 
     protected $queryString = [
@@ -91,7 +108,7 @@ class GestionarSolicitudes extends Component
 
         $contexto = $solicitud->contextoCorreccion() ?? [];
         if (($contexto['recurso'] ?? null) === 'permanencia') {
-            $registro = \App\Models\Asistencia::query()->find($contexto['registro_id'] ?? 0);
+            $registro = Asistencia::query()->find($contexto['registro_id'] ?? 0);
             if ($registro && $registro->socio_id === $solicitud->socio_id) {
                 $this->correccionFechaIngreso = $registro->fecha?->toDateString() ?? '';
                 $this->correccionHoraIngreso = $registro->hora_ingreso;
@@ -99,7 +116,7 @@ class GestionarSolicitudes extends Component
                 $this->correccionHoraSalida = $registro->hora_salida ?? '';
             }
         } elseif (($contexto['recurso'] ?? null) === 'clase') {
-            $registro = \App\Models\AsistenciaClase::query()->find($contexto['registro_id'] ?? 0);
+            $registro = AsistenciaClase::query()->find($contexto['registro_id'] ?? 0);
             if ($registro && $registro->socio_id === $solicitud->socio_id) {
                 $this->correccionEstadoClase = $registro->estado;
                 $this->correccionHoraClase = $registro->hora_marcado ?? '';
@@ -186,9 +203,7 @@ class GestionarSolicitudes extends Component
     }
 
     #[On('gym-realtime-updated')]
-    public function refreshRealtimeRequests(): void
-    {
-    }
+    public function refreshRealtimeRequests(): void {}
 
     public function render()
     {
@@ -197,14 +212,14 @@ class GestionarSolicitudes extends Component
         $usuario = auth()->user();
         $query = Solicitud::query()
             ->with(['socio:id,nombre,apellido', 'solicitante:id,name', 'revisadoPor:id,name', 'grupo:id,nombre', 'grupoDestino:id,nombre'])
-            ->when(!$usuario->esDuena(), fn ($q) => $q->where('solicitante_id', $usuario->id))
+            ->when(! $usuario->esDuena(), fn ($q) => $q->where('solicitante_id', $usuario->id))
             ->when($this->estadoFiltro !== 'todas', fn ($q) => $q->where('estado', $this->estadoFiltro))
             ->when($this->buscar !== '', function ($q) {
                 $q->where(function ($sub) {
                     $sub->whereHas('socio', function ($socio) {
-                        $socio->where('nombre', 'like', '%' . $this->buscar . '%')
-                            ->orWhere('apellido', 'like', '%' . $this->buscar . '%');
-                    })->orWhere('tipo', 'like', '%' . $this->buscar . '%');
+                        $socio->where('nombre', 'like', '%'.$this->buscar.'%')
+                            ->orWhere('apellido', 'like', '%'.$this->buscar.'%');
+                    })->orWhere('tipo', 'like', '%'.$this->buscar.'%');
                 });
             });
 

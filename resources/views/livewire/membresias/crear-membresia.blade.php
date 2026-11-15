@@ -1,4 +1,4 @@
-<div class="py-12 bg-slate-50 dark:bg-slate-900 min-h-screen">
+<div data-gym-sync="groups permissions" class="py-12 bg-slate-50 dark:bg-slate-900 min-h-screen">
     <div class="max-w-4xl mx-auto sm:px-6 lg:px-8">
         <!-- Encabezado -->
         <div class="mb-8">

@@ -2,7 +2,9 @@
 
 namespace App\Livewire\Socios;
 
+use App\Livewire\Concerns\SyncsGymState;
 use App\Models\Socio;
+use App\Services\CertificadoMedicoService;
 use App\Services\CredencialService;
 use App\Services\HabilitacionSocioService;
 use App\Services\PagoService;
@@ -13,6 +15,10 @@ use Livewire\WithPagination;
 
 class VerSocio extends Component
 {
+    use SyncsGymState;
+
+    protected array $gymSyncResources = ['members', 'groups', 'payments', 'medical', 'access', 'clock'];
+
     use WithPagination;
 
     // Instancia del socio inyectada automáticamente por Route Model Binding
@@ -20,9 +26,13 @@ class VerSocio extends Component
 
     // Propiedades calculadas en base de datos
     public bool $estaPresente = false;
+
     public int $permanenciaPromedio = 0;
+
     public $ultimoApto = null;
+
     public $historialAptos;
+
     public string $iniciales = '';
 
     // Colecciones de Eloquent (Eloquent Collections) limitadas a 5 registros desde SQL
@@ -33,20 +43,31 @@ class VerSocio extends Component
      */
     public function mount(Socio $socio)
     {
-        $this->authorize('view', $socio);
-
-        // Los pagos, asistencias y certificados se consultan con queries optimizados.
         $this->socio = $socio;
+        $this->cargarEstadoSocio(true);
+    }
 
+    protected function refreshGymReadState(): void
+    {
+        $this->cargarEstadoSocio(false);
+        if ($this->pinEmitido !== (string) $this->socio->pin) {
+            $this->pinEmitido = '';
+        }
+    }
+
+    private function cargarEstadoSocio(bool $actualizarFormulario): void
+    {
+        $this->socio->refresh();
+        $this->authorize('view', $this->socio);
         // 2. Generación ultra defensiva de iniciales para el avatar temporal
         $nombre = trim($this->socio->nombre ?? '');
         $apellido = trim($this->socio->apellido ?? '');
-        
+
         $iniNombre = $nombre !== '' ? mb_substr($nombre, 0, 1) : '';
         $iniApellido = $apellido !== '' ? mb_substr($apellido, 0, 1) : '';
-        
-        $this->iniciales = mb_strtoupper($iniNombre . $iniApellido);
-        
+
+        $this->iniciales = mb_strtoupper($iniNombre.$iniApellido);
+
         if ($this->iniciales === '') {
             $this->iniciales = 'GYM';
         }
@@ -81,19 +102,26 @@ class VerSocio extends Component
             ->get();
 
         if (auth()->user()->esDuena()) {
-            $this->decision_medica_seleccionada = $this->socio->decision_medica ?? 'pendiente';
-            $this->decision_medica_observacion = $this->socio->decision_medica_obs ?? '';
-            $this->evaluacionMedica = app(\App\Services\CertificadoMedicoService::class)->evaluarRequisitoMedico($this->socio);
+            if ($actualizarFormulario) {
+                $this->decision_medica_seleccionada = $this->socio->decision_medica ?? 'pendiente';
+                $this->decision_medica_observacion = $this->socio->decision_medica_obs ?? '';
+            }
+            $this->evaluacionMedica = app(CertificadoMedicoService::class)->evaluarRequisitoMedico($this->socio);
             $this->evaluacionCredenciales = app(CredencialService::class)->evaluarRequisitosEmision($this->socio);
         }
     }
 
     // Gestión médica individual (Fase 6)
     public string $decision_medica_seleccionada = '';
+
     public string $decision_medica_observacion = '';
+
     public array $evaluacionMedica = [];
+
     public string $motivoCredenciales = '';
+
     public string $pinEmitido = '';
+
     public array $evaluacionCredenciales = [];
 
     /**
@@ -103,7 +131,7 @@ class VerSocio extends Component
     {
         $this->authorize('gestionarDecisionMedica', $this->socio);
 
-        $service = app(\App\Services\CertificadoMedicoService::class);
+        $service = app(CertificadoMedicoService::class);
         $this->socio = $service->definirDecision(
             socio: $this->socio,
             nuevaDecision: $this->decision_medica_seleccionada,
@@ -124,7 +152,7 @@ class VerSocio extends Component
     {
         abort_unless(auth()->user()->esRecepcionista(), 403);
 
-        $service = app(\App\Services\CertificadoMedicoService::class);
+        $service = app(CertificadoMedicoService::class);
         $service->informarRevisionADuena(
             socio: $this->socio,
             recepcionista: auth()->user()
@@ -141,6 +169,7 @@ class VerSocio extends Component
             $credenciales = app(CredencialService::class)->emitirPrimeraVez($this->socio, auth()->user());
         } catch (InvalidArgumentException $exception) {
             $this->addError('credenciales', $exception->getMessage());
+
             return;
         }
 
@@ -164,6 +193,7 @@ class VerSocio extends Component
             );
         } catch (InvalidArgumentException $exception) {
             $this->addError('credenciales', $exception->getMessage());
+
             return;
         }
 
@@ -188,6 +218,7 @@ class VerSocio extends Component
             );
         } catch (InvalidArgumentException $exception) {
             $this->addError('credenciales', $exception->getMessage());
+
             return;
         }
 
@@ -200,7 +231,7 @@ class VerSocio extends Component
     public function render()
     {
         $this->authorize('view', $this->socio);
-        if (!auth()->user()->esDuena()) {
+        if (! auth()->user()->esDuena()) {
             $this->ultimoApto = null;
             $this->historialAptos = collect();
             $this->decision_medica_seleccionada = '';
@@ -220,7 +251,7 @@ class VerSocio extends Component
             ->get();
 
         $habilitacionSocio = app(HabilitacionSocioService::class)->evaluar($this->socio);
-        if (!auth()->user()->esDuena()) {
+        if (! auth()->user()->esDuena()) {
             $habilitacionSocio['etiqueta'] = $habilitacionSocio['habilitado'] ? 'Habilitado' : 'No habilitado';
             $habilitacionSocio['detalle'] = $habilitacionSocio['habilitado']
                 ? 'Requisitos operativos completos.'

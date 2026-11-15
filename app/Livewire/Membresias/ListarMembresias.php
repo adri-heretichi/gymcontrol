@@ -2,12 +2,17 @@
 
 namespace App\Livewire\Membresias;
 
+use App\Livewire\Concerns\SyncsGymState;
 use App\Models\Disciplina;
 use App\Models\Inscripcion;
 use Livewire\Component;
 
 class ListarMembresias extends Component
 {
+    use SyncsGymState;
+
+    protected array $gymSyncResources = ['groups', 'members'];
+
     public $disciplina = '';
 
     protected $queryString = [

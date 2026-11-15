@@ -2,20 +2,29 @@
 
 namespace App\Livewire\Disciplinas;
 
-use App\Models\Disciplina;
+use App\Livewire\Concerns\SyncsGymState;
 use App\Models\Auditoria;
-use Livewire\Component;
+use App\Models\Disciplina;
 use Illuminate\Support\Facades\DB;
+use Livewire\Component;
 
 class CrearDisciplina extends Component
 {
+    use SyncsGymState;
+
+    protected array $gymSyncResources = ['groups'];
+
+    protected bool $gymSyncOwnerOnly = true;
+
     public $nombre = '';
+
     public $descripcion = '';
+
     public $estado = 'activo';
 
     public function mount()
     {
-        if (!auth()->check() || auth()->user()->rol !== 'admin') {
+        if (! auth()->check() || auth()->user()->rol !== 'admin') {
             abort(403, 'No tienes los permisos necesarios para acceder a esta sección.');
         }
     }
@@ -41,7 +50,7 @@ class CrearDisciplina extends Component
 
     public function guardar()
     {
-        if (!auth()->check() || auth()->user()->rol !== 'admin') {
+        if (! auth()->check() || auth()->user()->rol !== 'admin') {
             abort(403, 'No tienes permisos para registrar disciplinas.');
         }
 
@@ -64,10 +73,12 @@ class CrearDisciplina extends Component
                 ],
                 userId: auth()->id()
             );
+
             return $disciplina;
         }, 3);
 
         session()->flash('message', "Disciplina '{$this->nombre}' creada correctamente.");
+
         return redirect()->route('disciplinas.index');
     }
 

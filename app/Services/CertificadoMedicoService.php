@@ -2,7 +2,6 @@
 
 namespace App\Services;
 
-use App\Events\GymRealtimeUpdate;
 use App\Models\AptoFisico;
 use App\Models\Auditoria;
 use App\Models\Socio;
@@ -11,8 +10,8 @@ use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 
 /**
@@ -27,8 +26,10 @@ use Illuminate\Support\Facades\Validator;
  */
 class CertificadoMedicoService
 {
-    public const ESTADO_PENDIENTE    = 'pendiente';
-    public const ESTADO_REQUERIDO    = 'requerido';
+    public const ESTADO_PENDIENTE = 'pendiente';
+
+    public const ESTADO_REQUERIDO = 'requerido';
+
     public const ESTADO_NO_REQUERIDO = 'no_requerido';
 
     /**
@@ -50,11 +51,11 @@ class CertificadoMedicoService
         // Caso A: Decisión pendiente
         if ($decision === self::ESTADO_PENDIENTE) {
             return [
-                'cumple'         => false,
-                'caso'           => 'A',
-                'decision'       => self::ESTADO_PENDIENTE,
-                'mensaje'        => 'Decisión médica pendiente de definición por la dueña.',
-                'certificado'    => null,
+                'cumple' => false,
+                'caso' => 'A',
+                'decision' => self::ESTADO_PENDIENTE,
+                'mensaje' => 'Decisión médica pendiente de definición por la dueña.',
+                'certificado' => null,
                 'dias_restantes' => 0,
             ];
         }
@@ -62,11 +63,11 @@ class CertificadoMedicoService
         // Caso B: No requiere certificado
         if ($decision === self::ESTADO_NO_REQUERIDO) {
             return [
-                'cumple'         => true,
-                'caso'           => 'B',
-                'decision'       => self::ESTADO_NO_REQUERIDO,
-                'mensaje'        => 'Requisito médico cumplido (no requiere certificado según decisión de la dueña).',
-                'certificado'    => $this->obtenerUltimoCertificado($socio),
+                'cumple' => true,
+                'caso' => 'B',
+                'decision' => self::ESTADO_NO_REQUERIDO,
+                'mensaje' => 'Requisito médico cumplido (no requiere certificado según decisión de la dueña).',
+                'certificado' => $this->obtenerUltimoCertificado($socio),
                 'dias_restantes' => 0,
             ];
         }
@@ -86,11 +87,11 @@ class CertificadoMedicoService
                 $diasRestantes = (int) $hoy->diffInDays($vencimiento, false);
 
                 return [
-                    'cumple'         => true,
-                    'caso'           => 'D',
-                    'decision'       => self::ESTADO_REQUERIDO,
-                    'mensaje'        => "Certificado médico aprobado y vigente hasta el {$vencimiento->format('d/m/Y')}.",
-                    'certificado'    => $certificadoVigente,
+                    'cumple' => true,
+                    'caso' => 'D',
+                    'decision' => self::ESTADO_REQUERIDO,
+                    'mensaje' => "Certificado médico aprobado y vigente hasta el {$vencimiento->format('d/m/Y')}.",
+                    'certificado' => $certificadoVigente,
                     'dias_restantes' => max(0, $diasRestantes),
                 ];
             }
@@ -98,35 +99,35 @@ class CertificadoMedicoService
             $ultimo = $this->obtenerUltimoCertificado($socio);
 
             // Caso C: Requiere certificado, pero no lo presentó
-            if (!$ultimo) {
+            if (! $ultimo) {
                 return [
-                    'cumple'         => false,
-                    'caso'           => 'C',
-                    'decision'       => self::ESTADO_REQUERIDO,
-                    'mensaje'        => 'Requiere certificado médico, pero no ha presentado documentación.',
-                    'certificado'    => null,
+                    'cumple' => false,
+                    'caso' => 'C',
+                    'decision' => self::ESTADO_REQUERIDO,
+                    'mensaje' => 'Requiere certificado médico, pero no ha presentado documentación.',
+                    'certificado' => null,
                     'dias_restantes' => 0,
                 ];
             }
 
             if ($ultimo->estado === AptoFisico::ESTADO_PENDIENTE_REVISION) {
                 return [
-                    'cumple'         => false,
-                    'caso'           => 'F',
-                    'decision'       => self::ESTADO_REQUERIDO,
-                    'mensaje'        => 'El certificado médico presentado está pendiente de aprobación de la dueña.',
-                    'certificado'    => $ultimo,
+                    'cumple' => false,
+                    'caso' => 'F',
+                    'decision' => self::ESTADO_REQUERIDO,
+                    'mensaje' => 'El certificado médico presentado está pendiente de aprobación de la dueña.',
+                    'certificado' => $ultimo,
                     'dias_restantes' => 0,
                 ];
             }
 
             if ($ultimo->estado === AptoFisico::ESTADO_RECHAZADO) {
                 return [
-                    'cumple'         => false,
-                    'caso'           => 'G',
-                    'decision'       => self::ESTADO_REQUERIDO,
-                    'mensaje'        => 'El certificado médico presentado no fue aprobado.',
-                    'certificado'    => $ultimo,
+                    'cumple' => false,
+                    'caso' => 'G',
+                    'decision' => self::ESTADO_REQUERIDO,
+                    'mensaje' => 'El certificado médico presentado no fue aprobado.',
+                    'certificado' => $ultimo,
                     'dias_restantes' => 0,
                 ];
             }
@@ -137,42 +138,42 @@ class CertificadoMedicoService
             if ($ultimo->estado === AptoFisico::ESTADO_VENCIDO || $vencimiento->lt($hoy)) {
                 // Caso E: Requiere certificado y está vencido
                 return [
-                    'cumple'         => false,
-                    'caso'           => 'E',
-                    'decision'       => self::ESTADO_REQUERIDO,
-                    'mensaje'        => "El certificado médico venció el {$vencimiento->format('d/m/Y')}.",
-                    'certificado'    => $ultimo,
+                    'cumple' => false,
+                    'caso' => 'E',
+                    'decision' => self::ESTADO_REQUERIDO,
+                    'mensaje' => "El certificado médico venció el {$vencimiento->format('d/m/Y')}.",
+                    'certificado' => $ultimo,
                     'dias_restantes' => 0,
                 ];
             }
 
             if ($ultimo->fecha_emision->startOfDay()->gt($hoy)) {
                 return [
-                    'cumple'         => false,
-                    'caso'           => 'H',
-                    'decision'       => self::ESTADO_REQUERIDO,
-                    'mensaje'        => 'El certificado médico todavía no está vigente.',
-                    'certificado'    => $ultimo,
+                    'cumple' => false,
+                    'caso' => 'H',
+                    'decision' => self::ESTADO_REQUERIDO,
+                    'mensaje' => 'El certificado médico todavía no está vigente.',
+                    'certificado' => $ultimo,
                     'dias_restantes' => 0,
                 ];
             }
 
             return [
-                'cumple'         => false,
-                'caso'           => 'G',
-                'decision'       => self::ESTADO_REQUERIDO,
-                'mensaje'        => 'El certificado médico no está aprobado.',
-                'certificado'    => $ultimo,
+                'cumple' => false,
+                'caso' => 'G',
+                'decision' => self::ESTADO_REQUERIDO,
+                'mensaje' => 'El certificado médico no está aprobado.',
+                'certificado' => $ultimo,
                 'dias_restantes' => 0,
             ];
         }
 
         return [
-            'cumple'         => false,
-            'caso'           => 'A',
-            'decision'       => self::ESTADO_PENDIENTE,
-            'mensaje'        => 'Estado médico no reconocido.',
-            'certificado'    => null,
+            'cumple' => false,
+            'caso' => 'A',
+            'decision' => self::ESTADO_PENDIENTE,
+            'mensaje' => 'Estado médico no reconocido.',
+            'certificado' => null,
             'dias_restantes' => 0,
         ];
     }
@@ -190,7 +191,7 @@ class CertificadoMedicoService
         Gate::forUser($duena)->authorize('gestionarDecisionMedica', $socio);
 
         $validas = [self::ESTADO_PENDIENTE, self::ESTADO_REQUERIDO, self::ESTADO_NO_REQUERIDO];
-        if (!in_array($nuevaDecision, $validas, true)) {
+        if (! in_array($nuevaDecision, $validas, true)) {
             throw new \InvalidArgumentException("La decisión médica '{$nuevaDecision}' no es válida.");
         }
 
@@ -204,9 +205,9 @@ class CertificadoMedicoService
             $socio, $nuevaDecision, $duena, $observacion, $decisionAnterior
         ) {
             $socio->update([
-                'decision_medica'     => $nuevaDecision,
+                'decision_medica' => $nuevaDecision,
                 'decision_medica_por' => $duena->id,
-                'decision_medica_at'  => now(),
+                'decision_medica_at' => now(),
                 'decision_medica_obs' => $observacion ? trim($observacion) : null,
             ]);
 
@@ -233,8 +234,6 @@ class CertificadoMedicoService
                 userId: $duena->id
             );
 
-            event(GymRealtimeUpdate::administrativeChange('medical-decision-updated'));
-
             return $socio->fresh();
         });
     }
@@ -243,12 +242,26 @@ class CertificadoMedicoService
      * Registra un certificado médico presentado por el socio. Solo la dueña puede
      * cargar documentación médica desde el panel administrativo.
      */
-    public function registrarCertificado(
+    public function presentarCertificado(
         Socio $socio,
         string $fechaEmision,
         string $fechaVencimiento,
         User $operador,
         ?UploadedFile $archivo = null
+    ): AptoFisico {
+        return $this->registrarCertificado($socio, $fechaEmision, $fechaVencimiento, $operador, $archivo, pendienteRevision: true);
+    }
+
+    /** Registro y aprobación administrativa directa, exclusivo de la dueña.
+     * La presentación desde la interfaz utiliza presentarCertificado y requiere revisión posterior.
+     */
+    public function registrarCertificado(
+        Socio $socio,
+        string $fechaEmision,
+        string $fechaVencimiento,
+        User $operador,
+        ?UploadedFile $archivo = null,
+        bool $pendienteRevision = false
     ): AptoFisico {
         Gate::forUser($operador)->authorize('create', AptoFisico::class);
 
@@ -266,9 +279,9 @@ class CertificadoMedicoService
         $vencimiento = Carbon::parse($fechaVencimiento)->startOfDay();
 
         $hoy = Carbon::now(config('app.timezone'))->startOfDay();
-        $estado = $vencimiento->lt($hoy)
-            ? AptoFisico::ESTADO_VENCIDO
-            : AptoFisico::ESTADO_VIGENTE;
+        $estado = $pendienteRevision
+            ? AptoFisico::ESTADO_PENDIENTE_REVISION
+            : ($vencimiento->lt($hoy) ? AptoFisico::ESTADO_VENCIDO : AptoFisico::ESTADO_VIGENTE);
         $path = null;
 
         try {
@@ -283,11 +296,11 @@ class CertificadoMedicoService
                 }
 
                 $apto = AptoFisico::create([
-                    'socio_id'          => $socio->id,
-                    'archivo'           => $path,
-                    'fecha_emision'     => $emision->toDateString(),
+                    'socio_id' => $socio->id,
+                    'archivo' => $path,
+                    'fecha_emision' => $emision->toDateString(),
                     'fecha_vencimiento' => $vencimiento->toDateString(),
-                    'estado'            => $estado,
+                    'estado' => $estado,
                 ]);
 
                 Auditoria::registrar(
@@ -301,12 +314,11 @@ class CertificadoMedicoService
                         'fecha_emision' => $emision->toDateString(),
                         'fecha_vencimiento' => $vencimiento->toDateString(),
                         'tiene_archivo' => $path !== null,
+                        'estado' => $estado,
                         'operador_id' => $operador->id,
                     ],
                     userId: $operador->id
                 );
-
-                event(GymRealtimeUpdate::administrativeChange('medical-certificate-registered'));
 
                 return $apto;
             });
@@ -329,12 +341,21 @@ class CertificadoMedicoService
         Gate::forUser($recepcionista)->authorize('create', Solicitud::class);
 
         return DB::transaction(function () use ($socio, $recepcionista) {
+            Socio::query()->whereKey($socio->id)->lockForUpdate()->firstOrFail();
+            $existente = Solicitud::query()->where('socio_id', $socio->id)
+                ->where('solicitante_id', $recepcionista->id)
+                ->where('tipo', Solicitud::TIPO_EXCEPCION_MEDICA)
+                ->where('estado', Solicitud::ESTADO_PENDIENTE)->oldest('id')->first();
+            if ($existente) {
+                return $existente;
+            }
+
             $solicitud = Solicitud::create([
-                'socio_id'       => $socio->id,
+                'socio_id' => $socio->id,
                 'solicitante_id' => $recepcionista->id,
-                'tipo'           => Solicitud::TIPO_EXCEPCION_MEDICA,
-                'descripcion'    => 'Revisión administrativa solicitada a la dueña.',
-                'estado'         => Solicitud::ESTADO_PENDIENTE,
+                'tipo' => Solicitud::TIPO_EXCEPCION_MEDICA,
+                'descripcion' => 'Revisión administrativa solicitada a la dueña.',
+                'estado' => Solicitud::ESTADO_PENDIENTE,
             ]);
 
             Auditoria::registrar(
@@ -343,15 +364,13 @@ class CertificadoMedicoService
                 entidad: $solicitud,
                 datosAntes: null,
                 datosDespues: [
-                    'socio_id'       => $socio->id,
-                    'solicitud_id'   => $solicitud->id,
-                    'tipo'           => $solicitud->tipo,
+                    'socio_id' => $socio->id,
+                    'solicitud_id' => $solicitud->id,
+                    'tipo' => $solicitud->tipo,
                     'solicitante_id' => $recepcionista->id,
                 ],
                 userId: $recepcionista->id
             );
-
-            event(GymRealtimeUpdate::request($solicitud, 'created'));
 
             return $solicitud;
         });

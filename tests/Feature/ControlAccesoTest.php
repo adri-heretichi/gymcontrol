@@ -142,11 +142,12 @@ class ControlAccesoTest extends TestCase
     {
         $this->actingAs($this->recepcionista);
 
-        // Crear una asistencia abierta
+        // Fecha y hora pertenecen al mismo ingreso, incluso al cruzar medianoche.
+        $ingreso = Carbon::now()->subMinutes(45);
         $asistencia = Asistencia::create([
             'socio_id' => $this->socioValido->id,
-            'fecha' => Carbon::today(),
-            'hora_ingreso' => Carbon::now()->subMinutes(45)->format('H:i:s'),
+            'fecha' => $ingreso->toDateString(),
+            'hora_ingreso' => $ingreso->format('H:i:s'),
         ]);
 
         Livewire::test(\App\Livewire\ControlAcceso::class)

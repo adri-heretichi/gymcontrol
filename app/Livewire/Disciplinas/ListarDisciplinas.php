@@ -2,14 +2,19 @@
 
 namespace App\Livewire\Disciplinas;
 
-use App\Models\Disciplina;
+use App\Livewire\Concerns\SyncsGymState;
 use App\Models\Auditoria;
+use App\Models\Disciplina;
+use Illuminate\Support\Facades\DB;
 use Livewire\Component;
 use Livewire\WithPagination;
-use Illuminate\Support\Facades\DB;
 
 class ListarDisciplinas extends Component
 {
+    use SyncsGymState;
+
+    protected array $gymSyncResources = ['groups'];
+
     use WithPagination;
 
     public $buscar = '';
@@ -30,12 +35,13 @@ class ListarDisciplinas extends Component
      */
     public function alternarEstado($disciplinaId)
     {
-        if (!auth()->check()) {
+        if (! auth()->check()) {
             abort(403, 'Sesión no activa.');
         }
 
         if (auth()->user()->rol !== 'admin') {
             session()->flash('error', 'No tienes permisos para modificar el estado de la disciplina.');
+
             return;
         }
 
@@ -52,10 +58,11 @@ class ListarDisciplinas extends Component
                 datosDespues: ['estado' => $disciplina->estado],
                 userId: auth()->id()
             );
+
             return $disciplina;
         }, 3);
 
-        session()->flash('message', "El estado de la disciplina {$disciplina->nombre} ahora es: " . strtoupper($disciplina->estado));
+        session()->flash('message', "El estado de la disciplina {$disciplina->nombre} ahora es: ".strtoupper($disciplina->estado));
     }
 
     /**
@@ -63,18 +70,19 @@ class ListarDisciplinas extends Component
      */
     public function eliminar($disciplinaId)
     {
-        if (!auth()->check()) {
+        if (! auth()->check()) {
             abort(403, 'Sesión no activa.');
         }
 
         if (auth()->user()->rol !== 'admin') {
             session()->flash('error', 'No tienes permisos para eliminar disciplinas.');
+
             return;
         }
 
         $nombre = DB::transaction(function () use ($disciplinaId) {
             $disciplina = Disciplina::query()->lockForUpdate()->findOrFail($disciplinaId);
-            if (!$disciplina->puedeEliminarse()) {
+            if (! $disciplina->puedeEliminarse()) {
                 return null;
             }
 
@@ -91,11 +99,13 @@ class ListarDisciplinas extends Component
                 userId: auth()->id()
             );
             $disciplina->delete();
+
             return $disciplina->nombre;
         }, 3);
         if ($nombre === null) {
             $disciplina = Disciplina::findOrFail($disciplinaId);
             session()->flash('error', "No es posible eliminar la disciplina '{$disciplina->nombre}' porque posee grupos vinculados. Se sugiere desactivarla para preservar el historial.");
+
             return;
         }
 
@@ -106,8 +116,8 @@ class ListarDisciplinas extends Component
     {
         $disciplinas = Disciplina::withCount('grupos')
             ->where(function ($q) {
-                $q->where('nombre', 'like', '%' . $this->buscar . '%')
-                  ->orWhere('descripcion', 'like', '%' . $this->buscar . '%');
+                $q->where('nombre', 'like', '%'.$this->buscar.'%')
+                    ->orWhere('descripcion', 'like', '%'.$this->buscar.'%');
             })
             ->orderBy('nombre', 'asc')
             ->paginate(10);

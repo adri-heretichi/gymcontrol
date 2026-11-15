@@ -2,6 +2,8 @@
 
 namespace App\Livewire;
 
+use App\Livewire\Concerns\SyncsGymState;
+use App\Models\AptoFisico;
 use App\Models\Asistencia;
 use App\Models\AsistenciaClase;
 use App\Models\Auditoria;
@@ -9,38 +11,67 @@ use App\Models\Grupo;
 use App\Models\Inscripcion;
 use App\Models\Pago;
 use App\Models\PagoDetalle;
-use App\Models\Solicitud;
 use App\Models\Socio;
+use App\Models\Solicitud;
+use App\Services\AccessActivityService;
 use Illuminate\Support\Facades\Gate;
-use Livewire\Attributes\On;
 use Livewire\Attributes\Locked;
+use Livewire\Attributes\On;
 use Livewire\Component;
 
 class Dashboard extends Component
 {
+    use SyncsGymState;
+
+    protected array $gymSyncResources = ['members', 'groups', 'payments', 'medical', 'access', 'requests', 'clock'];
+
     #[Locked]
     public bool $esDuena = false;
+
     public int $totalSocios = 0;
+
     public int $sociosActivos = 0;
+
     public int $inscripcionesPendientes = 0;
+
     public int $inscripcionesAprobadas = 0;
+
     public int $sociosEnSala = 0;
+
     public int $ingresosHoy = 0;
+
     public float $recaudacionHoy = 0.0;
+
     public float $ingresosMes = 0.0;
+
     public int $asistenciasClasesHoy = 0;
+
     public int $cuotasVigentes = 0;
+
     public int $cuotasVencidas = 0;
+
     public int $solicitudesPendientes = 0;
+
     public int $decisionesMedicasPendientes = 0;
+
     public int $certificadosFaltantesOVencidos = 0;
+
+    public int $certificadosPendientesRevision = 0;
+
     public int $accesosDenegadosRecientes = 0;
+
     public array $grupos = [];
+
     public $movimientosRecientes = [];
+
     public $permanenciasAbiertas = [];
+
     public $asistenciasClaseRecientes = [];
+
     public $solicitudesRecientes = [];
+
     public $sociosRecientes = [];
+
     public $accesosDenegados = [];
 
     public function mount(): void
@@ -74,7 +105,7 @@ class Dashboard extends Component
         $this->cuotasVencidas = $this->inscripcionesConCoberturaVencida($hoy);
         $this->solicitudesPendientes = Solicitud::query()
             ->where('estado', Solicitud::ESTADO_PENDIENTE)
-            ->when(!$this->esDuena, fn ($query) => $query->where('solicitante_id', auth()->id()))
+            ->when(! $this->esDuena, fn ($query) => $query->where('solicitante_id', auth()->id()))
             ->count();
 
         if ($this->esDuena) {
@@ -93,8 +124,12 @@ class Dashboard extends Component
             $this->certificadosFaltantesOVencidos = Socio::query()
                 ->where('estado', 'activo')
                 ->where('decision_medica', 'requerido')
-                ->whereDoesntHave('aptosFisicos', fn ($query) => $query->whereDate('fecha_vencimiento', '>=', $hoy))
+                ->whereDoesntHave('aptosFisicos', fn ($query) => $query
+                    ->where('estado', AptoFisico::ESTADO_VIGENTE)
+                    ->whereDate('fecha_emision', '<=', $hoy)
+                    ->whereDate('fecha_vencimiento', '>=', $hoy))
                 ->count();
+            $this->certificadosPendientesRevision = AptoFisico::where('estado', AptoFisico::ESTADO_PENDIENTE_REVISION)->count();
             $this->accesosDenegadosRecientes = Auditoria::query()
                 ->where('tipo_evento', 'acceso')
                 ->where('accion', 'acceso_denegado')
@@ -118,6 +153,7 @@ class Dashboard extends Component
             $this->ingresosMes = 0.0;
             $this->decisionesMedicasPendientes = 0;
             $this->certificadosFaltantesOVencidos = 0;
+            $this->certificadosPendientesRevision = 0;
             $this->accesosDenegadosRecientes = 0;
             $this->accesosDenegados = [];
             $this->sociosRecientes = [];
@@ -164,7 +200,7 @@ class Dashboard extends Component
             ->get();
         $this->solicitudesRecientes = Solicitud::query()
             ->with('socio:id,nombre,apellido')
-            ->when(!$this->esDuena, fn ($query) => $query->where('solicitante_id', auth()->id()))
+            ->when(! $this->esDuena, fn ($query) => $query->where('solicitante_id', auth()->id()))
             ->latest()
             ->limit(5)
             ->get(['id', 'socio_id', 'solicitante_id', 'tipo', 'estado', 'created_at', 'fecha_decision']);
@@ -177,22 +213,28 @@ class Dashboard extends Component
         $this->updateStats();
     }
 
+    protected function refreshGymReadState(): void
+    {
+        $this->updateStats();
+    }
+
     public function render()
     {
         Gate::authorize('controlar-acceso');
         $this->esDuena = auth()->user()->esDuena();
-        if (!$this->esDuena) {
+        if (! $this->esDuena) {
             $this->ingresosHoy = 0;
             $this->recaudacionHoy = 0.0;
             $this->ingresosMes = 0.0;
             $this->decisionesMedicasPendientes = 0;
             $this->certificadosFaltantesOVencidos = 0;
+            $this->certificadosPendientesRevision = 0;
             $this->accesosDenegadosRecientes = 0;
             $this->accesosDenegados = [];
             $this->sociosRecientes = [];
         }
 
-        return view('livewire.dashboard')->layout('layouts.app');
+        return view('livewire.dashboard', ['ultimosEventosAcceso' => app(AccessActivityService::class)->recent()])->layout('layouts.app');
     }
 
     private function inscripcionesConCoberturaVigente(string $fecha): int

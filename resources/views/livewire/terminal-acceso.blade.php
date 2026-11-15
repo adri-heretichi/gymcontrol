@@ -1,10 +1,15 @@
-<div class="min-h-screen flex flex-col justify-between p-6 md:p-12 relative overflow-hidden bg-slate-950 text-slate-100"
-     x-data="{ refocus() { if ($refs.tokenInput) $refs.tokenInput.focus() } }"
+<div data-gym-sync="availability" class="min-h-screen flex flex-col justify-between p-6 md:p-12 relative overflow-hidden bg-slate-950 text-slate-100"
+     @click.self="refocus()"
+     x-data="{ refocus() { if ($refs.tokenInput) $refs.tokenInput.focus({ preventScroll: true }) } }"
      x-init="
          refocus();
-         document.body.addEventListener('click', () => refocus());
+
      "
 >
+
+    @if($datosOperativosActualizados)
+        <p class="mb-3 rounded-lg border border-orange-300 bg-slate-900 p-3 text-sm text-orange-100" role="status">Los datos operativos cambiaron. El próximo intento se validará con la información actual.</p>
+    @endif
 
     {{-- Banner del clima cargado desde el navegador vía JavaScript --}}
     {{-- Se mantiene visible entre polls de Livewire usando @script --}}

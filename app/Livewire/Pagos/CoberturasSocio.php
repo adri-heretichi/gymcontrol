@@ -2,9 +2,11 @@
 
 namespace App\Livewire\Pagos;
 
+use App\Livewire\Concerns\SyncsGymState;
 use App\Models\Pago;
 use App\Models\Socio;
 use App\Services\PagoService;
+use Illuminate\View\View;
 use Livewire\Component;
 
 /**
@@ -15,7 +17,12 @@ use Livewire\Component;
  */
 class CoberturasSocio extends Component
 {
+    use SyncsGymState;
+
+    protected array $gymSyncResources = ['payments', 'members', 'groups', 'clock'];
+
     public Socio $socio;
+
     public array $coberturas = [];
 
     public function mount(Socio $socio): void
@@ -33,11 +40,17 @@ class CoberturasSocio extends Component
         $this->coberturas = $service->consultarCoberturasSocio($this->socio)->all();
     }
 
-    public function render(): \Illuminate\View\View
+    protected function refreshGymReadState(): void
+    {
+        $this->socio->refresh();
+        $this->actualizarCoberturas();
+    }
+
+    public function render(): View
     {
         return view('livewire.pagos.coberturas-socio', [
-            'socio'     => $this->socio,
-            'coberturas'=> $this->coberturas,
+            'socio' => $this->socio,
+            'coberturas' => $this->coberturas,
         ])->layout('layouts.app');
     }
 }

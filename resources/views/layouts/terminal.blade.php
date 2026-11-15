@@ -5,6 +5,8 @@
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="csrf-token" content="{{ csrf_token() }}">
 
+        <meta name="gym-realtime-role" content="terminal">
+        <meta name="gym-next-state-refresh" content="{{ now()->endOfDay()->addSecond()->getTimestampMs() }}">
         <title>Terminal de Acceso - GymControl 24hs</title>
 
         <!-- Fonts -->
@@ -12,9 +14,9 @@
         <link href="https://fonts.bunny.net/css?family=figtree:400,500,600,800,900&display=swap" rel="stylesheet" />
 
         <!-- Scripts -->
-        @vite(['resources/css/app.css', 'resources/js/app.js'])
+        @vite(['resources/css/app.css', 'resources/js/app.js', 'resources/js/echo.js'])
     </head>
-    <body class="font-sans antialiased bg-slate-950 text-slate-100 min-h-screen">
+    <body class="pt-14 font-sans antialiased bg-slate-950 text-slate-100 min-h-screen">
 
         <!-- Banner del clima fijo en el layout — fuera de Livewire para que nunca desaparezca -->
         <div id="clima-banner"
@@ -35,6 +37,7 @@
             </div>
         </div>
 
+        <x-gym.realtime-status :terminal="true" />
         {{ $slot }}
 
         <script>

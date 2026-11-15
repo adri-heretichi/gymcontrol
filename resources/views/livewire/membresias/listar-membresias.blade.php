@@ -1,4 +1,4 @@
-<div class="min-h-screen bg-slate-50 py-10 dark:bg-slate-900">
+<div data-gym-sync="groups members permissions" class="min-h-screen bg-slate-50 py-10 dark:bg-slate-900">
     <div class="mx-auto max-w-7xl space-y-8 px-4 sm:px-6 lg:px-8">
         <header class="flex flex-col gap-3 border-b border-orange-200 pb-6 sm:flex-row sm:items-end sm:justify-between dark:border-slate-700">
             <div>

@@ -84,6 +84,12 @@ class AptoFisicoValidationTest extends TestCase
             ->call('guardar')
             ->assertHasNoErrors();
 
+        // Presentación y aprobación son pasos separados; se conservan las comprobaciones de almacenamiento.
+        $presentado = AptoFisico::firstOrFail();
+        $this->assertSame(AptoFisico::ESTADO_PENDIENTE_REVISION, $presentado->estado);
+        Livewire::test(\App\Livewire\AptosFisicos\EditarAptoFisico::class, ['aptoFisico' => $presentado])
+            ->set('estado', AptoFisico::ESTADO_VIGENTE)->call('actualizar')->assertHasNoErrors();
+
         // Verificamos que se guardó en la base de datos
         $this->assertDatabaseHas('aptos_fisicos', [
             'socio_id' => $this->socio->id,

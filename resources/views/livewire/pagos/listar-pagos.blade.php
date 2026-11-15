@@ -1,4 +1,4 @@
-<div>
+<div data-gym-sync="payments members groups clock permissions">
     <x-slot name="header">
         <div class="flex items-center justify-between">
             <h2 class="text-xl font-semibold leading-tight text-gray-800">Pagos y Coberturas</h2>
@@ -76,8 +76,8 @@
                         <th class="px-4 py-3 text-right font-semibold text-gray-600">Total</th>
                         <th class="px-4 py-3 text-left font-semibold text-gray-600">Medio</th>
                         <th class="px-4 py-3 text-left font-semibold text-gray-600">Operador</th>
+                        <th class="px-4 py-3 text-left font-semibold text-gray-600">Estado</th>
                         @if($esDuena)
-                            <th class="px-4 py-3 text-left font-semibold text-gray-600">Estado</th>
                             <th class="px-4 py-3 text-left font-semibold text-gray-600">Acciones</th>
                         @endif
                     </tr>
@@ -116,9 +116,9 @@
                                             <span class="font-semibold text-gray-700 ml-1">
                                                 · ${{ number_format($det->subtotal, 2, ',', '.') }}
                                             </span>
-                                            @php($estadoTemporal = $det->estadoTemporal())
+                                            @php($estadoTemporal = $pago->estaAnulado() || $det->estado_cobertura === 'suspendida' ? 'suspendida' : $det->estadoTemporal())
                                             <span class="ml-1 {{ $estadoTemporal === 'vigente' ? 'text-green-600' : ($estadoTemporal === 'proxima' ? 'text-blue-600' : 'text-gray-400') }}">
-                                                {{ ['vigente' => 'Vigente', 'proxima' => 'Próxima', 'vencida' => 'Vencida'][$estadoTemporal] }}
+                                                {{ ['vigente' => 'Vigente', 'proxima' => 'Próxima', 'vencida' => 'Vencida', 'suspendida' => 'Suspendida'][$estadoTemporal] }}
                                             </span>
                                         </div>
                                     @endforeach
@@ -145,17 +145,18 @@
                                 {{ $pago->operador?->name ?? '(sistema)' }}
                             </td>
 
-                            @if($esDuena)
-                                {{-- Estado --}}
+                            {{-- Estado --}}
                                 <td class="px-4 py-3">
                                     @if($pago->estaAnulado())
                                         <span class="px-2 py-1 bg-red-100 text-red-700 rounded text-xs font-medium">
                                             Anulado
                                         </span>
+                                        @if($esDuena)
                                         <span class="block text-xs text-gray-500 mt-1">
                                             por {{ $pago->anuladoPor?->name }} —
                                             {{ $pago->anulado_at?->format('d/m/Y') }}
                                         </span>
+                                        @endif
                                     @else
                                         <span class="px-2 py-1 bg-green-100 text-green-700 rounded text-xs font-medium">
                                             Activo
@@ -163,6 +164,7 @@
                                     @endif
                                 </td>
 
+                            @if($esDuena)
                                 {{-- Acciones --}}
                                 <td class="px-4 py-3">
                                     @if($pago->estaActivo())
@@ -176,7 +178,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="{{ $esDuena ? 9 : 7 }}" class="px-4 py-8 text-center text-gray-400 italic">
+                            <td colspan="{{ $esDuena ? 9 : 8 }}" class="px-4 py-8 text-center text-gray-400 italic">
                                 No se encontraron pagos.
                             </td>
                         </tr>

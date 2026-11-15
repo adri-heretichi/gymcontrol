@@ -1,4 +1,4 @@
-<div class="py-12 bg-slate-50 dark:bg-slate-900 min-h-screen">
+<div data-gym-sync="medical members permissions" class="py-12 bg-slate-50 dark:bg-slate-900 min-h-screen">
     <div class="max-w-4xl mx-auto sm:px-6 lg:px-8">
         <!-- Encabezado -->
         <div class="mb-8">
@@ -78,7 +78,7 @@
                                         </label>
                                         <p class="pl-1 text-slate-500 dark:text-slate-500 font-semibold">o arrastrar y soltar</p>
                                     </div>
-                                    <p class="text-xs text-slate-500 dark:text-slate-300 font-semibold">Deje vacío si desea conservar el archivo actual. Formato: PDF, PNG, JPG, JPEG hasta 4MB</p>
+                                    <p class="text-xs text-slate-500 dark:text-slate-300 font-semibold">Deje vacío para revisar el documento actual. Un archivo nuevo se conserva como otra presentación pendiente y no aprueba ni elimina el documento anterior. PDF, PNG, JPG, JPEG hasta 4MB</p>
                                 </div>
                             </div>
 

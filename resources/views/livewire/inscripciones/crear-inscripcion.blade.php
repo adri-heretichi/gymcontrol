@@ -1,4 +1,4 @@
-<div class="py-12 bg-slate-50 dark:bg-slate-900 min-h-screen">
+<div data-gym-sync="members groups permissions" class="py-12 bg-slate-50 dark:bg-slate-900 min-h-screen">
     <div class="max-w-4xl mx-auto sm:px-6 lg:px-8">
         <div class="main-card">
             <!-- Encabezado -->
@@ -180,7 +180,7 @@
                         @if($grupoSeleccionado->vacantesDisponibles() === 0)
                             <div class="p-3 bg-amber-100/70 dark:bg-amber-900/30 rounded-xl border border-amber-200 text-amber-900 dark:text-amber-200 text-xs font-bold flex items-center gap-2">
                                 <svg class="w-4 h-4 shrink-0 text-amber-600" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path></svg>
-                                <span>El grupo alcanzó el máximo de 15. No se puede inscribir aquí; seleccione otro grupo de esta disciplina con vacantes.</span>
+                                <span>El grupo alcanzó su cupo de {{ $grupoSeleccionado->limiteCupo() }}. Puede registrar al socio en lista de espera, sin ocupar una plaza. La incorporación posterior requiere autorización de la dueña.</span>
                             </div>
                         @else
                             <div class="text-xs text-slate-600 dark:text-slate-300">
@@ -207,6 +207,11 @@
                     <a href="{{ route('inscripciones.index') }}" class="btn-secondary" wire:navigate>
                         Cancelar
                     </a>
+                    @if($grupoSeleccionado && $grupoSeleccionado->vacantesDisponibles() === 0)
+                        <button type="button" wire:click="registrarEspera" wire:loading.attr="disabled" class="btn-primary" @disabled(!$socio_id || !$grupo_id)>
+                            Registrar en lista de espera
+                        </button>
+                    @endif
                     <button type="submit" class="btn-primary" @disabled(!$socio_id || !$grupo_id || !$grupoSeleccionado || $grupoSeleccionado->vacantesDisponibles() === 0)>
                         Confirmar inscripción
                     </button>

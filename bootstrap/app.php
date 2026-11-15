@@ -1,5 +1,8 @@
 <?php
 
+use App\Http\Middleware\FlushRealtimeChanges;
+use App\Http\Middleware\SoloRedLocal;
+use App\Http\Middleware\ValidarRol;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -13,9 +16,10 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        $middleware->append(FlushRealtimeChanges::class);
         $middleware->alias([
-            'rol' => \App\Http\Middleware\ValidarRol::class,
-            'red.local' => \App\Http\Middleware\SoloRedLocal::class,
+            'rol' => ValidarRol::class,
+            'red.local' => SoloRedLocal::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

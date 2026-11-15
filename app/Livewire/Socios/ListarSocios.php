@@ -2,13 +2,20 @@
 
 namespace App\Livewire\Socios;
 
+use App\Livewire\Concerns\SyncsGymState;
+use App\Models\Auditoria;
 use App\Models\Socio;
 use App\Services\HabilitacionSocioService;
+use Illuminate\Support\Facades\DB;
 use Livewire\Component;
 use Livewire\WithPagination;
 
 class ListarSocios extends Component
 {
+    use SyncsGymState;
+
+    protected array $gymSyncResources = ['members', 'groups', 'payments', 'medical', 'access', 'clock'];
+
     use WithPagination;
 
     // Propiedad enlazada al input del buscador
@@ -16,6 +23,7 @@ class ListarSocios extends Component
 
     // Propiedades preparadas para el futuro ordenamiento
     public $ordenarPor = 'apellido';
+
     public $ordenarDireccion = 'asc';
 
     // Fuerza a Livewire a usar el tema de paginación de Tailwind CSS
@@ -41,22 +49,29 @@ class ListarSocios extends Component
     public function alternarEstado($socioId)
     {
         // 1. Validación de sesión activa (Seguridad)
-        if (!auth()->check()) {
+        if (! auth()->check()) {
             abort(403, 'Sesión no activa.');
         }
 
         // 2. Validación estricta de rol en backend
         if (auth()->user()->rol !== 'admin') {
             session()->flash('error', 'No tienes permisos para modificar el estado del socio.');
+
             return;
         }
 
         // 3. Modificación del registro
-        $socio = Socio::findOrFail($socioId);
-        $socio->estado = ($socio->estado === 'activo') ? 'inactivo' : 'activo';
-        $socio->save();
+        $socio = DB::transaction(function () use ($socioId) {
+            $socio = Socio::lockForUpdate()->findOrFail($socioId);
+            $antes = $socio->estado;
+            $socio->estado = $antes === 'activo' ? 'inactivo' : 'activo';
+            $socio->save();
+            Auditoria::registrar('administrativo', 'estado_socio_modificado', $socio, datosAntes: ['estado' => $antes], datosDespues: ['estado' => $socio->estado]);
 
-        session()->flash('message', "El estado del socio {$socio->nombre} {$socio->apellido} ha sido actualizado a: " . strtoupper($socio->estado));
+            return $socio;
+        });
+
+        session()->flash('message', "El estado del socio {$socio->nombre} {$socio->apellido} ha sido actualizado a: ".strtoupper($socio->estado));
     }
 
     public function render()
@@ -65,12 +80,12 @@ class ListarSocios extends Component
         $socios = Socio::withCount('inscripciones')
             ->with('inscripciones.grupo.disciplina')
             ->where(function ($query) {
-                $query->where('nombre', 'like', '%' . $this->buscar . '%')
-                      ->orWhere('apellido', 'like', '%' . $this->buscar . '%')
-                      ->orWhere('dni', 'like', '%' . $this->buscar . '%')
-                      ->orWhere('correo', 'like', '%' . $this->buscar . '%')
-                      ->orWhere('celular', 'like', '%' . $this->buscar . '%')
-                      ->orWhere('token', 'like', '%' . $this->buscar . '%');
+                $query->where('nombre', 'like', '%'.$this->buscar.'%')
+                    ->orWhere('apellido', 'like', '%'.$this->buscar.'%')
+                    ->orWhere('dni', 'like', '%'.$this->buscar.'%')
+                    ->orWhere('correo', 'like', '%'.$this->buscar.'%')
+                    ->orWhere('celular', 'like', '%'.$this->buscar.'%')
+                    ->orWhere('token', 'like', '%'.$this->buscar.'%');
             })
             // Estructura de ordenación dinámica (lista para el futuro)
             ->orderBy($this->ordenarPor, $this->ordenarDireccion)
@@ -79,7 +94,7 @@ class ListarSocios extends Component
         $esDuena = auth()->user()->esDuena();
         $habilitaciones = $socios->getCollection()->mapWithKeys(function (Socio $socio) use ($esDuena) {
             $estado = app(HabilitacionSocioService::class)->evaluar($socio);
-            if (!$esDuena) {
+            if (! $esDuena) {
                 $estado['etiqueta'] = $estado['habilitado'] ? 'Habilitado' : 'No habilitado';
                 $estado['detalle'] = $estado['habilitado']
                     ? 'Requisitos operativos completos.'

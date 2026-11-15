@@ -2,13 +2,11 @@
 
 namespace App\Services;
 
-use App\Events\GymRealtimeUpdate;
 use App\Models\Asistencia;
 use App\Models\AsistenciaClase;
 use App\Models\Auditoria;
 use App\Models\Inscripcion;
 use App\Models\Solicitud;
-use App\Models\Socio;
 use App\Models\User;
 use DomainException;
 use Illuminate\Support\Facades\DB;
@@ -40,7 +38,7 @@ class SolicitudService
                 'solicitante_id' => $solicitante->id,
                 'tipo' => Solicitud::TIPO_OTRO,
                 'datos_solicitud' => ['recurso' => $recurso, 'registro_id' => $registroId],
-                'descripcion' => 'Solicitud de corrección de ' . $recurso . ': ' . trim($validated['descripcion']),
+                'descripcion' => 'Solicitud de corrección de '.$recurso.': '.trim($validated['descripcion']),
                 'estado' => Solicitud::ESTADO_PENDIENTE,
             ]);
 
@@ -57,8 +55,6 @@ class SolicitudService
                 userId: $solicitante->id
             );
 
-            event(GymRealtimeUpdate::request($solicitud, 'created'));
-
             return $solicitud;
         });
     }
@@ -67,7 +63,7 @@ class SolicitudService
      * Resuelve una solicitud una sola vez; sus cambios funcionales y auditorías
      * quedan en la misma transacción.
      *
-     * @param array<string, mixed>|null $correccion
+     * @param  array<string, mixed>|null  $correccion
      */
     public function resolver(
         Solicitud $solicitud,
@@ -79,7 +75,7 @@ class SolicitudService
     ): Solicitud {
         Gate::forUser($duena)->authorize('resolver', $solicitud);
 
-        if (!in_array($decision, [Solicitud::ESTADO_APROBADA, Solicitud::ESTADO_RECHAZADA], true)) {
+        if (! in_array($decision, [Solicitud::ESTADO_APROBADA, Solicitud::ESTADO_RECHAZADA], true)) {
             throw new DomainException('La decisión de solicitud no es válida.');
         }
 
@@ -90,7 +86,7 @@ class SolicitudService
 
         return DB::transaction(function () use ($solicitud, $duena, $decision, $respuesta, $decisionMedica, $correccion) {
             $actual = Solicitud::query()->lockForUpdate()->findOrFail($solicitud->id);
-            if (!$actual->estaPendiente()) {
+            if (! $actual->estaPendiente()) {
                 throw new DomainException('La solicitud ya fue resuelta y no puede modificarse.');
             }
 
@@ -123,14 +119,13 @@ class SolicitudService
             );
 
             $resuelta = $actual->fresh();
-            event(GymRealtimeUpdate::request($resuelta, 'resolved'));
 
             return $resuelta;
         }, 3);
     }
 
     /**
-     * @param array<string, mixed>|null $correccion
+     * @param  array<string, mixed>|null  $correccion
      */
     private function aplicarDecision(
         Solicitud $solicitud,
@@ -145,6 +140,7 @@ class SolicitudService
             case Solicitud::TIPO_INSCRIPCION:
                 $inscripcion = $this->inscripcionDe($solicitud);
                 $inscripciones->aprobarInscripcion($inscripcion, $duena, $respuesta, $solicitud);
+
                 return;
 
             case Solicitud::TIPO_BAJA_INSCRIPCION:
@@ -155,10 +151,11 @@ class SolicitudService
                     true,
                     $solicitud
                 );
+
                 return;
 
             case Solicitud::TIPO_CAMBIO_GRUPO:
-                if (!$solicitud->grupoDestino) {
+                if (! $solicitud->grupoDestino) {
                     throw new DomainException('La solicitud no tiene un grupo de destino válido.');
                 }
                 $inscripciones->ejecutarCambioGrupo(
@@ -168,10 +165,11 @@ class SolicitudService
                     $respuesta,
                     $solicitud
                 );
+
                 return;
 
             case Solicitud::TIPO_EXCEPCION_MEDICA:
-                if (!in_array($decisionMedica, [
+                if (! in_array($decisionMedica, [
                     CertificadoMedicoService::ESTADO_REQUERIDO,
                     CertificadoMedicoService::ESTADO_NO_REQUERIDO,
                 ], true)) {
@@ -183,10 +181,12 @@ class SolicitudService
                     $duena,
                     $respuesta
                 );
+
                 return;
 
             case Solicitud::TIPO_OTRO:
                 $this->aplicarCorreccion($solicitud, $duena, $correccion);
+
                 return;
         }
 
@@ -195,7 +195,7 @@ class SolicitudService
 
     private function inscripcionDe(Solicitud $solicitud): Inscripcion
     {
-        if (!$solicitud->inscripcion_id) {
+        if (! $solicitud->inscripcion_id) {
             throw new DomainException('La solicitud no tiene una inscripción vigente asociada.');
         }
 
@@ -209,16 +209,16 @@ class SolicitudService
     }
 
     /**
-     * @param array<string, mixed>|null $correccion
+     * @param  array<string, mixed>|null  $correccion
      */
     private function aplicarCorreccion(Solicitud $solicitud, User $duena, ?array $correccion): void
     {
         $contexto = $solicitud->contextoCorreccion();
-        if (!$contexto) {
+        if (! $contexto) {
             return;
         }
 
-        if (!$correccion) {
+        if (! $correccion) {
             throw new DomainException('Complete los datos de la corrección antes de aprobarla.');
         }
 
@@ -242,6 +242,7 @@ class SolicitudService
                 $correccion['hora_salida'] ?: null,
                 $duena
             );
+
             return;
         }
 
@@ -261,6 +262,7 @@ class SolicitudService
                 $correccion['hora_marcado'] ?: null,
                 $duena
             );
+
             return;
         }
 

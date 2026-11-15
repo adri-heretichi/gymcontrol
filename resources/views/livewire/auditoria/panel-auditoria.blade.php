@@ -1,4 +1,4 @@
-<div class="py-8 bg-slate-50 dark:bg-slate-900 min-h-screen">
+<div data-gym-sync="audit permissions" class="py-8 bg-slate-50 dark:bg-slate-900 min-h-screen">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <section class="main-card">
             <div class="mb-6 border-b border-slate-200 pb-5 dark:border-slate-800">

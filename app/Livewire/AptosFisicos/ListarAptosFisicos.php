@@ -2,12 +2,19 @@
 
 namespace App\Livewire\AptosFisicos;
 
+use App\Livewire\Concerns\SyncsGymState;
 use App\Models\AptoFisico;
 use Livewire\Component;
 use Livewire\WithPagination;
 
 class ListarAptosFisicos extends Component
 {
+    use SyncsGymState;
+
+    protected array $gymSyncResources = ['medical', 'members', 'clock'];
+
+    protected bool $gymSyncOwnerOnly = true;
+
     use WithPagination;
 
     // Propiedad para el buscador
@@ -50,10 +57,10 @@ class ListarAptosFisicos extends Component
         // Búsqueda por DNI, nombre, apellido, correo o celular del socio
         if ($this->buscar !== '') {
             $query->whereHas('socio', function ($q) {
-                $q->where('nombre', 'like', '%' . $this->buscar . '%')
-                  ->orWhere('apellido', 'like', '%' . $this->buscar . '%')
-                  ->orWhere('dni', 'like', '%' . $this->buscar . '%')
-                  ->orWhere('correo', 'like', '%' . $this->buscar . '%');
+                $q->where('nombre', 'like', '%'.$this->buscar.'%')
+                    ->orWhere('apellido', 'like', '%'.$this->buscar.'%')
+                    ->orWhere('dni', 'like', '%'.$this->buscar.'%')
+                    ->orWhere('correo', 'like', '%'.$this->buscar.'%');
             });
         }
 
@@ -61,11 +68,11 @@ class ListarAptosFisicos extends Component
         if ($this->filtroEstado !== '') {
             if ($this->filtroEstado === 'vigente') {
                 $query->where('estado', 'vigente')
-                      ->where('fecha_vencimiento', '>=', today());
+                    ->where('fecha_vencimiento', '>=', today());
             } elseif ($this->filtroEstado === 'vencido') {
                 $query->where(function ($q) {
                     $q->where('estado', 'vencido')
-                      ->orWhere('fecha_vencimiento', '<', today());
+                        ->orWhere('fecha_vencimiento', '<', today());
                 });
             } elseif (in_array($this->filtroEstado, ['pendiente_revision', 'rechazado'], true)) {
                 $query->where('estado', $this->filtroEstado);
@@ -75,7 +82,7 @@ class ListarAptosFisicos extends Component
         $aptos = $query->orderBy('created_at', 'desc')->paginate(10);
 
         return view('livewire.aptos-fisicos.listar-aptos-fisicos', [
-            'aptos' => $aptos
+            'aptos' => $aptos,
         ])->layout('layouts.app');
     }
 }

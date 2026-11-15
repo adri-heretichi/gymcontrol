@@ -2,8 +2,9 @@
 
 namespace App\Livewire\Grupos;
 
-use App\Models\Disciplina;
+use App\Livewire\Concerns\SyncsGymState;
 use App\Models\Auditoria;
+use App\Models\Disciplina;
 use App\Models\Grupo;
 use App\Models\GrupoHorario;
 use App\Services\HorarioGimnasioService;
@@ -12,19 +13,31 @@ use Livewire\Component;
 
 class EditarGrupo extends Component
 {
+    use SyncsGymState;
+
+    protected array $gymSyncResources = ['groups'];
+
+    protected bool $gymSyncOwnerOnly = true;
+
     public Grupo $grupo;
+
     public $disciplina_id = '';
+
     public $nombre = '';
+
     public $profesor = '';
+
     public $cupo_maximo = 15;
+
     public $estado = 'activo';
 
     public $horarios = [];
+
     public bool $volverAMembresias = false;
 
     public function mount(Grupo $grupo)
     {
-        if (!auth()->check() || auth()->user()->rol !== 'admin') {
+        if (! auth()->check() || auth()->user()->rol !== 'admin') {
             abort(403, 'No tienes los permisos necesarios para acceder a esta sección.');
         }
 
@@ -80,7 +93,7 @@ class EditarGrupo extends Component
             'cupo_maximo' => 'required|integer|min:1|max:15',
             'estado' => 'required|in:activo,inactivo',
             'horarios' => 'required|array|min:1',
-            'horarios.*.dia_semana' => 'required|string|in:' . implode(',', array_keys(HorarioGimnasioService::DIAS_SEMANA)),
+            'horarios.*.dia_semana' => 'required|string|in:'.implode(',', array_keys(HorarioGimnasioService::DIAS_SEMANA)),
             'horarios.*.hora_inicio' => 'required|date_format:H:i',
             'horarios.*.hora_fin' => 'required|date_format:H:i',
         ];
@@ -110,7 +123,7 @@ class EditarGrupo extends Component
 
     public function actualizar()
     {
-        if (!auth()->check() || auth()->user()->rol !== 'admin') {
+        if (! auth()->check() || auth()->user()->rol !== 'admin') {
             abort(403, 'No tienes permisos para modificar grupos.');
         }
 
@@ -120,6 +133,7 @@ class EditarGrupo extends Component
         $errorHorarios = HorarioGimnasioService::validarColeccionHorarios($this->horarios);
         if ($errorHorarios) {
             $this->addError('horarios', $errorHorarios);
+
             return;
         }
 
@@ -139,6 +153,7 @@ class EditarGrupo extends Component
                         'horarios',
                         "Existe superposición horaria con el grupo '{$conflicto->nombre}' de la disciplina '{$conflicto->disciplina->nombre}' el día {$diaNombre} en el rango indicado. La profesora no puede dictar dos clases a la vez."
                     );
+
                     return;
                 }
             }
@@ -199,6 +214,7 @@ class EditarGrupo extends Component
                 ],
                 userId: auth()->id()
             );
+
             return null;
         }, 3);
 
@@ -207,6 +223,7 @@ class EditarGrupo extends Component
                 'cupo_maximo',
                 "No es posible reducir el cupo a {$this->cupo_maximo} porque el grupo cuenta actualmente con {$inscriptosQueImpidenReducir} alumnos con inscripción aprobada."
             );
+
             return;
         }
 

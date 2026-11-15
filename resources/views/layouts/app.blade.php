@@ -7,6 +7,7 @@
         <meta name="gym-realtime-role" content="{{ auth()->user()->esDuena() ? 'admin' : (auth()->user()->esRecepcionista() ? 'reception' : '') }}">
         <meta name="gym-realtime-user" content="{{ auth()->id() }}">
 
+        <meta name="gym-next-state-refresh" content="{{ now()->endOfDay()->addSecond()->getTimestampMs() }}">
         <title>{{ config('app.name', 'Laravel') }}</title>
 
         <!-- Fonts -->
@@ -19,6 +20,7 @@
     <body class="font-sans antialiased">
         <div class="min-h-screen bg-gray-100 flex flex-col">
             <livewire:layout.navigation />
+            <x-gym.realtime-status />
 
             <!-- Banner del clima fijo debajo de la navegación -->
             <div id="clima-banner-app"

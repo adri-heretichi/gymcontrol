@@ -1,4 +1,4 @@
-<div @class(['py-8 bg-slate-50 dark:bg-slate-900 min-h-screen' => !$integrado])>
+<div data-gym-sync="requests members groups permissions" @class(['py-8 bg-slate-50 dark:bg-slate-900 min-h-screen' => !$integrado])>
     <div @class(['space-y-6', 'max-w-7xl mx-auto px-4 sm:px-6 lg:px-8' => !$integrado])>
         @unless($integrado)
             <a href="{{ route('dashboard') }}#solicitudes" wire:navigate class="btn-secondary">Panel Administrativo · Solicitudes</a>

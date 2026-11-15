@@ -1,4 +1,4 @@
-<div class="py-12 bg-slate-50 dark:bg-slate-900 min-h-screen">
+<div data-gym-sync="medical members permissions" class="py-12 bg-slate-50 dark:bg-slate-900 min-h-screen">
     <div class="max-w-4xl mx-auto sm:px-6 lg:px-8">
         <!-- Encabezado -->
         <div class="mb-8">
@@ -12,7 +12,7 @@
                 Registrar Apto Físico: <span class="text-indigo-600 dark:text-indigo-400">{{ $socio->nombre }} {{ $socio->apellido }}</span>
             </h2>
             <p class="text-sm text-slate-500 dark:text-slate-300 mt-1 font-semibold">
-                Registre el documento y su periodo de vigencia. El acceso a esta función es exclusivo de la dueña.
+                Registre el documento presentado y su periodo de vigencia. Quedará pendiente de revisión; después la dueña podrá aprobarlo o rechazarlo. Esta carga no modifica la decisión de exigir certificado.
             </p>
         </div>
 

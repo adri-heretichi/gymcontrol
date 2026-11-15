@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Events\GymRealtimeUpdate;
 use App\Http\Controllers\Controller;
 use App\Models\Auditoria;
 use App\Models\Socio;
@@ -50,7 +49,7 @@ class SocioApiController extends Controller
             ->with('membresia:id,nombre')
             ->find($id);
 
-        if (!$socio) {
+        if (! $socio) {
             return response()->json(['success' => false, 'message' => 'Socio no encontrado.'], 404);
         }
 
@@ -105,7 +104,6 @@ class SocioApiController extends Controller
                 ],
                 userId: $request->user()->id
             );
-            event(GymRealtimeUpdate::operationalChange('member-created'));
 
             return $socio;
         });
@@ -119,16 +117,16 @@ class SocioApiController extends Controller
     public function update(Request $request, int $id)
     {
         $socio = Socio::query()->find($id);
-        if (!$socio) {
+        if (! $socio) {
             return response()->json(['success' => false, 'message' => 'Socio no encontrado.'], 404);
         }
 
         $validated = $request->validate([
             'nombre' => ['sometimes', 'required', 'string', 'min:2', 'max:255'],
             'apellido' => ['sometimes', 'required', 'string', 'min:2', 'max:255'],
-            'dni' => ['sometimes', 'required', 'digits_between:7,10', 'unique:socios,dni,' . $socio->id],
+            'dni' => ['sometimes', 'required', 'digits_between:7,10', 'unique:socios,dni,'.$socio->id],
             'sexo' => ['sometimes', 'required', 'in:M,F'],
-            'correo' => ['sometimes', 'nullable', 'email', 'unique:socios,correo,' . $socio->id, 'max:255'],
+            'correo' => ['sometimes', 'nullable', 'email', 'unique:socios,correo,'.$socio->id, 'max:255'],
             'celular' => ['sometimes', 'nullable', 'string', 'max:50'],
             'membresia_id' => ['sometimes', 'required', 'exists:membresias,id'],
             'estado' => ['sometimes', 'required', 'in:activo,inactivo'],
@@ -145,7 +143,6 @@ class SocioApiController extends Controller
                 datosDespues: $socio->only(array_keys($validated)),
                 userId: $request->user()->id
             );
-            event(GymRealtimeUpdate::operationalChange('member-updated'));
         });
 
         return response()->json([
@@ -157,7 +154,7 @@ class SocioApiController extends Controller
     public function destroy(Request $request, int $id)
     {
         $socio = Socio::query()->find($id);
-        if (!$socio) {
+        if (! $socio) {
             return response()->json(['success' => false, 'message' => 'Socio no encontrado.'], 404);
         }
         if ($socio->estado === 'inactivo') {
@@ -174,7 +171,6 @@ class SocioApiController extends Controller
                 datosDespues: ['estado' => 'inactivo'],
                 userId: $request->user()->id
             );
-            event(GymRealtimeUpdate::operationalChange('member-deactivated'));
         });
 
         return response()->json([

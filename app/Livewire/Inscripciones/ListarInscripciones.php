@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Inscripciones;
 
+use App\Livewire\Concerns\SyncsGymState;
 use App\Models\Disciplina;
 use App\Models\Grupo;
 use App\Models\Inscripcion;
@@ -16,23 +17,35 @@ use Livewire\WithPagination;
 
 class ListarInscripciones extends Component
 {
+    use SyncsGymState;
+
+    protected array $gymSyncResources = ['members', 'groups', 'payments', 'requests'];
+
     use WithPagination;
 
     public $tab = 'pendientes'; // pendientes, aprobadas, espera, historial
+
     public $buscar = '';
+
     public $disciplinaId = '';
+
     public $grupoId = '';
 
     // Modales de acción
     public $mostrarModalRechazar = false;
+
     public $inscripcionIdSeleccionada = null;
+
     public $motivoRechazo = '';
 
     public $mostrarModalBaja = false;
+
     public $motivoBaja = '';
 
     public $mostrarModalCambio = false;
+
     public $grupoDestinoId = '';
+
     public $motivoCambio = '';
 
     protected $paginationTheme = 'tailwind';
@@ -71,12 +84,12 @@ class ListarInscripciones extends Component
      */
     public function aprobar(int $inscripcionId)
     {
-        if (!auth()->check()) {
+        if (! auth()->check()) {
             abort(403);
         }
 
         try {
-            if (!auth()->user()->esDuena()) {
+            if (! auth()->user()->esDuena()) {
                 throw new AuthorizationException('Solo la dueña del gimnasio tiene permisos para aprobar inscripciones.');
             }
             $inscripcion = Inscripcion::findOrFail($inscripcionId);
@@ -103,7 +116,7 @@ class ListarInscripciones extends Component
         } catch (AuthorizationException $e) {
             session()->flash('error', $e->getMessage());
         } catch (\Exception $e) {
-            session()->flash('error', 'Error al aprobar: ' . $e->getMessage());
+            session()->flash('error', 'Error al aprobar: '.$e->getMessage());
         }
     }
 
@@ -125,11 +138,12 @@ class ListarInscripciones extends Component
     {
         if (empty(trim($this->motivoRechazo))) {
             $this->addError('motivoRechazo', 'Debe ingresar el motivo de rechazo.');
+
             return;
         }
 
         try {
-            if (!auth()->user()->esDuena()) {
+            if (! auth()->user()->esDuena()) {
                 throw new AuthorizationException('Solo la dueña del gimnasio tiene permisos para rechazar inscripciones.');
             }
             $inscripcion = Inscripcion::findOrFail($this->inscripcionIdSeleccionada);
@@ -150,7 +164,7 @@ class ListarInscripciones extends Component
                 app(InscripcionService::class)->rechazarInscripcion($inscripcion, auth()->user(), $this->motivoRechazo);
             }
 
-            session()->flash('message', "Inscripción rechazada. Se registró el motivo en el historial.");
+            session()->flash('message', 'Inscripción rechazada. Se registró el motivo en el historial.');
             $this->cerrarModalRechazar();
         } catch (\Exception $e) {
             session()->flash('error', $e->getMessage());
@@ -175,6 +189,7 @@ class ListarInscripciones extends Component
     {
         if (empty(trim($this->motivoBaja))) {
             $this->addError('motivoBaja', 'Debe indicar el motivo de la baja.');
+
             return;
         }
 
@@ -226,8 +241,9 @@ class ListarInscripciones extends Component
 
     public function confirmarCambio()
     {
-        if (!$this->grupoDestinoId) {
+        if (! $this->grupoDestinoId) {
             $this->addError('grupoDestinoId', 'Debe seleccionar el grupo de destino.');
+
             return;
         }
 
@@ -270,7 +286,7 @@ class ListarInscripciones extends Component
      */
     public function incorporarDeEspera(int $esperaId)
     {
-        if (!auth()->check()) {
+        if (! auth()->check()) {
             abort(403);
         }
 
@@ -297,7 +313,7 @@ class ListarInscripciones extends Component
             $service = app(InscripcionService::class);
             $service->cancelarListaEspera($espera, auth()->user(), 'Cancelado desde interfaz');
 
-            session()->flash('message', "Registro de lista de espera cancelado. Se reordenaron las posiciones restantes.");
+            session()->flash('message', 'Registro de lista de espera cancelado. Se reordenaron las posiciones restantes.');
         } catch (\Exception $e) {
             session()->flash('error', $e->getMessage());
         }
@@ -335,16 +351,16 @@ class ListarInscripciones extends Component
         if ($this->tab === 'espera') {
             $datos = ListaEspera::with(['socio', 'grupo.disciplina', 'grupo.horarios'])
                 ->where('estado', ListaEspera::ESTADO_ESPERANDO)
-                ->when($this->grupoId, fn($q) => $q->where('grupo_id', $this->grupoId))
-                ->when($this->disciplinaId, fn($q) => $q->whereHas('grupo', fn($g) => $g->where('disciplina_id', $this->disciplinaId)))
+                ->when($this->grupoId, fn ($q) => $q->where('grupo_id', $this->grupoId))
+                ->when($this->disciplinaId, fn ($q) => $q->whereHas('grupo', fn ($g) => $g->where('disciplina_id', $this->disciplinaId)))
                 ->when($this->buscar, function ($q) {
                     $q->where(function ($sub) {
                         $sub->whereHas('socio', function ($s) {
-                            $s->where('nombre', 'like', '%' . $this->buscar . '%')
-                              ->orWhere('apellido', 'like', '%' . $this->buscar . '%')
-                              ->orWhere('dni', 'like', '%' . $this->buscar . '%');
+                            $s->where('nombre', 'like', '%'.$this->buscar.'%')
+                                ->orWhere('apellido', 'like', '%'.$this->buscar.'%')
+                                ->orWhere('dni', 'like', '%'.$this->buscar.'%');
                         })->orWhereHas('grupo', function ($g) {
-                            $g->where('nombre', 'like', '%' . $this->buscar . '%');
+                            $g->where('nombre', 'like', '%'.$this->buscar.'%');
                         });
                     });
                 })
@@ -353,16 +369,16 @@ class ListarInscripciones extends Component
                 ->paginate(10);
         } else {
             $query = Inscripcion::with(['socio', 'grupo.disciplina', 'grupo.horarios', 'aprobadoPor', 'bajaPor', 'rechazadoPor'])
-                ->when($this->grupoId, fn($q) => $q->where('grupo_id', $this->grupoId))
-                ->when($this->disciplinaId, fn($q) => $q->whereHas('grupo', fn($g) => $g->where('disciplina_id', $this->disciplinaId)))
+                ->when($this->grupoId, fn ($q) => $q->where('grupo_id', $this->grupoId))
+                ->when($this->disciplinaId, fn ($q) => $q->whereHas('grupo', fn ($g) => $g->where('disciplina_id', $this->disciplinaId)))
                 ->when($this->buscar, function ($q) {
                     $q->where(function ($sub) {
                         $sub->whereHas('socio', function ($s) {
-                            $s->where('nombre', 'like', '%' . $this->buscar . '%')
-                              ->orWhere('apellido', 'like', '%' . $this->buscar . '%')
-                              ->orWhere('dni', 'like', '%' . $this->buscar . '%');
+                            $s->where('nombre', 'like', '%'.$this->buscar.'%')
+                                ->orWhere('apellido', 'like', '%'.$this->buscar.'%')
+                                ->orWhere('dni', 'like', '%'.$this->buscar.'%');
                         })->orWhereHas('grupo', function ($g) {
-                            $g->where('nombre', 'like', '%' . $this->buscar . '%');
+                            $g->where('nombre', 'like', '%'.$this->buscar.'%');
                         });
                     });
                 });
